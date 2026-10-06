@@ -2,6 +2,21 @@
 
 This document is the canonical behavioral flow for the MVP.
 
+## Prototype reference
+
+CupMemo has a clickable MVP reference package originally distributed as `coffee-mvp-reference.zip`.
+
+When unpacked under `design-reference/`, use:
+- `prototype.html` for concrete screen sequence, control placement, and interaction behavior
+- `MVP_SPEC.md` for detailed UI requirements
+- `FLOW_MAP.md` for navigation and state transitions
+
+This document defines the approved product behavior. The prototype provides the concrete visual/interaction realization of that behavior.
+
+For implementation details not explicitly described below, follow the reference package rather than inventing a different flow.
+
+If the prototype conflicts with a later explicit product decision in this document, stop and surface the conflict instead of silently preserving outdated behavior.
+
 ## 1. Entry
 
 Unauthenticated users see authentication entry points.
@@ -28,7 +43,7 @@ The user begins a new brew.
 
 Collect only information needed by the approved brew flow.
 
-The exact field list can evolve during implementation, but should cover the practical recipe/context needed to make the brew useful later, such as coffee, brew method, dose, water, grind-related information, time, temperature, or other parameters when appropriate.
+The concrete field order, grouping, and interaction pattern should follow the MVP reference package when available.
 
 Do not make every possible coffee variable mandatory.
 
@@ -64,7 +79,7 @@ On save:
 - persist the brew to the authenticated user's account
 - preserve quick evaluation
 - preserve optional Sensory Detail if supplied
-- return the user to a useful post-save state, normally brew detail or history
+- return the user to the post-save state defined by the approved MVP flow/reference
 
 ## 7. Brew history
 
@@ -123,6 +138,7 @@ Meaningful screens must account for:
 Phone use is the primary design target.
 
 Forms should:
+- follow the reference flow where specified
 - avoid excessive scrolling where possible
 - use appropriate input types
 - have comfortable touch targets
