@@ -7,6 +7,9 @@ node_modules/
 **/build/
 .next/
 coverage/
+**/tsconfig.tsbuildinfo
+apps/web/AGENTS.md
+apps/web/CLAUDE.md
 
 # Local environment and secrets
 .env

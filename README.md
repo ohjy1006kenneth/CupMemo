@@ -6,6 +6,36 @@ Use Node.js 24 and pnpm 10.34.6 (provided by Corepack). From the repository root
 
 GitHub Actions runs the same frozen install and quality gates for pull requests and pushes to `main`. The initial workflow intentionally does not cache dependencies, keeping its install behavior straightforward and avoiding cache-key/store-order risks. Contract tests inspect the committed workflow source for key triggers and commands; they are not a YAML or GitHub Actions execution substitute. The actual GitHub Actions run is authoritative.
 
+## Local runtime scaffold (Refs #7)
+
+This is a development scaffold, not the signed-in CupMemo product. It runs a Next.js App Router web app and a separate Fastify API. No authentication, brew/domain endpoints, database connection, or persistence is implemented. `/ready` confirms only that the API process is ready; it does not check a database. The minimal web manifest is metadata only: installability, icons, service worker, and offline behavior are not implemented or verified.
+
+Use Node.js 24 and pnpm 10.34.6. From the repository root:
+
+```sh
+corepack pnpm install --frozen-lockfile
+corepack pnpm --filter @cupmemo/api dev
+```
+
+In a second terminal:
+
+```sh
+corepack pnpm --filter @cupmemo/web dev
+```
+
+The web server binds to `127.0.0.1:3101`; the API binds to `127.0.0.1:4101`. The page checks `/api/v1/health` via a server-side Next.js rewrite to Fastify. Override the API listener with `CUPMEMO_API_HOST` and `CUPMEMO_API_PORT`, and configure the rewrite target with server-only `CUPMEMO_API_ORIGIN` (HTTP(S) URL without credentials). Do not use `NEXT_PUBLIC_` for the API origin. The API port must be an integer from 1 through 65535. API health responses are exactly `{"status":"ok"}`; `/health`, `/ready`, and `/api/v1/health` are process-level diagnostics.
+
+For production compilation and local starts:
+
+```sh
+corepack pnpm --filter @cupmemo/api build
+corepack pnpm --filter @cupmemo/web build
+corepack pnpm --filter @cupmemo/api start
+corepack pnpm --filter @cupmemo/web start
+```
+
+The same listener ports apply to `start`; set `CUPMEMO_API_PORT` to a free port and match `CUPMEMO_API_ORIGIN` when needed. Stop services with Ctrl-C; the API closes cleanly on SIGINT/SIGTERM.
+
 The six workspace members are `@cupmemo/web`, `@cupmemo/api`, `@cupmemo/database`, `@cupmemo/contracts`, `@cupmemo/ui`, and `@cupmemo/config`. Apps may consume shared packages; shared packages must not depend on apps. The database package is server-only and belongs behind the API, contracts remain persistence-independent for both apps, UI is for web only, and config is development tooling only. These packages currently establish boundaries, not product features; application scaffolding and quality/test tooling are separate outcomes.
 
 CupMemo is a mobile-first coffee brewing journal for recording brews quickly, remembering what worked, and optionally capturing richer sensory notes without turning everyday brewing into a formal cupping session.

@@ -1,0 +1,6 @@
+{
+  "name": "CupMemo",
+  "short_name": "CupMemo",
+  "start_url": "/",
+  "display": "standalone"
+}
