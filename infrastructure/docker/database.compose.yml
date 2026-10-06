@@ -1,0 +1,22 @@
+services:
+  cupmemo-db-dev:
+    image: postgres:17.6-alpine
+    container_name: cupmemo-db-dev
+    environment:
+      POSTGRES_DB: cupmemo_dev
+      POSTGRES_USER: cupmemo
+      POSTGRES_PASSWORD: cupmemo
+    ports:
+      - '127.0.0.1:55432:5432'
+    volumes:
+      - cupmemo-db-dev-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cupmemo -d cupmemo_dev']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  cupmemo-db-dev-data:
+    name: cupmemo-db-dev-data

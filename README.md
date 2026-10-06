@@ -108,3 +108,7 @@ Read these before making product or architectural changes:
 GitHub milestones and issues are the execution roadmap. The documentation above is the source of truth for product and architecture decisions. The MVP reference package is the visual and interaction reference where it is more specific.
 
 If the reference package conflicts with an explicit current product decision, do not silently choose one; raise the conflict and update the source of truth.
+
+## Local PostgreSQL development
+
+Copy `.env.example` to the ignored `.env`, then start only CupMemo's local database with `docker compose -f infrastructure/docker/database.compose.yml up -d`. From the repository root, run `corepack pnpm db:migrate`; the connection URL must be explicitly exported or loaded by your shell (pnpm does not load `.env`). `corepack pnpm db:generate` generates Drizzle migrations from `packages/database/src/schema.ts`. PostgreSQL is bound to loopback port 55432 and this development-only Compose file is not the production stack. The initial migration creates the `cupmemo` application schema without speculative business tables; auth adapter tables may use `public`, while domain tables belong in `cupmemo`.

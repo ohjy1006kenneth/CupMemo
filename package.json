@@ -12,7 +12,10 @@
     "lint": "eslint .",
     "build": "corepack pnpm --recursive --if-present build",
     "typecheck": "corepack pnpm --recursive --if-present typecheck",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "corepack pnpm --filter @cupmemo/database db:generate",
+    "db:migrate": "corepack pnpm --filter @cupmemo/database db:migrate",
+    "db:test:integration": "corepack pnpm --filter @cupmemo/database test:integration"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
