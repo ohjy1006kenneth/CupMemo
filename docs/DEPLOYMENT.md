@@ -137,7 +137,8 @@ Expected examples:
 
 ```text
 NODE_ENV
-DATABASE_URL
+CUPMEMO_DB_ENV
+CUPMEMO_DATABASE_URL_PRODUCTION
 BETTER_AUTH_SECRET
 BETTER_AUTH_URL
 POSTGRES_DATA_DIR
@@ -146,7 +147,7 @@ BACKUP_DIR
 CLOUDFLARE_TUNNEL_TOKEN
 ```
 
-Names may evolve, but environment-specific filesystem paths and secrets must not be hard-coded in application source.
+Database configuration uses an explicit `CUPMEMO_DB_ENV=production` and `CUPMEMO_DATABASE_URL_PRODUCTION`; it never falls back to `DATABASE_URL`. This names the configuration contract only: it does not authorize production connections, deployment, or storage-path selection. Never commit secrets. Environment-specific filesystem paths and secrets must not be hard-coded in application source.
 
 Commit only example files such as `.env.example`, never production values.
 

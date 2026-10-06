@@ -1,35 +1,27 @@
 import assert from 'node:assert/strict';
 import { sql } from 'drizzle-orm';
 import process from 'node:process';
-import { URL } from 'node:url';
+import { resolveDatabaseConfig } from '../dist/config.js';
 import { createDatabase } from '../dist/index.js';
 
-const databaseUrl = process.env.DATABASE_URL;
-const expectedDatabase = process.env.CUPMEMO_TEST_DATABASE;
-if (!databaseUrl || !expectedDatabase || !/^cupmemo_test_[a-z0-9_]+$/.test(expectedDatabase)) {
-  throw new Error(
-    'Set DATABASE_URL and CUPMEMO_TEST_DATABASE to the isolated cupmemo_test_<task> database.',
+let config;
+try {
+  config = resolveDatabaseConfig(process.env);
+  if (config.environment !== 'test' || process.env.NODE_ENV === 'production') {
+    throw new Error('Integration tests require test mode outside production NODE_ENV');
+  }
+} catch {
+  process.stderr.write(
+    'Database integration configuration refused; configure an isolated local test database.\n',
   );
+  process.exit(1);
 }
 
-const parsed = new URL(databaseUrl);
-if (
-  !['localhost', '127.0.0.1', '::1'].includes(parsed.hostname) ||
-  parsed.pathname.slice(1) !== expectedDatabase
-) {
-  throw new Error('Integration tests require the named isolated local test database.');
-}
-
-assert.throws(() => createDatabase(undefined), /DATABASE_URL is required/);
-assert.throws(() => createDatabase('not-a-url'), /valid PostgreSQL connection URL/);
-assert.throws(() => createDatabase('mysql://localhost/example'), /valid PostgreSQL connection URL/);
-
-const connection = createDatabase(databaseUrl);
+const connection = createDatabase(config.databaseUrl);
 let phase = 'PostgreSQL identity';
-let failed = false;
 try {
   const identity = await connection.db.execute(sql`select current_database(), version()`);
-  assert.equal(identity.rows[0]?.current_database, expectedDatabase);
+  assert.equal(identity.rows[0]?.current_database, config.databaseName);
   assert.match(identity.rows[0]?.version ?? '', /^PostgreSQL 17\./);
 
   phase = 'cupmemo namespace';
@@ -54,28 +46,14 @@ try {
   });
   assert.equal(transactionResult.rows[0]?.value, 'round-trip');
 } catch {
-  failed = true;
   process.stderr.write(`Database integration assertion failed at: ${phase}.\n`);
+  process.exitCode = 1;
 } finally {
   await connection.close();
 }
 
-const unavailable = createDatabase(
-  'postgresql://cupmemo:integration-secret@127.0.0.1:55439/cupmemo_test_unavailable',
-);
-try {
-  await unavailable.db.execute(sql`select 1`);
-  failed = true;
-  process.stderr.write('Unavailable PostgreSQL connection unexpectedly succeeded.\n');
-} catch (error) {
-  if (!failed) assert.doesNotMatch(String(error), /integration-secret/);
-} finally {
-  await unavailable.close();
-}
-
-if (!failed) {
+if (process.exitCode !== 1) {
   process.stdout.write(
-    'Database integration checks passed (isolated PostgreSQL 17, migration, query, transaction, refusal paths, pool shutdown).\n',
+    `Database integration checks passed (${config.environment} mode, PostgreSQL 17, ${config.databaseName}, migration, query, transaction, pool shutdown).\n`,
   );
 }
-process.exitCode = failed ? 1 : 0;

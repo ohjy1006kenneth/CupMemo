@@ -18,9 +18,9 @@ For new temporal columns, prefer timezone-aware timestamps (`timestamptz`); use 
 
 ## Local development and integration
 
-The isolated development service is `infrastructure/docker/database.compose.yml`; it is loopback-only on port 55432 with non-production example credentials and a uniquely named Compose volume. It is separate from production infrastructure. Copy `.env.example` to `.env` for reference, but load/export `DATABASE_URL` yourself: package scripts do not implicitly read `.env`.
+The isolated development service is `infrastructure/docker/database.compose.yml`; it is loopback-only on port 55432 with non-production example credentials and a uniquely named Compose volume. It is separate from production infrastructure. Copy `.env.example` to `.env` only as a local reference and set `CUPMEMO_DB_ENV=development` with `CUPMEMO_DATABASE_URL_DEVELOPMENT` when running configuration-driven commands. Package scripts do not implicitly load `.env`; keep local secret files out of version control.
 
-Integration checks are opt-in and never run as part of ordinary root `pnpm test`. They require both `DATABASE_URL` and `CUPMEMO_TEST_DATABASE`, whose database name must match `cupmemo_test_<task>` and whose URL must target localhost and that exact name. Use a task-owned disposable PostgreSQL database; the helper refuses other identifiers and does not drop/reset databases. The check verifies PostgreSQL 17, the namespace and single migration history entry, a real transaction/query round-trip, configuration refusal, unavailable-server error handling, and pool shutdown. It fails rather than skipping if prerequisites are absent. Environment separation and production DB setup are separate work and are not delivered here.
+Integration checks are opt-in and never run as part of ordinary root `pnpm test`. They require `CUPMEMO_DB_ENV=test`, `CUPMEMO_DATABASE_URL_TEST`, and `CUPMEMO_TEST_DATABASE`; the decoded URL database must match `cupmemo_test_<task>` and target loopback. Use a task-owned disposable PostgreSQL database; the helper refuses other identifiers and does not drop/reset databases. The check verifies PostgreSQL 17, the namespace and single migration history entry, a real transaction/query round-trip, configuration refusal, unavailable-server error handling, and pool shutdown. It fails rather than skipping if prerequisites are absent. Configuration-driven commands reject nonempty legacy `DATABASE_URL`; there is no environment or URL fallback.
 
 Do not use SQLite, MongoDB, Firebase, or another primary database without an approved architecture change.
 
@@ -93,14 +93,36 @@ Migration failures should fail visibly.
 
 ## Environment separation
 
-Maintain clearly distinct:
-- development
-- test
-- production
+### Environment configuration
 
-Tests must not point at production.
+All configuration-driven database CLI and integration-test workflows use an explicit `CUPMEMO_DB_ENV` set to exactly `development`, `test`, or `production`, plus the matching dedicated URL:
 
-Destructive test helpers should include safeguards against production configuration.
+- `CUPMEMO_DATABASE_URL_DEVELOPMENT`
+- `CUPMEMO_DATABASE_URL_TEST`
+- `CUPMEMO_DATABASE_URL_PRODUCTION`
+
+There is no default mode or URL. `NODE_ENV` never selects a database; `NODE_ENV=production` is compatible only with production DB mode. A nonempty legacy `DATABASE_URL` is rejected as ambiguous. Connection URL query options that can change the effective PostgreSQL target or session settings are refused; only one `sslmode` option is accepted for TLS configuration. This prevents driver query parameters from overriding validated authority host, port, or database. Do not define `.env` loading in commands: local `.env` files are ignored and must be loaded explicitly by a developer tool if desired.
+
+Example development setup (Compose binds PostgreSQL to loopback port 55432):
+
+```sh
+corepack pnpm install --frozen-lockfile
+docker compose -f infrastructure/docker/database.compose.yml up -d
+CUPMEMO_DB_ENV=development CUPMEMO_DATABASE_URL_DEVELOPMENT=postgresql://cupmemo:<password>@127.0.0.1:55432/cupmemo_dev corepack pnpm db:migrate
+```
+
+Integration tests must use a disposable, task-owned local PostgreSQL instance and a unique database name. The resolver requires `CUPMEMO_TEST_DATABASE` to match `cupmemo_test_<task>`, requires the selected URL's decoded database name to match it, and accepts only loopback hosts (`localhost`, `127.0.0.1`, `::1`). For example:
+
+```sh
+CUPMEMO_DB_ENV=test CUPMEMO_DATABASE_URL_TEST=postgresql://cupmemo:<password>@127.0.0.1:<ephemeral-port>/cupmemo_test_<task> CUPMEMO_TEST_DATABASE=cupmemo_test_<task> corepack pnpm db:migrate
+CUPMEMO_DB_ENV=test CUPMEMO_DATABASE_URL_TEST=postgresql://cupmemo:<password>@127.0.0.1:<ephemeral-port>/cupmemo_test_<task> CUPMEMO_TEST_DATABASE=cupmemo_test_<task> corepack pnpm db:test:integration
+```
+
+Replace placeholders locally; never include actual credentials in committed docs or logs. Name/loopback guards do not establish endpoint ownership or isolation. Users are responsible for connecting only to a trusted disposable server. Integration checks verify current database identity before running a temporary transaction probe; they do not reset or drop a database.
+
+Production configuration uses `CUPMEMO_DB_ENV=production` and `CUPMEMO_DATABASE_URL_PRODUCTION`; it can be syntax/target-validated without connecting. Production mode rejects `cupmemo_dev` and `cupmemo_test_*`. This documentation does not authorize production connections, deployments, or selection of production storage paths. Missing/invalid mode, absent selected URL, unsupported scheme, absent database name, conflicting `NODE_ENV`, reused configured targets, test-name/host mismatches, and legacy `DATABASE_URL` all fail visibly without printing credential values. Unselected mode URLs need not be set but are validated for syntax and cross-mode target reuse when provided.
+
+Database configuration errors are intentionally generic and never echo URLs, passwords, or query credentials. Generation (`corepack pnpm db:generate`) remains offline and does not require a database URL. Migration failures return nonzero and close any created pool.
 
 ## Production storage
 

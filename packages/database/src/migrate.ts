@@ -1,14 +1,18 @@
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { resolveDatabaseConfig } from './config.js';
 import { createDatabase } from './index.js';
 
-const connection = createDatabase(process.env.DATABASE_URL);
+let connection: ReturnType<typeof createDatabase> | undefined;
 try {
+  const config = resolveDatabaseConfig(process.env);
+  connection = createDatabase(config.databaseUrl);
   await migrate(connection.db, { migrationsFolder: './drizzle' });
+  process.stdout.write(`Database migrations completed for ${config.environment} mode.\n`);
 } catch {
   process.stderr.write(
-    'Database migration failed. Check the database connection and migration files.\n',
+    'Database configuration or migration failed. Check non-secret configuration and database availability.\n',
   );
   process.exitCode = 1;
 } finally {
-  await connection.close();
+  if (connection) await connection.close();
 }

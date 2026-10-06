@@ -3,6 +3,9 @@ import process from 'node:process';
 import { Pool } from 'pg';
 import * as schema from './schema.js';
 
+export { resolveDatabaseConfig } from './config.js';
+export type { DatabaseConfig, DatabaseEnvironment, DatabaseEnvironmentMap } from './config.js';
+
 export { schema };
 export type Database = NodePgDatabase<typeof schema>;
 
@@ -14,18 +17,18 @@ export interface DatabaseConnection {
 
 export function createDatabase(databaseUrl: string | undefined): DatabaseConnection {
   if (!databaseUrl) {
-    throw new Error('DATABASE_URL is required');
+    throw new Error('A PostgreSQL connection URL is required');
   }
 
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(databaseUrl);
   } catch {
-    throw new Error('DATABASE_URL must be a valid PostgreSQL connection URL');
+    throw new Error('Connection URL must be a valid PostgreSQL connection URL');
   }
 
   if (!['postgres:', 'postgresql:'].includes(parsedUrl.protocol) || !parsedUrl.hostname) {
-    throw new Error('DATABASE_URL must be a valid PostgreSQL connection URL');
+    throw new Error('Connection URL must be a valid PostgreSQL connection URL');
   }
 
   const pool = new Pool({ connectionString: databaseUrl });
