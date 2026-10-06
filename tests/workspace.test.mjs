@@ -101,4 +101,16 @@ describe('workspace foundation contracts', () => {
       assert.deepEqual(config[field] ?? {}, {}, `config must not declare runtime ${field}`);
     }
   });
+
+  it('allows @cupmemo/config only as a development dependency', async () => {
+    for (const [directory, name] of Object.entries(members)) {
+      const manifest = await json(`${directory}/package.json`);
+      for (const field of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
+        assert.ok(
+          !Object.hasOwn(manifest[field] ?? {}, '@cupmemo/config'),
+          `${name} must not declare @cupmemo/config in ${field}`,
+        );
+      }
+    }
+  });
 });
