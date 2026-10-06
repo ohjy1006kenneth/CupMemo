@@ -1,0 +1,16 @@
+{
+  "name": "cupmemo",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.34.6",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "corepack pnpm --recursive --if-present build",
+    "typecheck": "corepack pnpm --recursive --if-present typecheck"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
