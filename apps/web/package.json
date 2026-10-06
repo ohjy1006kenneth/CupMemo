@@ -3,19 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": {
-    "types": "./dist/index.d.ts",
-    "default": "./dist/index.js"
-  },
   "scripts": {
-    "build": "tsc --project tsconfig.json",
+    "dev": "next dev --hostname 127.0.0.1 --port 3101",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1 --port 3101",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@cupmemo/contracts": "workspace:*",
-    "@cupmemo/ui": "workspace:*"
+    "next": "16.3.8",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "4.3.6"
   },
   "devDependencies": {
-    "@cupmemo/config": "workspace:*"
+    "@tailwindcss/postcss": "4.2.4",
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "postcss": "8.5.10"
   }
 }

@@ -8,3 +8,4 @@ pnpm-lock.yaml
 **/.next/**
 **/coverage/**
 **/.worktrees/**
+apps/web/next-env.d.ts
