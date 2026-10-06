@@ -12,7 +12,7 @@ export function parseApiConfig(env: NodeJS.ProcessEnv = process.env) {
   return { port, host };
 }
 
-export function createApp(): FastifyInstance {
+export function createApp(options: { probe?: () => Promise<unknown> } = {}): FastifyInstance {
   const app = Fastify({
     logger: {
       redact: {
@@ -23,8 +23,18 @@ export function createApp(): FastifyInstance {
   });
 
   const health = async () => ({ status: 'ok' as const });
+  const readiness = async (_request: unknown, reply: { code: (status: number) => unknown }) => {
+    try {
+      if (!options.probe) throw new Error('Readiness probe is not configured');
+      await options.probe();
+      return { status: 'ok' as const };
+    } catch {
+      reply.code(503);
+      return { status: 'unavailable' as const };
+    }
+  };
   app.get('/health', health);
-  app.get('/ready', health);
+  app.get('/ready', readiness);
   app.get('/api/v1/health', health);
 
   return app;

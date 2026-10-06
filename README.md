@@ -8,7 +8,7 @@ GitHub Actions runs the same frozen install and quality gates for pull requests 
 
 ## Local runtime scaffold (Refs #7)
 
-This is a development scaffold, not the signed-in CupMemo product. It runs a Next.js App Router web app and a separate Fastify API. No authentication, brew/domain endpoints, database connection, or persistence is implemented. `/ready` confirms only that the API process is ready; it does not check a database. The minimal web manifest is metadata only: installability, icons, service worker, and offline behavior are not implemented or verified.
+This is a development scaffold, not the signed-in CupMemo product. It runs a Next.js App Router web app and a separate Fastify API. No authentication or brew/domain endpoints are implemented. API readiness checks the configured database; see [database operations](docs/DATABASE.md#readiness-and-migration-status). The minimal web manifest is metadata only: installability, icons, service worker, and offline behavior are not implemented or verified.
 
 Use Node.js 24 and pnpm 10.34.6. From the repository root:
 
@@ -23,7 +23,7 @@ In a second terminal:
 corepack pnpm --filter @cupmemo/web dev
 ```
 
-The web server binds to `127.0.0.1:3101`; the API binds to `127.0.0.1:4101`. The page checks `/api/v1/health` via a server-side Next.js rewrite to Fastify. Override the API listener with `CUPMEMO_API_HOST` and `CUPMEMO_API_PORT`, and configure the rewrite target with server-only `CUPMEMO_API_ORIGIN` (HTTP(S) URL without credentials). Do not use `NEXT_PUBLIC_` for the API origin. The API port must be an integer from 1 through 65535. API health responses are exactly `{"status":"ok"}`; `/health`, `/ready`, and `/api/v1/health` are process-level diagnostics.
+The web server binds to `127.0.0.1:3101`; the API binds to `127.0.0.1:4101`. The page checks `/api/v1/health` via a server-side Next.js rewrite to Fastify. Override the API listener with `CUPMEMO_API_HOST` and `CUPMEMO_API_PORT`, and configure the rewrite target with server-only `CUPMEMO_API_ORIGIN` (HTTP(S) URL without credentials). Do not use `NEXT_PUBLIC_` for the API origin. The API port must be an integer from 1 through 65535. Liveness responses are exactly `{"status":"ok"}`; `/health` and `/api/v1/health` are process-only diagnostics. `/ready` is database-aware and can return 503 while the API remains live.
 
 For production compilation and local starts:
 
@@ -34,7 +34,7 @@ corepack pnpm --filter @cupmemo/api start
 corepack pnpm --filter @cupmemo/web start
 ```
 
-The same listener ports apply to `start`; set `CUPMEMO_API_PORT` to a free port and match `CUPMEMO_API_ORIGIN` when needed. Stop services with Ctrl-C; the API closes cleanly on SIGINT/SIGTERM.
+The same listener ports apply to `start`; set `CUPMEMO_API_PORT` to a free port and match `CUPMEMO_API_ORIGIN` when needed. The API requires explicit database mode/URL configuration before it listens. It closes its pool on SIGINT/SIGTERM.
 
 The six workspace members are `@cupmemo/web`, `@cupmemo/api`, `@cupmemo/database`, `@cupmemo/contracts`, `@cupmemo/ui`, and `@cupmemo/config`. Apps may consume shared packages; shared packages must not depend on apps. The database package is server-only and belongs behind the API, contracts remain persistence-independent for both apps, UI is for web only, and config is development tooling only. These packages currently establish boundaries, not product features; application scaffolding and quality/test tooling are separate outcomes.
 
@@ -115,4 +115,4 @@ Database commands require an explicit `CUPMEMO_DB_ENV` (`development`, `test`, o
 
 ## Local PostgreSQL development
 
-Start only CupMemo's local database with `docker compose -f infrastructure/docker/database.compose.yml up -d`. Export `CUPMEMO_DB_ENV=development` and `CUPMEMO_DATABASE_URL_DEVELOPMENT` before running `corepack pnpm db:migrate`; pnpm does not load `.env` files. `corepack pnpm db:generate` generates Drizzle migrations from `packages/database/src/schema.ts` and remains offline. PostgreSQL is bound to loopback port 55432 and this development-only Compose file is not the production stack. The initial migration creates the `cupmemo` application schema without speculative business tables; auth adapter tables may use `public`, while domain tables belong in `cupmemo`.
+Start only CupMemo's local database with `docker compose -f infrastructure/docker/database.compose.yml up -d`. Set explicit `CUPMEMO_DB_ENV=development` and `CUPMEMO_DATABASE_URL_DEVELOPMENT` for `corepack pnpm db:status` or `corepack pnpm db:migrate`; pnpm does not load `.env` files. Status compares committed migrations read-only; migration is a deliberate operator action. `corepack pnpm db:generate` remains offline. PostgreSQL is bound to loopback port 55432 and this development-only Compose file is not the production stack. See [database operations](docs/DATABASE.md#readiness-and-migration-status), including `down` without deleting its volume. Production HDD startup protection remains separately gated by issue #11; this documentation does not authorize deployment.

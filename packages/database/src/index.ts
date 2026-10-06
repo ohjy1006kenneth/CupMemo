@@ -1,6 +1,6 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import process from 'node:process';
-import { Pool } from 'pg';
+import { Pool, type PoolConfig } from 'pg';
 import * as schema from './schema.js';
 
 export { resolveDatabaseConfig } from './config.js';
@@ -15,7 +15,10 @@ export interface DatabaseConnection {
   close: () => Promise<void>;
 }
 
-export function createDatabase(databaseUrl: string | undefined): DatabaseConnection {
+export function createDatabase(
+  databaseUrl: string | undefined,
+  options: Omit<PoolConfig, 'connectionString'> = {},
+): DatabaseConnection {
   if (!databaseUrl) {
     throw new Error('A PostgreSQL connection URL is required');
   }
@@ -31,7 +34,7 @@ export function createDatabase(databaseUrl: string | undefined): DatabaseConnect
     throw new Error('Connection URL must be a valid PostgreSQL connection URL');
   }
 
-  const pool = new Pool({ connectionString: databaseUrl });
+  const pool = new Pool({ connectionString: databaseUrl, ...options });
   pool.on('error', () => {
     process.stderr.write('PostgreSQL pool encountered an idle-client error.\n');
   });

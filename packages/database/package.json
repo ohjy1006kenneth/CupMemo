@@ -12,6 +12,7 @@
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "tsx src/migrate.ts",
+    "db:status": "tsx src/status.ts",
     "test:integration": "corepack pnpm build && node scripts/integration.mjs"
   },
   "dependencies": {
