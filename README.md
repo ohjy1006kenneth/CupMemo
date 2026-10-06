@@ -2,7 +2,7 @@
 
 ## Workspace foundation
 
-Use Node.js 24 and pnpm 10.34.6 (provided by Corepack). From the repository root, run `corepack pnpm install --frozen-lockfile`, `corepack pnpm typecheck`, and `corepack pnpm build`. Workspace member commands can be run with `corepack pnpm --filter @cupmemo/<member> <script>`.
+Use Node.js 24 and pnpm 10.34.6 (provided by Corepack). From the repository root, install with `corepack pnpm install --frozen-lockfile`. Run `corepack pnpm format` to format, then `corepack pnpm format:check`, `corepack pnpm lint`, `corepack pnpm typecheck`, `corepack pnpm test`, and `corepack pnpm build` for the quality gates. Workspace member commands can be run with `corepack pnpm --filter @cupmemo/<member> <script>`.
 
 The six workspace members are `@cupmemo/web`, `@cupmemo/api`, `@cupmemo/database`, `@cupmemo/contracts`, `@cupmemo/ui`, and `@cupmemo/config`. Apps may consume shared packages; shared packages must not depend on apps. The database package is server-only and belongs behind the API, contracts remain persistence-independent for both apps, UI is for web only, and config is development tooling only. These packages currently establish boundaries, not product features; application scaffolding and quality/test tooling are separate outcomes.
 
@@ -50,6 +50,7 @@ design-reference/
 CupMemo also has a reference package originally distributed as `coffee-mvp-reference.zip`.
 
 It contains:
+
 - `prototype.html` — clickable offline MVP prototype
 - `MVP_SPEC.md` — detailed MVP screen/interaction specification
 - `FLOW_MAP.md` — flow map

@@ -1,0 +1,10 @@
+AGENTS.md
+docs/**
+design-reference/**
+pnpm-lock.yaml
+**/node_modules/**
+**/dist/**
+**/build/**
+**/.next/**
+**/coverage/**
+**/.worktrees/**
