@@ -7,6 +7,9 @@ const app = createApp({
     if (!connection) throw new Error('Database is unavailable');
     await connection.pool.query('SELECT 1');
   },
+  close: async () => {
+    if (connection) await connection.close();
+  },
 });
 
 try {
@@ -25,7 +28,6 @@ try {
     'API startup failed. Check non-secret configuration and port availability.\n',
   );
   process.exitCode = 1;
-  if (connection) await connection.close().catch(() => undefined);
   await app.close().catch(() => undefined);
 }
 
@@ -33,9 +35,6 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     void app
       .close()
-      .then(async () => {
-        if (connection) await connection.close();
-      })
       .then(() => process.exit(0))
       .catch(() => {
         process.exitCode = 1;

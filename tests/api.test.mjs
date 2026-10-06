@@ -43,6 +43,18 @@ describe('API scaffold', () => {
     await app.close();
   });
 
+  it('closes the owned dependency exactly once through Fastify shutdown', async () => {
+    let closes = 0;
+    const app = createApp({
+      close: async () => {
+        closes += 1;
+      },
+    });
+    await app.close();
+    await app.close();
+    expect(closes).toBe(1);
+  });
+
   it('returns 404 for unknown routes and does not accept mutations to health', async () => {
     const app = createApp();
     expect((await app.inject({ method: 'GET', url: '/unknown' })).statusCode).toBe(404);

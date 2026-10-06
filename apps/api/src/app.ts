@@ -12,7 +12,9 @@ export function parseApiConfig(env: NodeJS.ProcessEnv = process.env) {
   return { port, host };
 }
 
-export function createApp(options: { probe?: () => Promise<unknown> } = {}): FastifyInstance {
+export function createApp(
+  options: { probe?: () => Promise<unknown>; close?: () => Promise<unknown> } = {},
+): FastifyInstance {
   const app = Fastify({
     logger: {
       redact: {
@@ -36,6 +38,11 @@ export function createApp(options: { probe?: () => Promise<unknown> } = {}): Fas
   app.get('/health', health);
   app.get('/ready', readiness);
   app.get('/api/v1/health', health);
+  if (options.close) {
+    app.addHook('onClose', async () => {
+      await options.close?.();
+    });
+  }
 
   return app;
 }
