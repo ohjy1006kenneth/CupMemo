@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { URL } from 'node:url';
 import { describe, it } from 'vitest';
 import { resolveDatabaseConfig } from '../packages/database/src/config.ts';
+
+const databaseRequire = createRequire(
+  new URL('../packages/database/package.json', import.meta.url),
+);
+const { Client } = databaseRequire('pg');
 
 const secret = 'never-print-this-password';
 const url = (name, host = '127.0.0.1', port = 5432) =>
@@ -114,5 +121,39 @@ describe('database environment configuration', () => {
       },
       /reused/,
     );
+  });
+
+  it('keeps the validated target identical to pg driver parsing and rejects authority overrides', () => {
+    for (const query of [
+      'host=remote.invalid',
+      'port=5439',
+      'dbname=other',
+      'options=-csearch_path%3Dx',
+    ]) {
+      rejected(
+        base('test', `${url('cupmemo_test_query')}&${query}`, {
+          CUPMEMO_TEST_DATABASE: 'cupmemo_test_query',
+        }),
+        /unsupported PostgreSQL connection options/,
+      );
+    }
+    rejected(
+      base('test', `${url('cupmemo_test_query')}&sslmode=require`, {
+        CUPMEMO_TEST_DATABASE: 'cupmemo_test_query',
+      }),
+      /unsupported PostgreSQL connection options/,
+    );
+    const sslUrl = url('cupmemo_test_ssl').replace('sslmode=disable', 'sslmode=require');
+    const config = resolveDatabaseConfig(
+      base('test', sslUrl, { CUPMEMO_TEST_DATABASE: 'cupmemo_test_ssl' }),
+    );
+    const driver = new Client({ connectionString: config.databaseUrl });
+    assert.equal(driver.connectionParameters.host, config.hostname);
+    assert.equal(driver.connectionParameters.port, config.port);
+    assert.equal(driver.connectionParameters.database, config.databaseName);
+  });
+
+  it('rejects production database names using the reserved test prefix regardless of case', () => {
+    rejected(base('production', url('cupmemo_test_INVALID', 'db.internal')), /development or test/);
   });
 });

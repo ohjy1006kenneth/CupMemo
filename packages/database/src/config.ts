@@ -33,6 +33,14 @@ function parseTarget(
     throw new Error(`${label} must be a valid PostgreSQL connection URL`);
   }
 
+  // pg-connection-string allows query parameters to override URL authority fields
+  // (notably host and port). Keep only TLS mode options so the validated target
+  // is the target the driver will actually connect to.
+  const queryKeys = [...url.searchParams.keys()];
+  if (queryKeys.some((key) => key !== 'sslmode') || new Set(queryKeys).size !== queryKeys.length) {
+    throw new Error(`${label} contains unsupported PostgreSQL connection options`);
+  }
+
   let databaseName: string;
   try {
     databaseName = decodeURIComponent(url.pathname.slice(1));
@@ -100,7 +108,7 @@ export function resolveDatabaseConfig(env: DatabaseEnvironmentMap): DatabaseConf
   if (
     environment === 'production' &&
     (selectedTarget.databaseName === 'cupmemo_dev' ||
-      testDatabasePattern.test(selectedTarget.databaseName))
+      selectedTarget.databaseName.toLowerCase().startsWith('cupmemo_test_'))
   ) {
     throw new Error('Production database cannot use a development or test database name');
   }

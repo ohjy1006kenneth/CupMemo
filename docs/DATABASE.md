@@ -101,7 +101,7 @@ All configuration-driven database CLI and integration-test workflows use an expl
 - `CUPMEMO_DATABASE_URL_TEST`
 - `CUPMEMO_DATABASE_URL_PRODUCTION`
 
-There is no default mode or URL. `NODE_ENV` never selects a database; `NODE_ENV=production` is compatible only with production DB mode. A nonempty legacy `DATABASE_URL` is rejected as ambiguous. Do not define `.env` loading in commands: local `.env` files are ignored and must be loaded explicitly by a developer tool if desired.
+There is no default mode or URL. `NODE_ENV` never selects a database; `NODE_ENV=production` is compatible only with production DB mode. A nonempty legacy `DATABASE_URL` is rejected as ambiguous. Connection URL query options that can change the effective PostgreSQL target or session settings are refused; only one `sslmode` option is accepted for TLS configuration. This prevents driver query parameters from overriding validated authority host, port, or database. Do not define `.env` loading in commands: local `.env` files are ignored and must be loaded explicitly by a developer tool if desired.
 
 Example development setup (Compose binds PostgreSQL to loopback port 55432):
 
