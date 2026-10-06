@@ -1,5 +1,11 @@
 # CupMemo
 
+## Workspace foundation
+
+Use Node.js 24 and pnpm 10.34.6 (provided by Corepack). From the repository root, run `corepack pnpm install --frozen-lockfile`, `corepack pnpm typecheck`, and `corepack pnpm build`. Workspace member commands can be run with `corepack pnpm --filter @cupmemo/<member> <script>`.
+
+The six workspace members are `@cupmemo/web`, `@cupmemo/api`, `@cupmemo/database`, `@cupmemo/contracts`, `@cupmemo/ui`, and `@cupmemo/config`. Apps may consume shared packages; shared packages must not depend on apps. The database package is server-only and belongs behind the API, contracts remain persistence-independent for both apps, UI is for web only, and config is development tooling only. These packages currently establish boundaries, not product features; application scaffolding and quality/test tooling are separate outcomes.
+
 CupMemo is a mobile-first coffee brewing journal for recording brews quickly, remembering what worked, and optionally capturing richer sensory notes without turning everyday brewing into a formal cupping session.
 
 ## Product principles

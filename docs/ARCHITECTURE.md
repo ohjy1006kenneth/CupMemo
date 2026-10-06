@@ -70,6 +70,8 @@ Expo is future scope, not MVP.
 
 ## Repository structure
 
+The pnpm workspace contains exactly six initial members: `@cupmemo/web` and `@cupmemo/api` under `apps/`; `@cupmemo/database`, `@cupmemo/contracts`, `@cupmemo/ui`, and `@cupmemo/config` under `packages/`. Applications may depend on shared packages, never the reverse. Database is server-only (API consumer); contracts are persistence-independent (both apps); UI is consumed by web, not API; config is development-only tooling. Foundation entrypoints do not imply product behavior. Add further workspace members only through an explicit scope decision.
+
 Target:
 
 ```text
