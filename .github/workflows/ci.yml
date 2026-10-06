@@ -1,0 +1,46 @@
+name: CupMemo CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.15.0
+      - name: Bootstrap pinned Corepack
+        run: |
+          npm install --global corepack@0.36.0
+          corepack enable
+          test "$(corepack pnpm --version)" = "10.34.6"
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+      - name: Check formatting
+        run: corepack pnpm format:check
+      - name: Lint
+        run: corepack pnpm lint
+      - name: Typecheck
+        run: corepack pnpm typecheck
+      - name: Test
+        run: corepack pnpm test
+      - name: Build
+        run: corepack pnpm build
