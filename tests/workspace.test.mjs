@@ -30,6 +30,7 @@ function dependencyNames(manifest) {
     ...manifest.dependencies,
     ...manifest.devDependencies,
     ...manifest.peerDependencies,
+    ...manifest.optionalDependencies,
   });
 }
 

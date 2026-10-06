@@ -50,6 +50,7 @@ design-reference/
 CupMemo also has a reference package originally distributed as `coffee-mvp-reference.zip`.
 
 It contains:
+
 - `prototype.html` — clickable offline MVP prototype
 - `MVP_SPEC.md` — detailed MVP screen/interaction specification
 - `FLOW_MAP.md` — flow map
