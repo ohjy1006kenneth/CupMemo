@@ -36,7 +36,22 @@ packages/
   config/
 infrastructure/
 docs/
+design-reference/
 ```
+
+## MVP design reference
+
+CupMemo also has a reference package originally distributed as `coffee-mvp-reference.zip`.
+
+It contains:
+- `prototype.html` — clickable offline MVP prototype
+- `MVP_SPEC.md` — detailed MVP screen/interaction specification
+- `FLOW_MAP.md` — flow map
+- screenshot/visual-review helper material
+
+When the package is added to this repository, unpack it under `design-reference/`.
+
+Use it as the concrete UI/interaction reference for the MVP. It complements the canonical product and architecture docs; it does not replace security, backend, deployment, or data rules.
 
 ## Canonical project documentation
 
@@ -49,5 +64,8 @@ Read these before making product or architectural changes:
 - [Database](docs/DATABASE.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [Agent workflow](AGENTS.md)
+- [MVP reference guidance](design-reference/README.md)
 
-GitHub milestones and issues are the execution roadmap. The documentation above is the source of truth for product and architecture decisions.
+GitHub milestones and issues are the execution roadmap. The documentation above is the source of truth for product and architecture decisions. The MVP reference package is the visual and interaction reference where it is more specific.
+
+If the reference package conflicts with an explicit current product decision, do not silently choose one; raise the conflict and update the source of truth.
