@@ -8,6 +8,20 @@
 
 PostgreSQL is the main application database.
 
+## Connection and application namespace
+
+`@cupmemo/database` exports `createDatabase(DATABASE_URL)`, which returns a typed Drizzle database, its `pg` pool, and an explicit `close()` lifecycle. It never connects at import time and has no implicit localhost/production URL. Missing or malformed configuration throws a non-secret error; connection and migration failures fail visibly. Callers must close the pool in `finally` blocks. Driver background errors are not logged because they can include connection details.
+
+The committed initial migration creates the `cupmemo` PostgreSQL application namespace. It deliberately creates no domain tables: Better Auth owns its adapter schema and the domain model is defined in its feature work. Drizzle's migration bookkeeping stays in its default `drizzle.__drizzle_migrations` namespace, with its normal `public` namespace untouched; later auth tables may use `public`, and CupMemo domain tables use `cupmemo`. Use explicit migrations for schema changes, not `drizzle-kit push`. `db:generate` reads the schema entry point and writes migrations under `packages/database/drizzle`.
+
+For new temporal columns, prefer timezone-aware timestamps (`timestamptz`); use UUID identifiers, foreign keys, not-null and uniqueness constraints where the domain requires them, and indexes only for known lookup/sort paths. These are modeling conventions, not a schema added by this foundation.
+
+## Local development and integration
+
+The isolated development service is `infrastructure/docker/database.compose.yml`; it is loopback-only on port 55432 with non-production example credentials and a uniquely named Compose volume. It is separate from production infrastructure. Copy `.env.example` to `.env` for reference, but load/export `DATABASE_URL` yourself: package scripts do not implicitly read `.env`.
+
+Integration checks are opt-in and never run as part of ordinary root `pnpm test`. They require both `DATABASE_URL` and `CUPMEMO_TEST_DATABASE`, whose database name must match `cupmemo_test_<task>` and whose URL must target localhost and that exact name. Use a task-owned disposable PostgreSQL database; the helper refuses other identifiers and does not drop/reset databases. The check verifies PostgreSQL 17, the namespace and single migration history entry, a real transaction/query round-trip, configuration refusal, unavailable-server error handling, and pool shutdown. It fails rather than skipping if prerequisites are absent. Environment separation and production DB setup are separate work and are not delivered here.
+
 Do not use SQLite, MongoDB, Firebase, or another primary database without an approved architecture change.
 
 ## Modeling principles
