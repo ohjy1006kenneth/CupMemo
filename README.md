@@ -109,6 +109,10 @@ GitHub milestones and issues are the execution roadmap. The documentation above 
 
 If the reference package conflicts with an explicit current product decision, do not silently choose one; raise the conflict and update the source of truth.
 
+## Database configuration
+
+Database commands require an explicit `CUPMEMO_DB_ENV` (`development`, `test`, or `production`) and the corresponding `CUPMEMO_DATABASE_URL_<MODE>` variable. See [Database configuration and safety](docs/DATABASE.md#environment-configuration) for isolated examples, refusals, and migration/test commands. `.env` files are ignored and are never loaded automatically.
+
 ## Local PostgreSQL development
 
-Copy `.env.example` to the ignored `.env`, then start only CupMemo's local database with `docker compose -f infrastructure/docker/database.compose.yml up -d`. From the repository root, run `corepack pnpm db:migrate`; the connection URL must be explicitly exported or loaded by your shell (pnpm does not load `.env`). `corepack pnpm db:generate` generates Drizzle migrations from `packages/database/src/schema.ts`. PostgreSQL is bound to loopback port 55432 and this development-only Compose file is not the production stack. The initial migration creates the `cupmemo` application schema without speculative business tables; auth adapter tables may use `public`, while domain tables belong in `cupmemo`.
+Start only CupMemo's local database with `docker compose -f infrastructure/docker/database.compose.yml up -d`. Export `CUPMEMO_DB_ENV=development` and `CUPMEMO_DATABASE_URL_DEVELOPMENT` before running `corepack pnpm db:migrate`; pnpm does not load `.env` files. `corepack pnpm db:generate` generates Drizzle migrations from `packages/database/src/schema.ts` and remains offline. PostgreSQL is bound to loopback port 55432 and this development-only Compose file is not the production stack. The initial migration creates the `cupmemo` application schema without speculative business tables; auth adapter tables may use `public`, while domain tables belong in `cupmemo`.
