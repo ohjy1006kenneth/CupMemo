@@ -1,5 +1,13 @@
 # CupMemo Design System
 
+## Reference implementation
+
+The MVP reference package under `design-reference/` is the concrete visual and interaction baseline for the first release.
+
+The visual-reviewer and UI implementer should inspect `prototype.html` directly rather than interpreting this document in isolation.
+
+This design system explains the principles behind the reference. It should be used to keep new states and components consistent with the prototype, not to redesign the prototype into a different theme.
+
 ## Direction: Clean Studio
 
 CupMemo should feel:
@@ -32,6 +40,16 @@ Favor:
 - polished forms
 - comfortable touch targets
 - meaningful empty/loading/error states
+
+## Fidelity rule
+
+For MVP screens already represented in `prototype.html`:
+- preserve the overall information hierarchy
+- preserve the intended navigation/flow
+- preserve the interaction model
+- preserve the Clean Studio visual character
+
+Implementation may improve responsiveness, accessibility, validation, loading/error states, and component quality without needlessly changing the approved product design.
 
 ## Design tokens
 
@@ -136,6 +154,7 @@ Visual-reviewer should inspect:
 - desktop viewport
 
 Check:
+- fidelity to the approved MVP reference
 - overflow
 - scrolling
 - touch target size
