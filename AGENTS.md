@@ -12,10 +12,31 @@ Before planning or implementing meaningful work, read the relevant repository do
 - `docs/DESIGN_SYSTEM.md`
 - `docs/DATABASE.md`
 - `docs/DEPLOYMENT.md`
+- `design-reference/README.md`
+
+If present, also inspect the actual MVP reference artifacts under `design-reference/`, especially:
+
+- `prototype.html`
+- `MVP_SPEC.md`
+- `FLOW_MAP.md`
+
+The clickable prototype and its spec are the concrete reference for screen structure, interaction sequencing, and visual intent. Do not redesign those flows from scratch merely because implementation is beginning.
 
 Use GitHub milestones and issues as the execution backlog.
 
 Do not rely on conversation history as the only source of project decisions.
+
+### Conflict handling
+
+Use this order:
+
+1. Explicit current user decision
+2. Current canonical repository product/architecture docs
+3. MVP reference package for concrete screen, flow, and interaction detail
+4. General design-system guidance
+5. Agent preference
+
+If two authoritative sources conflict, do not silently pick one. Surface the conflict and update the relevant source-of-truth document after resolution.
 
 ## Agent roles
 
@@ -33,6 +54,8 @@ Owns:
 
 The orchestrator should not silently redesign locked product or architecture decisions.
 
+Before delegating UI work, the orchestrator should make the relevant MVP prototype/spec material available to the implementer and visual-reviewer.
+
 ### code-monkey
 
 Primary implementation agent.
@@ -40,6 +63,7 @@ Primary implementation agent.
 Expected to:
 - implement scoped issues
 - follow existing architecture
+- use the MVP reference rather than improvising a different product flow
 - add/update tests
 - keep changes focused
 - report blockers rather than inventing broad redesigns
@@ -63,7 +87,10 @@ Reviews:
 
 Reviews the **rendered UI**, not only code.
 
+Compare implemented screens against the MVP reference package as well as `docs/DESIGN_SYSTEM.md`.
+
 Check:
+- intended screen structure and interaction flow
 - Clean Studio consistency
 - mobile ergonomics
 - responsive behavior
@@ -88,6 +115,7 @@ Check:
 8. Prefer clear boundaries and simple systems over cleverness.
 9. Do not silently replace approved technologies.
 10. Protect unrelated services already running on the Raspberry Pi, especially Hermes.
+11. Do not replace the approved MVP interaction flow with a generic CRUD UI.
 
 ## Quality gates
 
@@ -100,7 +128,7 @@ For relevant work, run:
 - production build
 - end-to-end tests for critical flows
 
-UI work should also receive visual-reviewer review.
+UI work should also receive visual-reviewer review against both the rendered implementation and the MVP reference.
 
 ## Architecture-change rule
 
