@@ -71,9 +71,9 @@ try {
   const originalStdoutWrite = process.stdout.write;
   const originalStderrWrite = process.stderr.write;
   const originalConsoleMethods = {
-    error: console.error,
-    log: console.log,
-    warn: console.warn,
+    error: globalThis.console.error,
+    log: globalThis.console.log,
+    warn: globalThis.console.warn,
   };
   process.stdout.write = function (chunk, ...args) {
     capturedOutput.push(String(chunk));
@@ -84,7 +84,7 @@ try {
     return originalStderrWrite.call(this, chunk, ...args);
   };
   for (const method of Object.keys(originalConsoleMethods)) {
-    console[method] = (...args) => {
+    globalThis.console[method] = (...args) => {
       capturedOutput.push(args.map(String).join(' '));
     };
   }
@@ -106,7 +106,7 @@ try {
   } finally {
     process.stdout.write = originalStdoutWrite;
     process.stderr.write = originalStderrWrite;
-    Object.assign(console, originalConsoleMethods);
+    Object.assign(globalThis.console, originalConsoleMethods);
   }
   assert.equal(rejected.status, 403);
   assert.ok(
