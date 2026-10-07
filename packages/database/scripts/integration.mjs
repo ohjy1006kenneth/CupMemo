@@ -3,6 +3,8 @@ import { sql } from 'drizzle-orm';
 import process from 'node:process';
 import { resolveDatabaseConfig } from '../dist/config.js';
 import { createDatabase } from '../dist/index.js';
+import { inspectMigrationStatus } from '../dist/status.js';
+import { readFile } from 'node:fs/promises';
 
 let config;
 try {
@@ -34,7 +36,12 @@ try {
   const history = await connection.db.execute(
     sql`select count(*)::text as count from drizzle.__drizzle_migrations`,
   );
-  assert.equal(history.rows[0]?.count, '1');
+  const journal = JSON.parse(
+    await readFile(new globalThis.URL('../drizzle/meta/_journal.json', import.meta.url), 'utf8'),
+  );
+  assert.equal(history.rows[0]?.count, String(journal.entries.length));
+  const migrationStatus = await inspectMigrationStatus((query) => connection.pool.query(query));
+  assert.equal(migrationStatus.status, 'current');
 
   phase = 'transaction query round-trip';
   const transactionResult = await connection.db.transaction(async (tx) => {

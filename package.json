@@ -16,7 +16,8 @@
     "db:generate": "corepack pnpm --filter @cupmemo/database db:generate",
     "db:migrate": "corepack pnpm --filter @cupmemo/database db:migrate",
     "db:status": "corepack pnpm --filter @cupmemo/database db:status",
-    "db:test:integration": "corepack pnpm --filter @cupmemo/database test:integration"
+    "db:test:integration": "corepack pnpm --filter @cupmemo/database test:integration",
+    "auth:test:integration": "corepack pnpm --filter @cupmemo/api auth:test:integration"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
