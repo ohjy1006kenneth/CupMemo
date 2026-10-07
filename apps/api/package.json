@@ -8,12 +8,14 @@
     "build": "tsc --project tsconfig.json",
     "start": "node dist/server.js",
     "auth:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/auth-integration.mjs",
+    "authorization:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/authorization-integration.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.7",
     "@cupmemo/database": "workspace:*",
     "better-auth": "1.7.7",
+    "drizzle-orm": "0.45.3",
     "fastify": "5.8.5",
     "zod": "4.3.6"
   },

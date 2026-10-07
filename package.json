@@ -18,6 +18,7 @@
     "db:status": "corepack pnpm --filter @cupmemo/database db:status",
     "db:test:integration": "corepack pnpm --filter @cupmemo/database test:integration",
     "auth:test:integration": "corepack pnpm --filter @cupmemo/api auth:test:integration",
+    "authorization:test:integration": "corepack pnpm --filter @cupmemo/api authorization:test:integration",
     "auth:test:e2e": "corepack pnpm build && playwright test --config=playwright.auth.config.ts"
   },
   "devDependencies": {
