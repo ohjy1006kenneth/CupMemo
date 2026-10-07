@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { fromNodeHeaders } from 'better-auth/node';
 import { z } from 'zod';
+import { requireAuthenticatedUser, type SessionLookup } from './authorization.js';
 
 export const portSchema = z.coerce.number().int().min(1).max(65_535).default(4101);
 
@@ -17,7 +18,11 @@ export function createApp(
   options: {
     probe?: () => Promise<unknown>;
     close?: () => Promise<unknown>;
-    auth?: { origin: string; handler: (request: Request) => Promise<Response> };
+    auth?: {
+      origin: string;
+      handler: (request: Request) => Promise<Response>;
+      getSession?: SessionLookup;
+    };
   } = {},
 ): FastifyInstance {
   const app = Fastify({
@@ -62,6 +67,14 @@ export function createApp(
   app.get('/health', health);
   app.get('/ready', readiness);
   app.get('/api/v1/health', health);
+  app.decorateRequest('authenticatedUser', null);
+  app.get(
+    '/api/v1/me',
+    { preHandler: requireAuthenticatedUser(options.auth) },
+    async (request) => ({
+      user: request.authenticatedUser,
+    }),
+  );
   if (options.auth) {
     const auth = options.auth;
     const handleAuth = async (request: FastifyRequest, reply: FastifyReply) => {

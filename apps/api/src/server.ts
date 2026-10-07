@@ -19,7 +19,7 @@ try {
   });
   const auth = createAuth(connection.db, authConfig);
   app = createApp({
-    auth: { origin: authConfig.origin, handler: auth.handler },
+    auth: { origin: authConfig.origin, handler: auth.handler, getSession: auth.api.getSession },
     probe: async () => {
       if (!connection) throw new Error('Database is unavailable');
       await connection.pool.query('SELECT 1');
