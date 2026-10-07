@@ -63,6 +63,18 @@ describe('Better Auth configuration', () => {
 });
 
 describe('Fastify Better Auth Fetch bridge', () => {
+  it('closes its owned resource once when the app closes', async () => {
+    let closeCount = 0;
+    const app = createApp({
+      close: async () => {
+        closeCount += 1;
+      },
+    });
+
+    await app.close();
+    expect(closeCount).toBe(1);
+  });
+
   it('preserves configured origin, request semantics, response bytes and separate cookies', async () => {
     const app = createApp({
       auth: {

@@ -7,6 +7,11 @@ let connection;
 let app;
 let email;
 let phase = 'test configuration';
+let closeConnectionPromise;
+const closeConnection = () => {
+  closeConnectionPromise ??= connection?.close();
+  return closeConnectionPromise ?? Promise.resolve();
+};
 try {
   const databaseConfig = resolveDatabaseConfig(process.env);
   assert.equal(databaseConfig.environment, 'test');
@@ -27,7 +32,10 @@ try {
     statement_timeout: 5000,
   });
   const auth = createAuth(connection.db, authConfig);
-  app = createApp({ auth: { origin: authConfig.origin, handler: auth.handler } });
+  app = createApp({
+    auth: { origin: authConfig.origin, handler: auth.handler },
+    close: closeConnection,
+  });
   const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
   const suffix = `${process.pid}-${Date.now()}`;
   email = `auth-integration-${suffix}@example.test`;
@@ -59,6 +67,23 @@ try {
   assert.equal(signupBody.user.email, email);
   assert.ok(!JSON.stringify(signupBody).includes(password));
   assert.ok(signup.headers.getSetCookie().length > 0);
+  const persisted = await connection.pool.query(
+    `SELECT account.password FROM public."account" AS account
+     JOIN public."user" AS auth_user ON auth_user.id = account.user_id
+     WHERE auth_user.email = $1`,
+    [email],
+  );
+  assert.equal(persisted.rowCount, 1);
+  assert.ok(persisted.rows[0].password);
+  assert.notEqual(persisted.rows[0].password, password);
+
+  phase = 'invalid password rejection';
+  const invalidSignin = await globalThis.fetch(`${baseUrl}/api/v1/auth/sign-in/email`, {
+    method: 'POST',
+    headers: { origin: authConfig.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password: `${password}-wrong` }),
+  });
+  assert.equal(invalidSignin.status, 401);
 
   phase = 'email/password sign-in';
   const signin = await globalThis.fetch(`${baseUrl}/api/v1/auth/sign-in/email`, {
@@ -118,8 +143,7 @@ try {
     await app.close().catch(() => {
       process.exitCode = 1;
     });
-  else if (connection)
-    await connection.close().catch(() => {
-      process.exitCode = 1;
-    });
+  await closeConnection().catch(() => {
+    process.exitCode = 1;
+  });
 }
