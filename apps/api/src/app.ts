@@ -2,6 +2,8 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { fromNodeHeaders } from 'better-auth/node';
 import { z } from 'zod';
 import { requireAuthenticatedUser, type SessionLookup } from './authorization.js';
+import type { Database } from '@cupmemo/database';
+import { registerCoffeeRoutes } from './coffees.js';
 
 export const portSchema = z.coerce.number().int().min(1).max(65_535).default(4101);
 
@@ -16,6 +18,7 @@ export function parseApiConfig(env: NodeJS.ProcessEnv = process.env) {
 
 export function createApp(
   options: {
+    db?: Database;
     probe?: () => Promise<unknown>;
     close?: () => Promise<unknown>;
     auth?: {
@@ -32,7 +35,9 @@ export function createApp(
           method: request.method,
           url: request.url.startsWith('/api/v1/auth')
             ? '/api/v1/auth/[redacted]'
-            : request.url.split('?')[0],
+            : request.url.startsWith('/api/v1/coffees')
+              ? '/api/v1/coffees/[redacted]'
+              : request.url.split('?')[0],
           remoteAddress: request.ip,
         }),
       },
@@ -68,6 +73,7 @@ export function createApp(
   app.get('/ready', readiness);
   app.get('/api/v1/health', health);
   app.decorateRequest('authenticatedUser', null);
+  registerCoffeeRoutes(app, options);
   app.get(
     '/api/v1/me',
     { preHandler: requireAuthenticatedUser(options.auth) },

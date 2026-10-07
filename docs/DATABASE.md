@@ -120,6 +120,10 @@ test their actual IDOR boundaries. Child access scopes through an owned parent.
 
 ## Domain integration verification
 
+Issue #17 adds production-wired private manual coffee endpoints without schema
+changes. See [COFFEE_API.md](COFFEE_API.md) for exact contracts, SQL ownership,
+transaction/history policy, bounded paging and real two-user endpoint verification.
+
 `corepack pnpm domain:test:integration` builds the database package and runs real
 exported Drizzle schema operations plus PostgreSQL constraint checks. It fails
 (never skips) without explicit guarded test DB configuration, verifies database

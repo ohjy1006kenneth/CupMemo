@@ -7,6 +7,9 @@
     "types": "./dist/index.d.ts",
     "default": "./dist/index.js"
   },
+  "dependencies": {
+    "zod": "4.3.6"
+  },
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "typecheck": "tsc --project tsconfig.json --noEmit"

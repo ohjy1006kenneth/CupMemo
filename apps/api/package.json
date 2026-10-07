@@ -4,16 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc --project tsconfig.json",
+    "dev": "corepack pnpm --filter @cupmemo/contracts build && corepack pnpm --filter @cupmemo/database build && tsx watch src/server.ts",
+    "build": "corepack pnpm --filter @cupmemo/contracts build && tsc --project tsconfig.json",
     "start": "node dist/server.js",
     "auth:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/auth-integration.mjs",
     "authorization:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/authorization-integration.mjs",
+    "coffee:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/coffee-integration.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.7",
     "@cupmemo/database": "workspace:*",
+    "@cupmemo/contracts": "workspace:*",
     "better-auth": "1.7.7",
     "drizzle-orm": "0.45.3",
     "fastify": "5.8.5",
