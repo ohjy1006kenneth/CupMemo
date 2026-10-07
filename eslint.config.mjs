@@ -9,6 +9,8 @@ export default tseslint.config(
       '**/build/**',
       '**/.next/**',
       '**/coverage/**',
+      'test-results/**',
+      'playwright-report/**',
       '**/.worktrees/**',
       'pnpm-lock.yaml',
       'design-reference/**',

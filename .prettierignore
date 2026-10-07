@@ -7,5 +7,7 @@ pnpm-lock.yaml
 **/build/**
 **/.next/**
 **/coverage/**
+test-results/**
+playwright-report/**
 **/.worktrees/**
 apps/web/next-env.d.ts

@@ -8,7 +8,7 @@ GitHub Actions runs the same frozen install and quality gates for pull requests 
 
 ## Local runtime scaffold (Refs #7)
 
-This foundation runs a Next.js App Router web app and a separate Fastify API. The API now provides the Better Auth email/password backend; the sign-in UI and brew/domain endpoints are separate work. API readiness checks the configured database; see [database operations](docs/DATABASE.md#readiness-and-migration-status). The minimal web manifest is metadata only: installability, icons, service worker, and offline behavior are not implemented or verified.
+This foundation runs a Next.js App Router web app and a separate Fastify API. Real email/password sign-up, sign-in, sign-out and protected account routes now use the API's Better Auth backend; brew/domain endpoints and the app shell remain separate work. See [authentication frontend and real browser checks](docs/AUTH_FRONTEND.md). API readiness checks the configured database; see [database operations](docs/DATABASE.md#readiness-and-migration-status). The minimal web manifest is metadata only: installability, icons, service worker, and offline behavior are not implemented or verified.
 
 Use Node.js 24 and pnpm 10.34.6. From the repository root:
 
@@ -23,7 +23,7 @@ In a second terminal:
 corepack pnpm --filter @cupmemo/web dev
 ```
 
-The web server binds to `127.0.0.1:3101`; the API binds to `127.0.0.1:4101`. The page checks `/api/v1/health` via a server-side Next.js rewrite to Fastify. Override the API listener with `CUPMEMO_API_HOST` and `CUPMEMO_API_PORT`, and configure the rewrite target with server-only `CUPMEMO_API_ORIGIN` (HTTP(S) URL without credentials). Do not use `NEXT_PUBLIC_` for the API origin. Set `BETTER_AUTH_URL` to the web origin (`http://localhost:3101` in this local setup) and supply a private `BETTER_AUTH_SECRET` with at least 32 random characters; the auth endpoint path is fixed at `/api/v1/auth`. These variables are required before the API listens. The API port must be an integer from 1 through 65535. Liveness responses are exactly `{"status":"ok"}`; `/health` and `/api/v1/health` are process-only diagnostics. `/ready` is database-aware and can return 503 while the API remains live.
+The web server binds to `127.0.0.1:3101`; the API binds to `127.0.0.1:4101`. The entry page routes by the actual session; `/api/v1/*` uses a server-side Next.js rewrite to Fastify. Override the API listener with `CUPMEMO_API_HOST` and `CUPMEMO_API_PORT`, and configure the rewrite target with server-only `CUPMEMO_API_ORIGIN` (HTTP(S) URL without credentials). Do not use `NEXT_PUBLIC_` for the API origin. Set `BETTER_AUTH_URL` to the exact web origin (`http://127.0.0.1:3101` in this local setup) and supply a private `BETTER_AUTH_SECRET` with at least 32 random characters; the auth endpoint path is fixed at `/api/v1/auth`. These variables are required before the API listens. The API port must be an integer from 1 through 65535. Liveness responses are exactly `{"status":"ok"}`; `/health` and `/api/v1/health` are process-only diagnostics. `/ready` is database-aware and can return 503 while the API remains live.
 
 For production compilation and local starts:
 
