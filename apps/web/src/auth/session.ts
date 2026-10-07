@@ -48,24 +48,50 @@ export async function readAuthSession({
 }
 
 function isSessionResponse(value: unknown): value is { user: { name: string; email: string } } {
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    !('user' in value) ||
-    !('session' in value) ||
-    !value.session ||
-    typeof value.session !== 'object' ||
-    Array.isArray(value.session)
-  )
-    return false;
+  if (!isRecord(value) || !isRecord(value.user) || !isRecord(value.session)) return false;
   const user = value.user;
+  const session = value.session;
+  // Validate the pinned Better Auth 1.7.7 JSON shape, not authentication:
+  // Fastify owns expiry/revocation decisions. Never return these private fields.
   return (
-    !!user &&
-    typeof user === 'object' &&
-    'name' in user &&
+    isCoreRecord(user) &&
+    isCoreRecord(session) &&
+    isNonemptyString(session.userId) &&
+    session.userId === user.id &&
+    isNonemptyString(session.token) &&
+    isSerializedDate(session.expiresAt) &&
+    isOptionalString(session.ipAddress) &&
+    isOptionalString(session.userAgent) &&
     typeof user.name === 'string' &&
-    'email' in user &&
-    typeof user.email === 'string'
+    isNonemptyString(user.email) &&
+    typeof user.emailVerified === 'boolean' &&
+    isOptionalString(user.image)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isNonemptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === 'string';
+}
+
+function isSerializedDate(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString() === value;
+}
+
+function isCoreRecord(value: Record<string, unknown>): boolean {
+  return (
+    isNonemptyString(value.id) &&
+    isSerializedDate(value.createdAt) &&
+    isSerializedDate(value.updatedAt)
   );
 }
 

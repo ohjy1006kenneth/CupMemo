@@ -14,6 +14,8 @@ The per-request `disableRefresh` branch in Better Auth 1.7.7 suppresses renewal 
 
 Sign-out waits for successful Fastify revocation before fixed `/sign-in` navigation and a router refresh. Failure does not pretend to revoke. Passwords are never logged or stored, are masked in the form and cleared on success. All redirects are constant routes. Inline validation retains native validity rules (8–128-character passwords, matching pinned defaults), visible labels, error descriptions, focus management and pending announcements.
 
+The server boundary structurally validates the pinned 1.7.7 session/user JSON contract before projecting display fields: nonempty IDs and token, matching session `userId`/user `id`, canonical serialized dates (including expiry), user name/email/verification types and optional nullable string fields. Empty, incomplete, mismatched or malformed non-null records return unavailable. This checks response integrity only; Fastify remains the authority for authentication, expiry and revocation. The private fields are neither returned nor logged.
+
 ## Local checks
 
 Root unit tests are database-independent. Vitest has a test-only empty `server-only` shim; production keeps the real package's server-component guard. React DOM tests use root-local dependencies so pnpm's strict package resolution does not depend on hoisting.
