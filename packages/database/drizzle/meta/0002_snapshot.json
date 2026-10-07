@@ -1,0 +1,980 @@
+{
+  "id": "59b3a1a9-9eda-4ed2-8ed8-a1d7cde1edc5",
+  "prevId": "38875f07-fef7-42c1-a47d-67d14c8daa6c",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.account": {
+      "name": "account",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "access_token": {
+          "name": "access_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refresh_token": {
+          "name": "refresh_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id_token": {
+          "name": "id_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "access_token_expires_at": {
+          "name": "access_token_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refresh_token_expires_at": {
+          "name": "refresh_token_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "password": {
+          "name": "password",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "account_provider_account_unique": {
+          "name": "account_provider_account_unique",
+          "columns": [
+            {
+              "expression": "provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "account_user_id_user_id_fk": {
+          "name": "account_user_id_user_id_fk",
+          "tableFrom": "account",
+          "tableTo": "user",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "cupmemo.brew_pours": {
+      "name": "brew_pours",
+      "schema": "cupmemo",
+      "columns": {
+        "brew_id": {
+          "name": "brew_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "water_grams": {
+          "name": "water_grams",
+          "type": "numeric(7, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_time_seconds": {
+          "name": "start_time_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "brew_pours_brew_id_brews_id_fk": {
+          "name": "brew_pours_brew_id_brews_id_fk",
+          "tableFrom": "brew_pours",
+          "tableTo": "brews",
+          "schemaTo": "cupmemo",
+          "columnsFrom": ["brew_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "brew_pours_brew_id_position_pk": {
+          "name": "brew_pours_brew_id_position_pk",
+          "columns": ["brew_id", "position"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "brew_pours_position_nonnegative": {
+          "name": "brew_pours_position_nonnegative",
+          "value": "\"cupmemo\".\"brew_pours\".\"position\" >= 0"
+        },
+        "brew_pours_start_nonnegative": {
+          "name": "brew_pours_start_nonnegative",
+          "value": "\"cupmemo\".\"brew_pours\".\"start_time_seconds\" >= 0"
+        },
+        "brew_pours_water_positive_finite": {
+          "name": "brew_pours_water_positive_finite",
+          "value": "\"cupmemo\".\"brew_pours\".\"water_grams\" > 0 AND \"cupmemo\".\"brew_pours\".\"water_grams\" NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "cupmemo.brew_tasting_tags": {
+      "name": "brew_tasting_tags",
+      "schema": "cupmemo",
+      "columns": {
+        "brew_id": {
+          "name": "brew_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tag": {
+          "name": "tag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "brew_tasting_tags_brew_id_brews_id_fk": {
+          "name": "brew_tasting_tags_brew_id_brews_id_fk",
+          "tableFrom": "brew_tasting_tags",
+          "tableTo": "brews",
+          "schemaTo": "cupmemo",
+          "columnsFrom": ["brew_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "brew_tasting_tags_brew_id_tag_pk": {
+          "name": "brew_tasting_tags_brew_id_tag_pk",
+          "columns": ["brew_id", "tag"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "brew_tasting_tags_nonblank": {
+          "name": "brew_tasting_tags_nonblank",
+          "value": "\"cupmemo\".\"brew_tasting_tags\".\"tag\" ~ '[^[:space:]]'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "cupmemo.brews": {
+      "name": "brews",
+      "schema": "cupmemo",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "coffee_id": {
+          "name": "coffee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "brewer": {
+          "name": "brewer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grinder": {
+          "name": "grinder",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grind_setting": {
+          "name": "grind_setting",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dose_grams": {
+          "name": "dose_grams",
+          "type": "numeric(7, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "water_grams": {
+          "name": "water_grams",
+          "type": "numeric(7, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "water_temperature_c": {
+          "name": "water_temperature_c",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_brew_time_seconds": {
+          "name": "total_brew_time_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "overall_score": {
+          "name": "overall_score",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tasting_mode": {
+          "name": "tasting_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'quick'"
+        },
+        "acidity": {
+          "name": "acidity",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "body": {
+          "name": "body",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "aftertaste": {
+          "name": "aftertaste",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fragrance_aroma": {
+          "name": "fragrance_aroma",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "flavor": {
+          "name": "flavor",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "balance": {
+          "name": "balance",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sweetness": {
+          "name": "sweetness",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "overall_impression": {
+          "name": "overall_impression",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "brewed_at": {
+          "name": "brewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "brews_owner_brewed_idx": {
+          "name": "brews_owner_brewed_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "brewed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "brews_coffee_owner_brewed_idx": {
+          "name": "brews_coffee_owner_brewed_idx",
+          "columns": [
+            {
+              "expression": "coffee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "brewed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "brews_owner_id_user_id_fk": {
+          "name": "brews_owner_id_user_id_fk",
+          "tableFrom": "brews",
+          "tableTo": "user",
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "brews_coffee_owner_fk": {
+          "name": "brews_coffee_owner_fk",
+          "tableFrom": "brews",
+          "tableTo": "coffees",
+          "schemaTo": "cupmemo",
+          "columnsFrom": ["coffee_id", "owner_id"],
+          "columnsTo": ["id", "owner_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "brews_brewer_nonblank": {
+          "name": "brews_brewer_nonblank",
+          "value": "\"cupmemo\".\"brews\".\"brewer\" ~ '[^[:space:]]'"
+        },
+        "brews_grinder_nonblank": {
+          "name": "brews_grinder_nonblank",
+          "value": "\"cupmemo\".\"brews\".\"grinder\" ~ '[^[:space:]]'"
+        },
+        "brews_grind_setting_nonblank": {
+          "name": "brews_grind_setting_nonblank",
+          "value": "\"cupmemo\".\"brews\".\"grind_setting\" ~ '[^[:space:]]'"
+        },
+        "brews_dose_positive_finite": {
+          "name": "brews_dose_positive_finite",
+          "value": "\"cupmemo\".\"brews\".\"dose_grams\" > 0 AND \"cupmemo\".\"brews\".\"dose_grams\" NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)"
+        },
+        "brews_water_positive_finite": {
+          "name": "brews_water_positive_finite",
+          "value": "\"cupmemo\".\"brews\".\"water_grams\" > 0 AND \"cupmemo\".\"brews\".\"water_grams\" NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)"
+        },
+        "brews_temperature_range": {
+          "name": "brews_temperature_range",
+          "value": "\"cupmemo\".\"brews\".\"water_temperature_c\" BETWEEN 0 AND 100"
+        },
+        "brews_duration_nonnegative": {
+          "name": "brews_duration_nonnegative",
+          "value": "\"cupmemo\".\"brews\".\"total_brew_time_seconds\" >= 0"
+        },
+        "brews_overall_score_quarter": {
+          "name": "brews_overall_score_quarter",
+          "value": "\"cupmemo\".\"brews\".\"overall_score\" BETWEEN 0 AND 100 AND mod(\"cupmemo\".\"brews\".\"overall_score\", 0.25) = 0"
+        },
+        "brews_tasting_mode": {
+          "name": "brews_tasting_mode",
+          "value": "\"cupmemo\".\"brews\".\"tasting_mode\" IN ('quick', 'sensory')"
+        },
+        "brews_acidity_quarter": {
+          "name": "brews_acidity_quarter",
+          "value": "\"cupmemo\".\"brews\".\"acidity\" BETWEEN 0 AND 10 AND mod(\"cupmemo\".\"brews\".\"acidity\", 0.25) = 0"
+        },
+        "brews_body_quarter": {
+          "name": "brews_body_quarter",
+          "value": "\"cupmemo\".\"brews\".\"body\" BETWEEN 0 AND 10 AND mod(\"cupmemo\".\"brews\".\"body\", 0.25) = 0"
+        },
+        "brews_aftertaste_quarter": {
+          "name": "brews_aftertaste_quarter",
+          "value": "\"cupmemo\".\"brews\".\"aftertaste\" BETWEEN 0 AND 10 AND mod(\"cupmemo\".\"brews\".\"aftertaste\", 0.25) = 0"
+        },
+        "brews_fragrance_aroma_quarter": {
+          "name": "brews_fragrance_aroma_quarter",
+          "value": "\"cupmemo\".\"brews\".\"fragrance_aroma\" BETWEEN 0 AND 10 AND mod(\"cupmemo\".\"brews\".\"fragrance_aroma\", 0.25) = 0"
+        },
+        "brews_flavor_quarter": {
+          "name": "brews_flavor_quarter",
+          "value": "\"cupmemo\".\"brews\".\"flavor\" BETWEEN 0 AND 10 AND mod(\"cupmemo\".\"brews\".\"flavor\", 0.25) = 0"
+        },
+        "brews_balance_quarter": {
+          "name": "brews_balance_quarter",
+          "value": "\"cupmemo\".\"brews\".\"balance\" BETWEEN 0 AND 10 AND mod(\"cupmemo\".\"brews\".\"balance\", 0.25) = 0"
+        },
+        "brews_sweetness_quarter": {
+          "name": "brews_sweetness_quarter",
+          "value": "\"cupmemo\".\"brews\".\"sweetness\" BETWEEN 0 AND 10 AND mod(\"cupmemo\".\"brews\".\"sweetness\", 0.25) = 0"
+        },
+        "brews_overall_impression_quarter": {
+          "name": "brews_overall_impression_quarter",
+          "value": "\"cupmemo\".\"brews\".\"overall_impression\" BETWEEN 0 AND 10 AND mod(\"cupmemo\".\"brews\".\"overall_impression\", 0.25) = 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "cupmemo.coffee_tasting_notes": {
+      "name": "coffee_tasting_notes",
+      "schema": "cupmemo",
+      "columns": {
+        "coffee_id": {
+          "name": "coffee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "coffee_tasting_notes_coffee_id_coffees_id_fk": {
+          "name": "coffee_tasting_notes_coffee_id_coffees_id_fk",
+          "tableFrom": "coffee_tasting_notes",
+          "tableTo": "coffees",
+          "schemaTo": "cupmemo",
+          "columnsFrom": ["coffee_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "coffee_tasting_notes_coffee_id_note_pk": {
+          "name": "coffee_tasting_notes_coffee_id_note_pk",
+          "columns": ["coffee_id", "note"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "coffee_tasting_notes_nonblank": {
+          "name": "coffee_tasting_notes_nonblank",
+          "value": "\"cupmemo\".\"coffee_tasting_notes\".\"note\" ~ '[^[:space:]]'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "cupmemo.coffees": {
+      "name": "coffees",
+      "schema": "cupmemo",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "roaster": {
+          "name": "roaster",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "region": {
+          "name": "region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "farm_station": {
+          "name": "farm_station",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "producer": {
+          "name": "producer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "variety": {
+          "name": "variety",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "process": {
+          "name": "process",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "elevation": {
+          "name": "elevation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "roast_date": {
+          "name": "roast_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "coffees_owner_created_idx": {
+          "name": "coffees_owner_created_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "coffees_owner_id_user_id_fk": {
+          "name": "coffees_owner_id_user_id_fk",
+          "tableFrom": "coffees",
+          "tableTo": "user",
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "coffees_id_owner_unique": {
+          "name": "coffees_id_owner_unique",
+          "nullsNotDistinct": false,
+          "columns": ["id", "owner_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "coffees_name_nonblank": {
+          "name": "coffees_name_nonblank",
+          "value": "\"cupmemo\".\"coffees\".\"name\" ~ '[^[:space:]]'"
+        },
+        "coffees_roaster_nonblank": {
+          "name": "coffees_roaster_nonblank",
+          "value": "\"cupmemo\".\"coffees\".\"roaster\" ~ '[^[:space:]]'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.session": {
+      "name": "session",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "session_token_unique": {
+          "name": "session_token_unique",
+          "columns": [
+            {
+              "expression": "token",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "session_user_id_user_id_fk": {
+          "name": "session_user_id_user_id_fk",
+          "tableFrom": "session",
+          "tableTo": "user",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user": {
+      "name": "user",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email_verified": {
+          "name": "email_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "image": {
+          "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "user_email_unique": {
+          "name": "user_email_unique",
+          "columns": [
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.verification": {
+      "name": "verification",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "identifier": {
+          "name": "identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "verification_identifier_unique": {
+          "name": "verification_identifier_unique",
+          "columns": [
+            {
+              "expression": "identifier",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {
+    "cupmemo": "cupmemo"
+  },
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

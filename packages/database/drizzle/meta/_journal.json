@@ -15,6 +15,13 @@
       "when": 1791335399808,
       "tag": "0001_mixed_liz_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791375752675,
+      "tag": "0002_needy_supernaut",
+      "breakpoints": true
     }
   ]
 }

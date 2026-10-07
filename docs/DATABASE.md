@@ -38,18 +38,45 @@ Use JSON only where flexibility is genuinely valuable.
 
 ## MVP domain
 
-The exact schema should be derived from `docs/MVP_FLOW.md` and refined during Phase 5.
+The private core introduced by issue #16 consists of five `cupmemo` tables:
 
-Expected domains include:
-- users/auth data
-- coffees
-- brews
-- recipe/brew parameters
-- quick evaluation
-- optional Sensory Detail
-- equipment only where required by the MVP
+- `coffees`: UUID identity, text Better Auth owner (cascade), required nonblank
+  name/roaster, nullable country/region/farmStation/producer/variety/process/elevation
+  text and nullable roastDate (`date`). Elevation can contain ranges. Missing
+  metadata stays null; duplicate names/roasters are allowed, not a public catalog.
+- `brews`: one UUID row holds the saved recipe and single assessment. Text
+  brewer/grinder/grindSetting retain model-specific notation (`6.2`, `22 clicks`).
+  Dose/water are finite positive `numeric(7,2)` grams; temperature is
+  `numeric(5,2)` Celsius in [0,100]; integer duration is nonnegative. Required
+  brewedAt is caller-supplied, distinct from creation/update timestamps.
+- `brew_pours`: cascading brew parent and `(brewId, position)` primary key.
+  Nonnegative position/start seconds, finite positive incremental water grams.
+  No independent pour ID, cumulative water column or stored ratio.
+- `coffee_tasting_notes`: `(coffeeId, note)` primary key, cascading coffee parent
+  and nonblank roaster descriptors, separate from user assessment.
+- `brew_tasting_tags`: `(brewId, tag)` primary key, cascading brew parent and
+  nonblank user chips. There is no global/default vocabulary.
 
-Do not build a speculative large schema.
+Domain timestamps are timezone-aware. `createdAt`/`updatedAt` default to now;
+callers explicitly update `updatedAt` on saved edits (no automatic update trigger).
+Editing retains the brew ID/count; Brew again copies into a new ID. Ratios and
+cumulative pour targets are derived from the recipe and ordered increments.
+Indexes cover owner/creation coffee shelf lookup, owner/brewed history and
+coffee/owner/brewed latest-recipe lookup; child primary keys cover parent lookup.
+
+The reference-only OCR/enrichment/community scope and stale platform/name claims
+conflict with canonical PRODUCT/ARCHITECTURE. That discrepancy is recorded, not
+resolved or approved here. This outcome implements only the common private core
+and does not replace approved UI flows. No CRUD/API contracts/UI, Gear entities,
+recipe provenance, public catalog/sharing, uploads, inventory, analytics, RLS or
+Cup Checks are introduced.
+
+Cross-row save invariants are **future issue #18 transactional API validation**:
+at least one pour, contiguous positions, nondecreasing start times, pour water
+sum matching recipe water, and last start <= duration. Per-row checks do not
+enforce these aggregates/order relationships; the harness demonstrates that
+boundary. There are no speculative triggers or deferrable constraints. APIs must
+also validate original numeric input before PostgreSQL fixed-scale rounding.
 
 ## Sensory model
 
@@ -61,6 +88,16 @@ Canonical primary dimensions:
 
 A brew must be valid without Sensory Detail.
 
+`overallScore` is required, independently user-entered /100, `numeric(5,2)` in
+[0,100] and quarter-point steps. It is not an attribute sum or invented formula.
+The eight optional /10 quality fields (`numeric(4,2)`, [0,10], quarter steps) are
+acidity, body, aftertaste, fragranceAroma, flavor, balance, sweetness and
+overallImpression. Range checks reject nonfinite values. Null means absent,
+distinct from valid zero. Quick/sensory is a required checked text mode with quick
+default; switching mode does not clear values or duplicate shared dimensions.
+Overall Impression /10 is separate from Overall Score /100. No scores or product
+examples are seeded by migrations. Freeform assessment notes are nullable.
+
 There is no Cup Checks model.
 
 ## Ownership
@@ -70,6 +107,56 @@ All private user-owned data must be scoped to the authenticated user.
 Never fetch a resource by public/client ID alone and assume possession of the ID grants access.
 
 Representative authorization behavior must be tested.
+
+Both coffees and brews have owner FKs to `public.user` with user-delete cascade.
+The non-deferrable composite brew `(coffeeId, ownerId)` FK targets the unique
+coffee `(id, ownerId)`, blocking cross-owner association. Its `ON DELETE NO ACTION`
+is intentional: independent coffee deletion cannot destroy brew history, but a
+single user deletion can cascade both tables before the statement-end check.
+Real PostgreSQL integration exercises both paths and preserves another owner's
+graph. This integrity boundary does not implement authenticated query scoping:
+future #17/#18 APIs must use the integrated Issue15 SQL ownership helpers and
+test their actual IDOR boundaries. Child access scopes through an owned parent.
+
+## Domain integration verification
+
+`corepack pnpm domain:test:integration` builds the database package and runs real
+exported Drizzle schema operations plus PostgreSQL constraint checks. It fails
+(never skips) without explicit guarded test DB configuration, verifies database
+identity/PostgreSQL17, uses bounded pool timeouts and always closes the pool.
+Fixture users/domain rows exist only within a rolled-back transaction. Errors
+report a fixed phase, not SQL values, credentials or raw database messages.
+
+After explicitly sourcing a private fixture environment in the **same shell**:
+
+```sh
+. /private/task/empty.env
+corepack pnpm domain:test:integration
+# Must exit 1 at cross-owner coffee association; omission and rows roll back:
+node packages/database/scripts/domain-integration.mjs --omit-owner-fk
+corepack pnpm domain:test:integration
+```
+
+The focused one-shot upgrade harness requires a separate guarded empty database
+whose name ends `_upgrade`, plus strong local Better Auth configuration. Build
+database and API first, then run:
+
+```sh
+. /private/task/upgrade.env
+node packages/database/scripts/domain-upgrade-integration.mjs
+```
+
+It verifies exact SQL hashes of the two d8245ef base migrations, applies only
+those first, creates real A/B Better Auth users/accounts/sessions, then applies
+the domain migration. Auth rows remain byte-for-value unchanged and sessions
+valid; reapplication is idempotent. It cleans only exact generated auth users and
+their cascaded children. It intentionally refuses an already-migrated database;
+do not reset/drop one to rerun it. Independent fresh upgrade verification needs
+a newly provisioned task-owned disposable fixture, not a shared/production DB.
+Keep owned fixtures/private mode0600 env files available through review. Verify
+container/volume labels, fixed loopback port, TCP readiness and authenticated
+database identity without dumping credentials. No production deployment follows
+from passing these checks.
 
 ## Constraints
 
