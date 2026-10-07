@@ -54,12 +54,10 @@ export function createAuth(db: Database, config: AuthConfig) {
     baseURL: config.origin,
     basePath: authPath,
     secret: config.secret,
-    logger: {
-      level: 'error',
-      log: (level) => {
-        if (level === 'error') process.stderr.write('Authentication service reported an error.\n');
-      },
-    },
+    // Better Auth's default logger includes raw validation/origin diagnostics.
+    // Keep those library details out of process logs; request failures are
+    // surfaced only through the API's fixed generic response.
+    logger: { disabled: true },
     trustedOrigins: [config.origin],
     database: drizzleAdapter(db, {
       provider: 'pg',

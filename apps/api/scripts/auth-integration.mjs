@@ -67,19 +67,60 @@ try {
   const password = `integration-${suffix}-Strong!`;
 
   phase = 'origin/CSRF rejection';
-  const rejected = await globalThis.fetch(`${baseUrl}/api/v1/auth/sign-in/email`, {
-    method: 'POST',
-    headers: {
-      origin: 'https://untrusted.example',
-      'sec-fetch-site': 'cross-site',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-dest': 'empty',
-      cookie: 'better-auth.session_token=untrusted-sentinel',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ name: 'Auth Test', email, password }),
-  });
+  const capturedOutput = [];
+  const originalStdoutWrite = process.stdout.write;
+  const originalStderrWrite = process.stderr.write;
+  const originalConsoleMethods = {
+    error: console.error,
+    log: console.log,
+    warn: console.warn,
+  };
+  process.stdout.write = function (chunk, ...args) {
+    capturedOutput.push(String(chunk));
+    return originalStdoutWrite.call(this, chunk, ...args);
+  };
+  process.stderr.write = function (chunk, ...args) {
+    capturedOutput.push(String(chunk));
+    return originalStderrWrite.call(this, chunk, ...args);
+  };
+  for (const method of Object.keys(originalConsoleMethods)) {
+    console[method] = (...args) => {
+      capturedOutput.push(args.map(String).join(' '));
+    };
+  }
+  let rejected;
+  const logSentinels = 'password-sentinel token-sentinel database-sentinel';
+  try {
+    rejected = await globalThis.fetch(`${baseUrl}/api/v1/auth/sign-in/email`, {
+      method: 'POST',
+      headers: {
+        origin: 'https://untrusted.example',
+        'sec-fetch-site': 'cross-site',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-dest': 'empty',
+        cookie: 'better-auth.session_token=untrusted-sentinel',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ name: 'Auth Test', email, password: logSentinels }),
+    });
+  } finally {
+    process.stdout.write = originalStdoutWrite;
+    process.stderr.write = originalStderrWrite;
+    Object.assign(console, originalConsoleMethods);
+  }
   assert.equal(rejected.status, 403);
+  assert.ok(
+    capturedOutput.every((output) => !output.includes('password-sentinel')),
+    'auth library logs must not include request passwords',
+  );
+  assert.ok(
+    capturedOutput.every((output) => !output.includes('token-sentinel')),
+    'auth library logs must not include tokens',
+  );
+  assert.ok(
+    capturedOutput.every((output) => !output.includes('database-sentinel')),
+    'auth library logs must not include database details',
+  );
 
   phase = 'email/password signup';
   const signup = await globalThis.fetch(`${baseUrl}/api/v1/auth/sign-up/email`, {
