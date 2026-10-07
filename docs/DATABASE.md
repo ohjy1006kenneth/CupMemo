@@ -124,6 +124,26 @@ Production configuration uses `CUPMEMO_DB_ENV=production` and `CUPMEMO_DATABASE_
 
 Database configuration errors are intentionally generic and never echo URLs, passwords, or query credentials. Generation (`corepack pnpm db:generate`) remains offline and does not require a database URL. Migration failures return nonzero and close any created pool.
 
+## Readiness and migration status
+
+`/health` and `/api/v1/health` are database-independent liveness checks. `/ready` runs a fresh `SELECT 1` on each request and returns 200 only when the configured database responds; missing configuration, connection/query failure, or timeout returns a generic 503. The API validates explicit database configuration before listening and may listen while a validly configured database is offline. It owns one bounded pool, applies finite connection/query/statement limits, and closes it on shutdown. Readiness never runs migrations. This is runtime behavior only; it is not deployment evidence or authorization to connect to production.
+
+`CUPMEMO_DB_ENV=<mode> <matching dedicated URL>=... corepack pnpm db:status` performs read-only comparison of the committed Drizzle journal and SQL SHA-256 checksums against `drizzle.__drizzle_migrations`. Run it from any working directory through the root command. It reports only status and counts: `current` exits 0; `pending` (including an absent bookkeeping table), history mismatch/ahead, invalid configuration, or unavailable database exits 1. It never creates schemas/tables, applies migrations, or alters history. `db:migrate` remains an explicit operator action; run it as needed, then check status. No ORM push or automatic startup migration is used.
+
+Development Compose lifecycle (the named volume is retained; do not use destructive volume deletion):
+
+```sh
+docker compose -f infrastructure/docker/database.compose.yml up -d
+# Check only the CupMemo development service
+docker compose -f infrastructure/docker/database.compose.yml ps
+docker compose -f infrastructure/docker/database.compose.yml logs --tail=50
+# after explicitly loading/configuring the development URL:
+CUPMEMO_DB_ENV=development CUPMEMO_DATABASE_URL_DEVELOPMENT=postgresql://cupmemo:<password>@127.0.0.1:55432/cupmemo_dev corepack pnpm db:status
+docker compose -f infrastructure/docker/database.compose.yml down
+```
+
+Commands do not implicitly load `.env`. Production startup expectations must be paired with the separately gated HDD mount guard in issue #11; this change does not configure or deploy production storage.
+
 ## Production storage
 
 Production PostgreSQL data lives on the Raspberry Pi's **external HDD**.

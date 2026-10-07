@@ -11,10 +11,11 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "build": "corepack pnpm --recursive --if-present build",
-    "typecheck": "corepack pnpm --recursive --if-present typecheck",
+    "typecheck": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --recursive --if-present typecheck",
     "test": "vitest run",
     "db:generate": "corepack pnpm --filter @cupmemo/database db:generate",
     "db:migrate": "corepack pnpm --filter @cupmemo/database db:migrate",
+    "db:status": "corepack pnpm --filter @cupmemo/database db:status",
     "db:test:integration": "corepack pnpm --filter @cupmemo/database test:integration"
   },
   "devDependencies": {
