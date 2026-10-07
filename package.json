@@ -17,6 +17,7 @@
     "db:migrate": "corepack pnpm --filter @cupmemo/database db:migrate",
     "db:status": "corepack pnpm --filter @cupmemo/database db:status",
     "db:test:integration": "corepack pnpm --filter @cupmemo/database test:integration",
+    "domain:test:integration": "corepack pnpm --filter @cupmemo/database domain:test:integration",
     "auth:test:integration": "corepack pnpm --filter @cupmemo/api auth:test:integration",
     "authorization:test:integration": "corepack pnpm --filter @cupmemo/api authorization:test:integration",
     "auth:test:e2e": "corepack pnpm build && playwright test --config=playwright.auth.config.ts"
