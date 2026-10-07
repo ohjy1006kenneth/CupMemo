@@ -35,6 +35,25 @@ function dependencyNames(manifest) {
 }
 
 describe('workspace foundation contracts', () => {
+  it('prepares built contracts before newly dependent API consumers', async () => {
+    const root = await json('package.json');
+    const api = await json('apps/api/package.json');
+    const contracts = await json('packages/contracts/package.json');
+    assert.equal(api.dependencies['@cupmemo/contracts'], 'workspace:*');
+    assert.equal(contracts.dependencies.zod, '4.3.6');
+    assert.ok(
+      root.scripts.typecheck.indexOf('--filter @cupmemo/contracts build') <
+        root.scripts.typecheck.indexOf('--recursive'),
+    );
+    for (const script of ['build', 'dev'])
+      assert.ok(
+        api.scripts[script].startsWith('corepack pnpm --filter @cupmemo/contracts build &&'),
+      );
+    assert.equal(
+      root.scripts['coffee:test:integration'],
+      'corepack pnpm --filter @cupmemo/api coffee:test:integration',
+    );
+  });
   it('contains exactly the six documented members with matching package names', async () => {
     const rootPackage = await json('package.json');
     assert.deepEqual(rootPackage.packageManager, 'pnpm@10.34.6');

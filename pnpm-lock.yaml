@@ -50,6 +50,9 @@ importers:
       '@better-auth/drizzle-adapter':
         specifier: 1.7.7
         version: 1.7.7(@better-auth/core@1.7.7(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-call@1.4.0(zod@4.3.6))(jose@6.2.12)(kysely@0.29.6)(nanostores@1.5.5))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.3(@types/pg@8.23.1)(kysely@0.29.6)(pg@8.23.1))
+      '@cupmemo/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@cupmemo/database':
         specifier: workspace:*
         version: link:../../packages/database
@@ -112,7 +115,11 @@ importers:
 
   packages/config: {}
 
-  packages/contracts: {}
+  packages/contracts:
+    dependencies:
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
 
   packages/database:
     dependencies:
