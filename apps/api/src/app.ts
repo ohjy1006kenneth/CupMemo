@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { requireAuthenticatedUser, type SessionLookup } from './authorization.js';
 import type { Database } from '@cupmemo/database';
 import { registerCoffeeRoutes } from './coffees.js';
+import { registerBrewRoutes } from './brews.js';
 
 export const portSchema = z.coerce.number().int().min(1).max(65_535).default(4101);
 
@@ -37,7 +38,9 @@ export function createApp(
             ? '/api/v1/auth/[redacted]'
             : request.url.startsWith('/api/v1/coffees')
               ? '/api/v1/coffees/[redacted]'
-              : request.url.split('?')[0],
+              : request.url.startsWith('/api/v1/brews')
+                ? '/api/v1/brews/[redacted]'
+                : request.url.split('?')[0],
           remoteAddress: request.ip,
         }),
       },
@@ -74,6 +77,7 @@ export function createApp(
   app.get('/api/v1/health', health);
   app.decorateRequest('authenticatedUser', null);
   registerCoffeeRoutes(app, options);
+  registerBrewRoutes(app, options);
   app.get(
     '/api/v1/me',
     { preHandler: requireAuthenticatedUser(options.auth) },
