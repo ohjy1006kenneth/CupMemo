@@ -32,6 +32,31 @@ try {
     statement_timeout: 5000,
   });
   const auth = createAuth(connection.db, authConfig);
+  phase = 'sanitized handler failure';
+  const failureApp = createApp({
+    auth: {
+      origin: authConfig.origin,
+      handler: async () => {
+        throw new Error('password-sentinel token-sentinel database-sentinel');
+      },
+    },
+  });
+  try {
+    const failureResponse = await failureApp.inject({
+      method: 'POST',
+      url: '/api/v1/auth/sign-in/email',
+      headers: { origin: authConfig.origin, 'content-type': 'application/json' },
+      payload: JSON.stringify({ password: 'password-sentinel' }),
+    });
+    assert.equal(failureResponse.statusCode, 500);
+    assert.equal(failureResponse.body, '{"message":"Authentication request failed"}');
+    assert.ok(!failureResponse.body.includes('password-sentinel'));
+    assert.ok(!failureResponse.body.includes('token-sentinel'));
+    assert.ok(!failureResponse.body.includes('database-sentinel'));
+  } finally {
+    await failureApp.close();
+  }
+
   app = createApp({
     auth: { origin: authConfig.origin, handler: auth.handler },
     close: closeConnection,
@@ -106,8 +131,73 @@ try {
   assert.equal(sessionResponse.status, 200);
   assert.equal((await sessionResponse.json()).user.email, email);
 
+  phase = 'configured origin with crafted Host';
+  const craftedHostSession = await globalThis.fetch(`${baseUrl}/api/v1/auth/get-session`, {
+    headers: {
+      cookie: cookieHeader,
+      origin: authConfig.origin,
+      host: 'attacker.example',
+      'x-forwarded-host': 'attacker.example',
+      'x-forwarded-proto': 'https',
+    },
+  });
+  assert.equal(craftedHostSession.status, 200);
+  assert.equal((await craftedHostSession.json()).user.email, email);
+
+  phase = 'injected production cookie attributes';
+  const productionConfig = {
+    ...authConfig,
+    origin: 'https://auth-production.example.test',
+    production: true,
+  };
+  const productionApp = createApp({
+    auth: {
+      origin: productionConfig.origin,
+      handler: createAuth(connection.db, productionConfig).handler,
+    },
+  });
+  try {
+    const productionBaseUrl = await productionApp.listen({ host: '127.0.0.1', port: 0 });
+    const productionSignin = await globalThis.fetch(
+      `${productionBaseUrl}/api/v1/auth/sign-in/email`,
+      {
+        method: 'POST',
+        headers: { origin: productionConfig.origin, 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      },
+    );
+    assert.equal(productionSignin.status, 200);
+    const productionCookies = productionSignin.headers.getSetCookie();
+    assert.ok(productionCookies.length > 0);
+    assert.ok(productionCookies.every((cookie) => /; Secure(?:;|$)/i.test(cookie)));
+    assert.ok(productionCookies.every((cookie) => /; HttpOnly(?:;|$)/i.test(cookie)));
+    assert.ok(productionCookies.every((cookie) => /; SameSite=Lax(?:;|$)/i.test(cookie)));
+  } finally {
+    await productionApp.close();
+  }
+
+  phase = 'server restart and persisted session';
+  await app.close();
+  closeConnectionPromise = undefined;
+  connection = createDatabase(databaseConfig.databaseUrl, {
+    max: 2,
+    connectionTimeoutMillis: 1500,
+    query_timeout: 5000,
+    statement_timeout: 5000,
+  });
+  app = createApp({
+    auth: { origin: authConfig.origin, handler: createAuth(connection.db, authConfig).handler },
+    close: closeConnection,
+  });
+  const restartedBaseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
+  const afterRestart = await globalThis.fetch(`${restartedBaseUrl}/api/v1/auth/get-session`, {
+    headers: { cookie: cookieHeader, origin: authConfig.origin },
+  });
+  assert.equal(afterRestart.status, 200);
+  assert.equal((await afterRestart.json()).user.email, email);
+
   phase = 'sign-out and revocation';
-  const signout = await globalThis.fetch(`${baseUrl}/api/v1/auth/sign-out`, {
+  const signout = await globalThis.fetch(`${restartedBaseUrl}/api/v1/auth/sign-out`, {
     method: 'POST',
     headers: {
       cookie: cookieHeader,
@@ -117,14 +207,14 @@ try {
     body: '{}',
   });
   assert.equal(signout.status, 200);
-  const afterSignout = await globalThis.fetch(`${baseUrl}/api/v1/auth/get-session`, {
+  const afterSignout = await globalThis.fetch(`${restartedBaseUrl}/api/v1/auth/get-session`, {
     headers: { cookie: cookieHeader, origin: authConfig.origin },
   });
   assert.equal(afterSignout.status, 200);
   assert.equal(await afterSignout.json(), null);
 
   process.stdout.write(
-    'Better Auth email/password, trusted origin, cookies, session lookup and revocation checks passed.\n',
+    'Better Auth signup/sign-in, origin/Host protection, production cookie attributes, persisted sessions and revocation checks passed.\n',
   );
 } catch {
   process.stderr.write(`Better Auth integration check failed at: ${phase}.\n`);
