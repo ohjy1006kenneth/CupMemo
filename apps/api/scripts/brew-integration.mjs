@@ -311,6 +311,32 @@ try {
   });
   assert.equal(http.status, 200);
   assert.deepEqual((await http.json()).brew, full);
+  phase = 'unmatched and malformed brew privacy over injection and actual HTTP';
+  const workBeforeUnmatched = domainWork;
+  for (const [method, path, status] of [
+    ['PUT', `${base}/${full.id}`, 404],
+    ['PUT', base, 404],
+    ['GET', `${base}/${full.id}/unknown`, 404],
+    ['GET', `${base}/${full.id}%ZZ`, 400],
+    ['GET', `${base}/${full.id}/unknown%ZZ`, 400],
+    ['GET', `${base}/${full.id}/%E0%A4`, 400],
+  ]) {
+    const url = `${path}?private=parser-private-sentinel`;
+    const expected = { message: status === 400 ? 'Invalid brew request' : 'Resource not found' };
+    const injected = await request(a, method, url);
+    assert.equal(injected.statusCode, status);
+    assert.deepEqual(injected.json(), expected);
+    const actual = await globalThis.fetch(`http://127.0.0.1:${address.port}${url}`, {
+      method,
+      headers: { cookie: a.cookie },
+    });
+    assert.equal(actual.status, status);
+    assert.deepEqual(await actual.json(), expected);
+    assert.equal(actual.headers.get('cache-control'), 'no-store');
+    assert.equal(actual.headers.get('vary'), 'Cookie');
+  }
+  assert.equal(domainWork, workBeforeUnmatched);
+  assert.deepEqual((await request(a, 'GET', `${base}/${full.id}`)).json().brew, full);
   await app.close();
   await connection.close();
   connection = createDatabase(config.databaseUrl, bounds);

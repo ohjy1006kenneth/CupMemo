@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import process from 'node:process';
+import { setImmediate } from 'node:timers/promises';
 import * as contracts from '../packages/contracts/src/index.ts';
 import { createApp } from '../apps/api/src/app.ts';
 
@@ -182,6 +184,68 @@ describe('brew contracts', () => {
 });
 
 describe('production brew boundary', () => {
+  it.each([
+    ['PUT', '/api/v1/brews/private-resource-id', 404],
+    ['GET', '/api/v1/brews/private-resource-id/unknown', 404],
+    ['GET', '/api/v1/brews/private-resource-id%ZZ', 400],
+    ['GET', '/api/v1/brews/private-resource-id/unknown%ZZ', 400],
+  ])('sanitizes %s %s with actual request-log positive controls', async (method, path, status) => {
+    const chunks = [];
+    const capture = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      chunks.push(String(chunk));
+      return true;
+    });
+    const app = createApp();
+    try {
+      expect((await app.inject({ url: '/health' })).json()).toEqual({ status: 'ok' });
+      const response = await app.inject({ method, url: `${path}?private=private-query-sentinel` });
+      expect(response.statusCode).toBe(status);
+      expect(response.json()).toEqual({
+        message: status === 400 ? 'Invalid brew request' : 'Resource not found',
+      });
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers.vary).toBe('Cookie');
+      await app.close();
+      await setImmediate();
+      const output = chunks.join('');
+      expect(output).toContain('incoming request');
+      expect(output).toContain('request completed');
+      expect(output).toContain('/health');
+      for (const sentinel of ['private-resource-id', 'private-query-sentinel', '%ZZ']) {
+        expect(response.body).not.toContain(sentinel);
+        expect(output).not.toContain(sentinel);
+      }
+    } finally {
+      await app.close();
+      capture.mockRestore();
+    }
+  });
+  it('preserves unrelated not-found and malformed-path routing', async () => {
+    const app = createApp();
+    try {
+      for (const url of ['/unrelated', '/api/v1/brews-other']) {
+        const response = await app.inject({ url });
+        expect(response.statusCode).toBe(404);
+        expect(response.json()).toEqual({
+          message: `Route GET:${url} not found`,
+          error: 'Not Found',
+          statusCode: 404,
+        });
+        expect(response.headers['cache-control']).toBeUndefined();
+        expect(response.headers.vary).toBeUndefined();
+      }
+      const response = await app.inject({ url: '/api/v1/coffees/%ZZ' });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error: 'Bad Request',
+        code: 'FST_ERR_BAD_URL',
+        message: "'/api/v1/coffees/%ZZ' is not a valid url component",
+        statusCode: 400,
+      });
+    } finally {
+      await app.close();
+    }
+  });
   it('rejects unsafe origins before authority and valid input before unavailable domain work', async () => {
     let lookups = 0;
     const user = { id: 'owner', name: 'Owner', email: 'owner@example.test' };
