@@ -10,6 +10,7 @@
     "auth:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/auth-integration.mjs",
     "authorization:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/authorization-integration.mjs",
     "coffee:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/coffee-integration.mjs",
+    "brew:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/brew-integration.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {

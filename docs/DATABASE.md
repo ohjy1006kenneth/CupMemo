@@ -71,12 +71,16 @@ and does not replace approved UI flows. No CRUD/API contracts/UI, Gear entities,
 recipe provenance, public catalog/sharing, uploads, inventory, analytics, RLS or
 Cup Checks are introduced.
 
-Cross-row save invariants are **future issue #18 transactional API validation**:
+Cross-row save invariants are enforced by **issue #18 transactional API validation**:
 at least one pour, contiguous positions, nondecreasing start times, pour water
 sum matching recipe water, and last start <= duration. Per-row checks do not
 enforce these aggregates/order relationships; the harness demonstrates that
-boundary. There are no speculative triggers or deferrable constraints. APIs must
-also validate original numeric input before PostgreSQL fixed-scale rounding.
+boundary. There are no speculative triggers or deferrable constraints. Brew API
+contracts validate original numeric input before PostgreSQL fixed-scale rounding;
+merged PATCH recipes and output validation share the owner-locked transaction.
+See [BREW_API.md](BREW_API.md) for delivered quick evaluation, ordered children,
+private CRUD and real verification. Expanded sensory input remains future #19;
+existing hidden sensory columns/mode survive quick/recipe edits.
 
 ## Sensory model
 
@@ -115,8 +119,8 @@ is intentional: independent coffee deletion cannot destroy brew history, but a
 single user deletion can cascade both tables before the statement-end check.
 Real PostgreSQL integration exercises both paths and preserves another owner's
 graph. This integrity boundary does not implement authenticated query scoping:
-future #17/#18 APIs must use the integrated Issue15 SQL ownership helpers and
-test their actual IDOR boundaries. Child access scopes through an owned parent.
+the #17/#18 APIs use the integrated Issue15 SQL ownership helpers and test their
+actual IDOR boundaries. Child access scopes through an owned parent.
 
 ## Domain integration verification
 

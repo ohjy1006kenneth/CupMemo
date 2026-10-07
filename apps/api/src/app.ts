@@ -4,8 +4,14 @@ import { z } from 'zod';
 import { requireAuthenticatedUser, type SessionLookup } from './authorization.js';
 import type { Database } from '@cupmemo/database';
 import { registerCoffeeRoutes } from './coffees.js';
+import { registerBrewRoutes } from './brews.js';
 
 export const portSchema = z.coerce.number().int().min(1).max(65_535).default(4101);
+
+function isBrewUrl(url: string) {
+  const path = url.split('?')[0];
+  return path === '/api/v1/brews' || path.startsWith('/api/v1/brews/');
+}
 
 export function parseApiConfig(env: NodeJS.ProcessEnv = process.env) {
   const port = portSchema.parse(env.CUPMEMO_API_PORT ?? '4101');
@@ -29,6 +35,28 @@ export function createApp(
   } = {},
 ): FastifyInstance {
   const app = Fastify({
+    routerOptions: {
+      // Router decoding errors precede Fastify hooks and route error handlers.
+      onBadUrl: (path, request, response) => {
+        const privateBrew = isBrewUrl(request.url ?? '');
+        const body = JSON.stringify(
+          privateBrew
+            ? { message: 'Invalid brew request' }
+            : {
+                error: 'Bad Request',
+                code: 'FST_ERR_BAD_URL',
+                message: `'${path}' is not a valid url component`,
+                statusCode: 400,
+              },
+        );
+        response.writeHead(400, {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+          ...(privateBrew ? { 'Cache-Control': 'no-store', Vary: 'Cookie' } : {}),
+        });
+        response.end(body);
+      },
+    },
     logger: {
       serializers: {
         req: (request) => ({
@@ -37,7 +65,9 @@ export function createApp(
             ? '/api/v1/auth/[redacted]'
             : request.url.startsWith('/api/v1/coffees')
               ? '/api/v1/coffees/[redacted]'
-              : request.url.split('?')[0],
+              : request.url.startsWith('/api/v1/brews')
+                ? '/api/v1/brews/[redacted]'
+                : request.url.split('?')[0],
           remoteAddress: request.ip,
         }),
       },
@@ -51,6 +81,17 @@ export function createApp(
         censor: '[REDACTED]',
       },
     },
+  });
+  // Stop only unmatched brew requests before Fastify's default 404 can echo
+  // their URL in both its public message and its separate info log.
+  app.addHook('onRequest', async (request, reply) => {
+    if (request.is404 && isBrewUrl(request.url)) {
+      return reply
+        .header('cache-control', 'no-store')
+        .header('vary', 'Cookie')
+        .code(404)
+        .send({ message: 'Resource not found' });
+    }
   });
   app.addContentTypeParser(
     'application/x-www-form-urlencoded',
@@ -74,6 +115,7 @@ export function createApp(
   app.get('/api/v1/health', health);
   app.decorateRequest('authenticatedUser', null);
   registerCoffeeRoutes(app, options);
+  registerBrewRoutes(app, options);
   app.get(
     '/api/v1/me',
     { preHandler: requireAuthenticatedUser(options.auth) },

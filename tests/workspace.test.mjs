@@ -53,6 +53,14 @@ describe('workspace foundation contracts', () => {
       root.scripts['coffee:test:integration'],
       'corepack pnpm --filter @cupmemo/api coffee:test:integration',
     );
+    assert.equal(
+      root.scripts['brew:test:integration'],
+      'corepack pnpm --filter @cupmemo/api brew:test:integration',
+    );
+    assert.equal(
+      api.scripts['brew:test:integration'],
+      'corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/brew-integration.mjs',
+    );
   });
   it('contains exactly the six documented members with matching package names', async () => {
     const rootPackage = await json('package.json');
