@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 
 import { createDatabase, resolveDatabaseConfig } from '@cupmemo/database';
@@ -12,6 +14,63 @@ const closeConnection = () => {
   closeConnectionPromise ??= connection?.close();
   return closeConnectionPromise ?? Promise.resolve();
 };
+if (process.argv.includes('--failing-db-child')) {
+  try {
+    const config = resolveDatabaseConfig(process.env);
+    assert.equal(config.environment, 'test');
+    const [{ createAuth, resolveAuthConfig }, { createApp }] = await Promise.all([
+      import('../dist/auth.js'),
+      import('../dist/app.js'),
+    ]);
+    const authConfig = resolveAuthConfig(process.env);
+    connection = createDatabase(config.databaseUrl, { max: 1, connectionTimeoutMillis: 1500 });
+    const failingDb = new Proxy(connection.db, {
+      get(target, property, receiver) {
+        if (property === 'insert') {
+          return () => {
+            process.stderr.write('failing-db-boundary-reached\n');
+            throw new Error('password-sentinel token-sentinel database-sentinel');
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    app = createApp({
+      auth: { origin: authConfig.origin, handler: createAuth(failingDb, authConfig).handler },
+    });
+    const failureResponse = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/sign-up/email',
+      headers: { origin: authConfig.origin, 'content-type': 'application/json' },
+      payload: JSON.stringify({
+        name: 'Failure Test',
+        email: `failure-${process.pid}@example.test`,
+        password: 'password-sentinel',
+      }),
+    });
+    if (failureResponse.statusCode !== 422) throw new Error('unexpected_failure_status');
+    assert.doesNotThrow(() => JSON.parse(failureResponse.body), 'auth error must remain JSON');
+    for (const value of ['password-sentinel', 'token-sentinel', 'database-sentinel'])
+      assert.ok(
+        !failureResponse.body.includes(value),
+        `safe error response must not leak ${value}`,
+      );
+    process.stdout.write('failing-auth-child-completed\n');
+  } catch (error) {
+    process.stderr.write(
+      `failing-auth-child-failed:${error instanceof Error ? error.message : 'unknown'}\n`,
+    );
+    process.exitCode = 1;
+  } finally {
+    await app?.close().catch(() => {
+      process.exitCode = 1;
+    });
+    await closeConnection().catch(() => {
+      process.exitCode = 1;
+    });
+  }
+  process.exit();
+}
 try {
   const databaseConfig = resolveDatabaseConfig(process.env);
   assert.equal(databaseConfig.environment, 'test');
@@ -32,30 +91,30 @@ try {
     statement_timeout: 5000,
   });
   const auth = createAuth(connection.db, authConfig);
-  phase = 'sanitized handler failure';
-  const failureApp = createApp({
-    auth: {
-      origin: authConfig.origin,
-      handler: async () => {
-        throw new Error('password-sentinel token-sentinel database-sentinel');
-      },
-    },
+  phase = 'configured Better Auth failing database and OS-pipe capture';
+  const script = fileURLToPath(import.meta.url);
+  const sentinel = 'password-sentinel token-sentinel database-sentinel';
+  const positive = spawnSync(
+    process.execPath,
+    ['-e', `process.stderr.write(${JSON.stringify(sentinel)})`],
+    { encoding: 'utf8' },
+  );
+  assert.equal(positive.status, 0);
+  for (const value of ['password-sentinel', 'token-sentinel', 'database-sentinel'])
+    assert.ok(positive.stderr.includes(value), `capture control must detect ${value}`);
+  const failing = spawnSync(process.execPath, [script, '--failing-db-child'], {
+    encoding: 'utf8',
+    env: { ...process.env, NODE_ENV: 'development' },
   });
-  try {
-    const failureResponse = await failureApp.inject({
-      method: 'POST',
-      url: '/api/v1/auth/sign-in/email',
-      headers: { origin: authConfig.origin, 'content-type': 'application/json' },
-      payload: JSON.stringify({ password: 'password-sentinel' }),
-    });
-    assert.equal(failureResponse.statusCode, 500);
-    assert.equal(failureResponse.body, '{"message":"Authentication request failed"}');
-    assert.ok(!failureResponse.body.includes('password-sentinel'));
-    assert.ok(!failureResponse.body.includes('token-sentinel'));
-    assert.ok(!failureResponse.body.includes('database-sentinel'));
-  } finally {
-    await failureApp.close();
-  }
+  const failingOutput = failing.stdout + failing.stderr;
+  assert.equal(failing.status, 0, failingOutput);
+  assert.ok(
+    failingOutput.includes('failing-db-boundary-reached'),
+    'controlled DB failure must reach Better Auth',
+  );
+  assert.ok(failingOutput.includes('failing-auth-child-completed'));
+  for (const value of ['password-sentinel', 'token-sentinel', 'database-sentinel'])
+    assert.ok(!failingOutput.includes(value), `captured output must not leak ${value}`);
 
   app = createApp({
     auth: { origin: authConfig.origin, handler: auth.handler },
@@ -89,7 +148,6 @@ try {
     };
   }
   let rejected;
-  const logSentinels = 'password-sentinel token-sentinel database-sentinel';
   try {
     rejected = await globalThis.fetch(`${baseUrl}/api/v1/auth/sign-in/email`, {
       method: 'POST',
@@ -98,10 +156,16 @@ try {
         'sec-fetch-site': 'cross-site',
         'sec-fetch-mode': 'cors',
         'sec-fetch-dest': 'empty',
-        cookie: 'better-auth.session_token=untrusted-sentinel',
+        cookie: 'better-auth.session_token=token-sentinel',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ name: 'Auth Test', email, password: logSentinels }),
+      body: JSON.stringify({
+        name: 'Auth Test',
+        email,
+        password: 'password-sentinel',
+        token: 'token-sentinel',
+        database: 'database-sentinel',
+      }),
     });
   } finally {
     process.stdout.write = originalStdoutWrite;
@@ -109,6 +173,7 @@ try {
     Object.assign(globalThis.console, originalConsoleMethods);
   }
   assert.equal(rejected.status, 403);
+
   assert.ok(
     capturedOutput.every((output) => !output.includes('password-sentinel')),
     'auth library logs must not include request passwords',
