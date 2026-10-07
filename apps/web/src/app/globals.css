@@ -8,10 +8,15 @@
   --secondary: #666f7d;
   --accent: #365fc9;
   --border: #e0e5ec;
+  --danger: #a33232;
 }
 
 * {
   box-sizing: border-box;
+}
+html,
+body {
+  min-height: 100%;
 }
 body {
   margin: 0;
@@ -19,78 +24,200 @@ body {
   color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
 }
-.page-shell {
-  width: min(100% - 32px, 760px);
-  margin: 0 auto;
-  padding: clamp(48px, 12vh, 112px) 0 32px;
-}
-.eyebrow {
+a {
   color: var(--accent);
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
-h1 {
-  margin: 12px 0 8px;
-  font-size: clamp(2.5rem, 10vw, 4.25rem);
-  line-height: 1.05;
-  letter-spacing: -0.045em;
-}
-.intro {
-  margin: 0;
-  color: var(--secondary);
-  font-size: clamp(1.1rem, 4vw, 1.35rem);
-}
-.notice {
-  margin: 32px 0 0;
-  max-width: 56ch;
-  color: var(--secondary);
-  line-height: 1.65;
-}
-.status-panel {
-  margin-top: 24px;
-  padding: 24px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-}
-.status-panel h2 {
-  margin: 0 0 12px;
-  font-size: 1rem;
-}
-.status-panel p {
-  margin: 8px 0;
-  color: var(--secondary);
-  line-height: 1.5;
-}
-.status-panel [data-status='success'] {
-  color: #176b43;
-}
-.status-panel [data-status='failure'] {
-  color: #a33232;
-}
-.retry-button {
-  min-height: 44px;
-  margin-top: 12px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 7px;
-  background: var(--accent);
-  color: white;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-.retry-button:hover {
-  background: #294da8;
-}
-.retry-button:focus-visible {
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
   outline: 3px solid #91a9ee;
   outline-offset: 3px;
 }
-footer {
-  margin-top: 32px;
+.auth-page {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+}
+.auth-card,
+.account-card {
+  overflow-wrap: anywhere;
+  width: min(100%, 440px);
+  padding: clamp(24px, 7vw, 40px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 12px 36px rgb(32 38 50 / 5%);
+}
+.brand {
+  display: inline-block;
+  color: var(--text);
+  font-size: 1.2rem;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  text-decoration: none;
+}
+.eyebrow {
+  margin: 28px 0 10px;
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 8vw, 2.2rem);
+  line-height: 1.12;
+  letter-spacing: -0.045em;
+}
+.auth-intro {
+  margin: 12px 0 24px;
   color: var(--secondary);
-  font-size: 0.85rem;
+  line-height: 1.55;
+}
+.auth-form {
+  display: grid;
+  gap: 18px;
+}
+.field {
+  display: grid;
+  gap: 8px;
+}
+.field label {
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+.field input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 13px;
+  border: 1px solid #cbd3df;
+  border-radius: 8px;
+  background: white;
+  color: var(--text);
+  font: inherit;
+}
+.field input:focus-visible {
+  border-color: var(--accent);
+}
+.field-hint {
+  margin: 0;
+  color: var(--secondary);
+  font-size: 0.84rem;
+}
+.primary-button,
+.secondary-button {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+}
+.primary-button {
+  width: 100%;
+  margin-top: 2px;
+  background: var(--accent);
+  color: white;
+}
+.primary-button:hover:not(:disabled) {
+  background: #294da8;
+}
+.primary-button:disabled,
+.secondary-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+.button-link {
+  width: auto;
+  margin-top: 8px;
+}
+.secondary-button {
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--text);
+}
+.secondary-button:hover:not(:disabled) {
+  background: #f1f4f8;
+}
+.form-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.form-switch {
+  margin: 2px 0 0;
+  color: var(--secondary);
+  text-align: center;
+  font-size: 0.9rem;
+}
+.form-switch a {
+  font-weight: 650;
+}
+.account-note {
+  margin: 20px 0 0;
+  color: var(--secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.account-page {
+  width: min(100% - 32px, 880px);
+  margin: 0 auto;
+  padding: 28px 0 56px;
+}
+.account-header {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: clamp(48px, 12vh, 112px);
+}
+.account-card {
+  width: min(100%, 640px);
+  padding: clamp(28px, 6vw, 48px);
+}
+.account-card .eyebrow {
+  margin-top: 0;
+}
+.account-card .auth-intro {
+  margin-bottom: 0;
+}
+.signout-area {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+.signout-area .form-error {
+  max-width: 280px;
+  text-align: right;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (max-width: 360px) {
+  .auth-card {
+    padding: 24px 20px;
+  }
+  .account-page {
+    width: min(100% - 24px, 880px);
+  }
+  .account-header {
+    align-items: flex-start;
+  }
 }

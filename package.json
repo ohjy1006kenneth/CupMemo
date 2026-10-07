@@ -17,12 +17,19 @@
     "db:migrate": "corepack pnpm --filter @cupmemo/database db:migrate",
     "db:status": "corepack pnpm --filter @cupmemo/database db:status",
     "db:test:integration": "corepack pnpm --filter @cupmemo/database test:integration",
-    "auth:test:integration": "corepack pnpm --filter @cupmemo/api auth:test:integration"
+    "auth:test:integration": "corepack pnpm --filter @cupmemo/api auth:test:integration",
+    "auth:test:e2e": "corepack pnpm build && playwright test --config=playwright.auth.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
     "eslint": "10.12.0",
+    "jsdom": "26.1.0",
     "prettier": "3.9.9",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
     "typescript": "5.9.3",
     "typescript-eslint": "8.71.1",
     "vitest": "5.0.3"

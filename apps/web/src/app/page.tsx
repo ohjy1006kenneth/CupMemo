@@ -1,17 +1,24 @@
-import { ApiStatus } from '../components/api-status';
+import { redirect } from 'next/navigation';
+import { currentAuthSession } from '../auth/session';
 
-export default function HomePage() {
+export const dynamic = 'force-dynamic';
+
+export default async function HomePage() {
+  const result = await currentAuthSession();
+  if (result.kind === 'authenticated') redirect('/app');
+  if (result.kind === 'unauthenticated') redirect('/sign-in');
   return (
-    <main className="page-shell">
-      <div className="eyebrow">Development scaffold</div>
-      <h1>CupMemo</h1>
-      <p className="intro">Your personal coffee brewing journal.</p>
-      <p className="notice">
-        This diagnostic page verifies local web-to-API connectivity. Product features are not
-        included yet.
-      </p>
-      <ApiStatus />
-      <footer>Local development only · No account or brew data is stored</footer>
+    <main className="auth-page">
+      <section className="auth-card" aria-labelledby="unavailable-title">
+        <a className="brand" href="/">
+          CupMemo
+        </a>
+        <h1 id="unavailable-title">We can’t reach your account right now.</h1>
+        <p className="auth-intro">Your session couldn’t be checked. Please retry in a moment.</p>
+        <a className="primary-button button-link" href="/">
+          Try again
+        </a>
+      </section>
     </main>
   );
 }
