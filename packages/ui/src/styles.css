@@ -170,7 +170,7 @@
   padding: var(--cm-space-2);
 }
 .cm-navigation-link {
-  flex: 1 1 0;
+  flex: 1 1 10rem;
   border-color: transparent;
   border-bottom-width: 3px;
   color: var(--cm-text-primary);
