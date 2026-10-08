@@ -11,8 +11,8 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "build": "corepack pnpm --recursive --if-present build",
-    "typecheck": "corepack pnpm --filter @cupmemo/contracts build && corepack pnpm --filter @cupmemo/database build && corepack pnpm --recursive --if-present typecheck",
-    "test": "corepack pnpm api:openapi:check && vitest run",
+    "typecheck": "corepack pnpm --filter @cupmemo/contracts build && corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/ui build && corepack pnpm --recursive --if-present typecheck",
+    "test": "corepack pnpm --filter @cupmemo/ui build && corepack pnpm api:openapi:check && vitest run",
     "api:openapi:generate": "corepack pnpm --filter @cupmemo/api openapi:generate",
     "api:openapi:check": "corepack pnpm --filter @cupmemo/api openapi:check",
     "api:openapi:test:integration": "corepack pnpm --filter @cupmemo/api openapi:test:integration",
@@ -28,6 +28,7 @@
     "auth:test:e2e": "corepack pnpm build && playwright test --config=playwright.auth.config.ts"
   },
   "devDependencies": {
+    "@cupmemo/ui": "workspace:*",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "6.9.1",
