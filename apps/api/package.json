@@ -11,7 +11,10 @@
     "authorization:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/authorization-integration.mjs",
     "coffee:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/coffee-integration.mjs",
     "brew:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && node scripts/brew-integration.mjs",
-    "typecheck": "tsc --project tsconfig.json --noEmit"
+    "openapi:generate": "corepack pnpm --filter @cupmemo/contracts build && tsx scripts/openapi.ts generate",
+    "openapi:check": "corepack pnpm --filter @cupmemo/contracts build && tsx scripts/openapi.ts check",
+    "openapi:test:integration": "corepack pnpm --filter @cupmemo/database build && corepack pnpm --filter @cupmemo/api build && tsx scripts/openapi-integration.mjs",
+    "typecheck": "tsc --project tsconfig.json --noEmit && tsc --noEmit --strict --skipLibCheck --esModuleInterop --target es2022 --module nodenext scripts/openapi.ts"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.7",
@@ -23,7 +26,10 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
+    "@apidevtools/swagger-parser": "13.1.0",
     "@types/node": "24.10.1",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "tsx": "4.21.0"
   }
 }
