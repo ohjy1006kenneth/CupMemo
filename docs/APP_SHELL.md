@@ -18,6 +18,11 @@ Ordinary anchor destinations, in order:
 - `/app/journal`: Journal, **Brew, learn, repeat**.
 - `/app/gear`: Gear, **Your daily setup**.
 
+The subsequent [manual coffee entry](COFFEE_UI.md) outcome (Refs #67, primary
+card `t_86aa7ea4`) adds ordinary `/app/coffees/new` entry from Beans inside this
+same boundary. Beans is current on exactly `/app` and `/app/coffees/new`.
+Confirmed creation returns to this real shelf; no coffee Details route is implied.
+
 The brand returns to `/app`; each destination has one H1 and the shared shell has
 one main landmark. The focus-visible skip link targets that main. Current navigation
 uses shared `NavigationLink` semantics, weight and bottom border, not color alone.

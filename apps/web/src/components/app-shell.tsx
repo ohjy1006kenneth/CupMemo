@@ -30,7 +30,11 @@ export function AppShell({ name, children }: { name: string; children: ReactNode
       </main>
       <Navigation aria-label="Primary" className="shell-navigation">
         {destinations.map(([href, label]) => (
-          <NavigationLink key={href} href={href} current={pathname === href}>
+          <NavigationLink
+            key={href}
+            href={href}
+            current={pathname === href || (href === '/app' && pathname === '/app/coffees/new')}
+          >
             {label}
           </NavigationLink>
         ))}
