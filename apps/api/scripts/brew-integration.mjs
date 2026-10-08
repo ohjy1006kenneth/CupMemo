@@ -8,6 +8,51 @@ import { writeFile } from 'node:fs/promises';
 import { createDatabase, resolveDatabaseConfig } from '@cupmemo/database';
 
 const base = '/api/v1/brews';
+const qualityKeys = [
+  'acidity',
+  'body',
+  'aftertaste',
+  'fragranceAroma',
+  'flavor',
+  'balance',
+  'sweetness',
+  'overallImpression',
+];
+const publicKeys = [
+  'id',
+  'coffeeId',
+  'brewer',
+  'grinder',
+  'grindSetting',
+  'doseGrams',
+  'waterGrams',
+  'waterTemperatureC',
+  'totalBrewTimeSeconds',
+  'brewedAt',
+  'overallScore',
+  'tastingMode',
+  ...qualityKeys,
+  'tastingTags',
+  'notes',
+  'pours',
+  'createdAt',
+  'updatedAt',
+].sort();
+function assertBrew(brew) {
+  assert.deepEqual(Object.keys(brew).sort(), publicKeys);
+  privateLogIds.push(brew.id, brew.coffeeId);
+  assert.ok(['quick', 'sensory'].includes(brew.tastingMode));
+  for (const key of qualityKeys)
+    assert.ok(
+      brew[key] === null ||
+        (typeof brew[key] === 'number' &&
+          Number.isFinite(brew[key]) &&
+          brew[key] >= 0 &&
+          brew[key] <= 10 &&
+          Number.isInteger(brew[key] * 4)),
+    );
+  assert.equal(typeof brew.overallScore, 'number');
+}
 const bounds = {
   max: 2,
   connectionTimeoutMillis: 900,
@@ -39,6 +84,7 @@ let phase = 'guarded isolated configuration',
 const triggerName = `brew_failure_${suffix}`;
 let functionCreated = false,
   instrumented = false;
+let corruptQuality;
 async function verifyDatabase(target = connection) {
   const { rows } = await target.pool.query(
     "SELECT current_database() AS name, current_setting('server_version_num')::integer AS version",
@@ -83,19 +129,13 @@ async function request(user, method, url = base, payload, headers = {}, target =
     assert.equal(response.headers['cache-control'], 'no-store');
     assert.ok(response.headers.vary?.toLowerCase().includes('cookie'));
     for (const secret of secrets) assert.ok(!response.body.includes(secret));
-    for (const key of [
-      'ownerId',
-      'userId',
-      'password',
-      'token',
-      'session',
-      'fragranceAroma',
-      'flavor',
-      'balance',
-      'sweetness',
-      'overallImpression',
-    ])
+    for (const key of ['ownerId', 'userId', 'password', 'token', 'session'])
       assert.ok(!response.body.includes(`"${key}":`));
+    if ([200, 201].includes(response.statusCode)) {
+      const body = response.json();
+      if (body.brew) assertBrew(body.brew);
+      if (body.brews) for (const brew of body.brews) assertBrew(brew);
+    }
   }
   return response;
 }
@@ -120,31 +160,7 @@ async function create(user, payload = recipe(user.coffee.id)) {
   const r = await request(user, 'POST', base, payload);
   assert.equal(r.statusCode, 201);
   const brew = r.json().brew;
-  assert.deepEqual(
-    Object.keys(brew).sort(),
-    [
-      'id',
-      'coffeeId',
-      'brewer',
-      'grinder',
-      'grindSetting',
-      'doseGrams',
-      'waterGrams',
-      'waterTemperatureC',
-      'totalBrewTimeSeconds',
-      'brewedAt',
-      'overallScore',
-      'tastingMode',
-      'acidity',
-      'body',
-      'aftertaste',
-      'tastingTags',
-      'notes',
-      'pours',
-      'createdAt',
-      'updatedAt',
-    ].sort(),
-  );
+  assertBrew(brew);
   return brew;
 }
 async function snapshot() {
@@ -160,6 +176,15 @@ async function snapshot() {
       await connection.pool.query(`SELECT * FROM cupmemo.${table} ORDER BY 1,2`)
     ).rows;
   return result;
+}
+async function patchPreserving(user, existing, changes) {
+  const response = await request(user, 'PATCH', `${base}/${existing.id}`, changes);
+  assert.equal(response.statusCode, 200);
+  const brew = response.json().brew;
+  assert.deepEqual({ ...brew, updatedAt: existing.updatedAt }, { ...existing, ...changes });
+  assert.ok(Date.parse(brew.updatedAt) >= Date.parse(existing.updatedAt));
+  assert.deepEqual((await request(user, 'GET', `${base}/${brew.id}`)).json().brew, brew);
+  return brew;
 }
 async function signIn(user) {
   const r = await request(null, 'POST', '/api/v1/auth/sign-in/email', {
@@ -197,6 +222,18 @@ async function denied(user, status = 401, target = app) {
   assert.deepEqual(await snapshot(), before);
 }
 async function removeInstrumentation() {
+  if (corruptQuality) {
+    await verifyDatabase();
+    await connection.pool.query('UPDATE cupmemo.brews SET flavor=$1 WHERE id=$2 AND owner_id=$3', [
+      corruptQuality.flavor,
+      corruptQuality.id,
+      corruptQuality.ownerId,
+    ]);
+    await connection.pool.query(
+      'ALTER TABLE cupmemo.brews VALIDATE CONSTRAINT brews_flavor_quarter',
+    );
+    corruptQuality = undefined;
+  }
   if (!functionCreated) return;
   await verifyDatabase();
   if (instrumented) {
@@ -266,6 +303,7 @@ try {
     assert.equal(brew.grindSetting, '22 clicks');
     assert.equal(brew.overallScore, 0);
     assert.equal(brew.tastingMode, 'quick');
+    for (const key of qualityKeys) assert.equal(brew[key], null);
     assert.deepEqual(
       [brew.acidity, brew.body, brew.aftertaste, brew.notes],
       [null, null, null, null],
@@ -278,6 +316,51 @@ try {
     privateLogIds.push(brew.id, user.coffee.id);
   }
   const [a, b] = users;
+  phase = 'optional quick/sensory none/partial/full shared quality validation';
+  for (const tastingMode of ['quick', 'sensory']) {
+    const none = await create(a, recipe(a.coffee.id, { tastingMode }));
+    assert.equal(none.tastingMode, tastingMode);
+    for (const key of qualityKeys) assert.equal(none[key], null);
+    assert.equal((await request(a, 'DELETE', `${base}/${none.id}`)).statusCode, 204);
+    const partial = await create(
+      a,
+      recipe(a.coffee.id, {
+        tastingMode,
+        acidity: 0,
+        fragranceAroma: 8.25,
+        overallImpression: 7.75,
+        overallScore: 87.25,
+      }),
+    );
+    assert.equal(partial.tastingMode, tastingMode);
+    assert.equal(partial.overallScore, 87.25);
+    for (const key of qualityKeys)
+      assert.equal(
+        partial[key],
+        { acidity: 0, fragranceAroma: 8.25, overallImpression: 7.75 }[key] ?? null,
+      );
+    assert.equal((await request(a, 'DELETE', `${base}/${partial.id}`)).statusCode, 204);
+    const all = Object.fromEntries(qualityKeys.map((key, i) => [key, i * 0.25]));
+    const complete = await create(
+      a,
+      recipe(a.coffee.id, { ...all, tastingMode, overallScore: 87.25 }),
+    );
+    for (const key of qualityKeys) assert.equal(complete[key], all[key]);
+    assert.equal(complete.tastingMode, tastingMode);
+    assert.equal(complete.overallScore, 87.25);
+    assert.equal((await request(a, 'DELETE', `${base}/${complete.id}`)).statusCode, 204);
+  }
+  for (const key of qualityKeys) {
+    for (const value of [0, 0.25, 10, null]) {
+      const created = await create(a, recipe(a.coffee.id, { [key]: value }));
+      assert.equal(created[key], value);
+      assert.equal(created.tastingMode, 'quick');
+      const r = await request(a, 'PATCH', `${base}/${a.brew.id}`, { [key]: value });
+      assert.equal(r.statusCode, 200);
+      assert.equal(r.json().brew[key], value);
+      assert.equal((await request(a, 'DELETE', `${base}/${created.id}`)).statusCode, 204);
+    }
+  }
   const full = await create(
     a,
     recipe(a.coffee.id, {
@@ -285,6 +368,12 @@ try {
       acidity: 0,
       body: 10,
       aftertaste: 8.25,
+      tastingMode: 'sensory',
+      fragranceAroma: 8.25,
+      flavor: 7.5,
+      balance: 0,
+      sweetness: 10,
+      overallImpression: 9,
       notes: ' Bright ',
       tastingTags: ['z', ' Apple ', 'apple'],
       waterTemperatureC: 0,
@@ -293,8 +382,85 @@ try {
   assert.deepEqual(full.tastingTags, ['Apple', 'apple', 'z']);
   assert.equal(full.notes, 'Bright');
   assert.equal(full.acidity, 0);
+  for (const key of qualityKeys)
+    assert.equal(
+      full[key],
+      {
+        acidity: 0,
+        body: 10,
+        aftertaste: 8.25,
+        fragranceAroma: 8.25,
+        flavor: 7.5,
+        balance: 0,
+        sweetness: 10,
+        overallImpression: 9,
+      }[key],
+    );
+  phase =
+    'detail added after quick, expanded-only/null/shared edits and non-destructive mode roundtrips';
+  const countSensory = (await request(a, 'GET')).json().brews.length;
+  let assessment = (await request(a, 'GET', `${base}/${a.brew.id}`)).json().brew;
+  assessment = await patchPreserving(a, assessment, {
+    fragranceAroma: 8.25,
+    flavor: 0,
+    balance: 7.5,
+    sweetness: 10,
+    overallImpression: 7.75,
+    acidity: 0.25,
+    body: 8,
+    aftertaste: 9,
+    overallScore: 87.25,
+    tastingTags: ['Floral', 'Peach'],
+    notes: 'sensory notes',
+  });
+  assert.equal(assessment.tastingMode, 'quick');
+  for (const tastingMode of ['sensory', 'quick', 'sensory', 'quick', 'sensory'])
+    assessment = await patchPreserving(a, assessment, { tastingMode });
+  assessment = await patchPreserving(a, assessment, { flavor: 8.5 });
+  assessment = await patchPreserving(a, assessment, { balance: null });
+  assessment = await patchPreserving(a, assessment, { sweetness: 0 });
+  assessment = await patchPreserving(a, assessment, { acidity: 10, body: null, aftertaste: 0 });
+  assessment = await patchPreserving(a, assessment, { tastingMode: 'quick' });
+  assessment = await patchPreserving(a, assessment, { body: 0.25 });
+  assessment = await patchPreserving(a, assessment, { tastingMode: 'sensory' });
+  for (const changes of [
+    { grindSetting: '23 clicks' },
+    { notes: 'edited notes' },
+    { tastingTags: ['Citrus'] },
+    { overallScore: 50.25 },
+  ])
+    assessment = await patchPreserving(a, assessment, changes);
+  assert.equal(assessment.overallImpression, 7.75);
+  assert.equal((await request(a, 'GET')).json().brews.length, countSensory);
+  phase = 'reciprocal sensory PATCH SQL-owner negative-control assertion';
+  const sensoryIdor = await snapshot();
+  for (const [caller, victim] of [
+    [a, b],
+    [b, a],
+  ]) {
+    for (const id of [victim.brew.id, randomUUID()]) {
+      const attack = await request(caller, 'PATCH', `${base}/${id}`, {
+        tastingMode: 'sensory',
+        fragranceAroma: 0,
+        flavor: 10,
+        overallImpression: 0.25,
+      });
+      assert.equal(attack.statusCode, 404, 'sensory PATCH must scope ownership in SQL');
+      assert.deepEqual(attack.json(), { message: 'Resource not found' });
+      assert.deepEqual(await snapshot(), sensoryIdor);
+    }
+  }
   const privateInput = `private-input-${suffix}`;
   privateLogIds.push(privateInput, `fault-${suffix}`);
+  const privateTag = `private-tag-${suffix}`,
+    privateSensory = `private-sensory-${suffix}`;
+  privateLogIds.push(privateTag, privateSensory);
+  assert.equal(
+    (await request(a, 'PATCH', `${base}/${a.brew.id}`, { tastingTags: [privateTag] })).statusCode,
+    200,
+  );
+  for (const payload of [{ flavor: privateSensory }, { [privateSensory]: privateSensory }])
+    assert.equal((await request(a, 'PATCH', `${base}/${a.brew.id}`, payload)).statusCode, 400);
   assert.equal(
     (await request(a, 'PATCH', `${base}/${a.brew.id}`, { notes: privateInput })).json().brew.notes,
     privateInput,
@@ -310,7 +476,43 @@ try {
     headers: { cookie: a.cookie },
   });
   assert.equal(http.status, 200);
+  assert.equal(http.headers.get('cache-control'), 'no-store');
+  assert.equal(http.headers.get('vary'), 'Cookie');
   assert.deepEqual((await http.json()).brew, full);
+  const httpCreate = await globalThis.fetch(`http://127.0.0.1:${address.port}${base}`, {
+    method: 'POST',
+    headers: { cookie: a.cookie, origin: authConfig.origin, 'content-type': 'application/json' },
+    body: JSON.stringify(
+      recipe(a.coffee.id, {
+        tastingMode: 'sensory',
+        fragranceAroma: 8.25,
+        flavor: 0,
+        overallImpression: 7.75,
+        overallScore: 87.25,
+      }),
+    ),
+  });
+  assert.equal(httpCreate.status, 201);
+  let httpBrew = (await httpCreate.json()).brew;
+  assertBrew(httpBrew);
+  assert.equal(httpBrew.tastingMode, 'sensory');
+  assert.equal(httpBrew.flavor, 0);
+  assert.equal(httpBrew.overallImpression, 7.75);
+  assert.equal(httpBrew.overallScore, 87.25);
+  for (const tastingMode of ['quick', 'sensory']) {
+    const r = await globalThis.fetch(`http://127.0.0.1:${address.port}${base}/${httpBrew.id}`, {
+      method: 'PATCH',
+      headers: { cookie: a.cookie, origin: authConfig.origin, 'content-type': 'application/json' },
+      body: JSON.stringify({ tastingMode }),
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get('cache-control'), 'no-store');
+    assert.equal(r.headers.get('vary'), 'Cookie');
+    const changed = (await r.json()).brew;
+    assertBrew(changed);
+    assert.deepEqual(changed, { ...httpBrew, tastingMode, updatedAt: changed.updatedAt });
+    httpBrew = changed;
+  }
   phase = 'unmatched and malformed brew privacy over injection and actual HTTP';
   const workBeforeUnmatched = domainWork;
   for (const [method, path, status] of [
@@ -344,6 +546,8 @@ try {
   authority = createAuth(connection.db, authConfig);
   app = createApp({ db: trackedDatabase(), auth: authOptions() });
   assert.deepEqual((await request(a, 'GET', `${base}/${full.id}`)).json().brew, full);
+  assert.deepEqual((await request(a, 'GET', `${base}/${httpBrew.id}`)).json().brew, httpBrew);
+  assert.equal((await request(a, 'DELETE', `${base}/${httpBrew.id}`)).statusCode, 204);
   phase = 'copy creates distinct ID, edit preserves identity/count/children';
   const copied = await create(a, recipe(a.coffee.id));
   assert.notEqual(copied.id, a.brew.id);
@@ -414,6 +618,45 @@ try {
   }
   phase = 'invalid input and merged recipe rejection preserve complete graph';
   const invalidBefore = await snapshot();
+  for (const key of qualityKeys) {
+    for (const value of [-0.25, 10.25, 0.1, '8', true, {}, []]) {
+      for (const [method, url, payload] of [
+        ['POST', base, recipe(a.coffee.id, { [key]: value })],
+        ['PATCH', `${base}/${a.brew.id}`, { [key]: value }],
+      ]) {
+        const response = await request(a, method, url, payload);
+        assert.equal(response.statusCode, 400);
+        assert.deepEqual(response.json(), { message: 'Invalid brew request' });
+        assert.deepEqual(await snapshot(), invalidBefore);
+      }
+    }
+    const raw = JSON.stringify(recipe(a.coffee.id)).replace(/}$/, `,"${key}":1e309}`);
+    assert.equal(
+      (await request(a, 'POST', base, raw, { 'content-type': 'application/json' })).statusCode,
+      400,
+    );
+    assert.deepEqual(await snapshot(), invalidBefore);
+  }
+  for (const extra of [
+    ...[null, 'Quick', 'Sensory', 'detailed', '', 0, true].map((tastingMode) => ({ tastingMode })),
+    { quickAcidity: 8 },
+    { detailAcidity: 8 },
+    { assessment: { flavor: 8 } },
+    { cupChecks: [] },
+    { uniformity: 10 },
+    { cleanCup: 10 },
+    { defects: 0 },
+  ]) {
+    for (const [method, url, payload] of [
+      ['POST', base, recipe(a.coffee.id, extra)],
+      ['PATCH', `${base}/${a.brew.id}`, extra],
+    ]) {
+      const response = await request(a, method, url, payload);
+      assert.equal(response.statusCode, 400);
+      assert.deepEqual(response.json(), { message: 'Invalid brew request' });
+      assert.deepEqual(await snapshot(), invalidBefore);
+    }
+  }
   const invalidCreates = [
     { doseGrams: 0 },
     { waterGrams: 0.31 },
@@ -436,8 +679,8 @@ try {
     { grindSetting: 22 },
     { grinder: 'x'.repeat(201) },
     { ownerId: b.id },
-    { tastingMode: 'quick' },
-    { fragranceAroma: 8 },
+    { tastingMode: null },
+    { fragranceAroma: 10.25 },
     { notes: 'x'.repeat(5001) },
     { tastingTags: ['a', ' a '] },
     { tastingTags: [' '] },
@@ -475,8 +718,8 @@ try {
     { pours: [] },
     { id: a.brew.id },
     { createdAt: full.createdAt },
-    { tastingMode: 'sensory' },
-    { flavor: 8 },
+    { tastingMode: 'detailed' },
+    { flavor: 10.25 },
   ])
     assert.equal((await request(a, 'PATCH', `${base}/${a.brew.id}`, payload)).statusCode, 400);
   for (const query of [
@@ -500,7 +743,7 @@ try {
   ])
     assert.equal((await request(a, 'POST', base, payload, headers)).statusCode, status);
   assert.deepEqual(await snapshot(), invalidBefore);
-  phase = 'equal starts, boundary precision, hidden sensory preservation';
+  phase = 'equal starts, boundary precision, existing stored sensory preservation';
   const boundary = await create(
     a,
     recipe(a.coffee.id, {
@@ -534,6 +777,63 @@ try {
   assert.equal(sensory.statusCode, 200);
   assert.equal(sensory.json().brew.tastingMode, 'sensory');
   assert.deepEqual(await hidden(), beforeHidden);
+  const expectedStored = {
+    fragranceAroma: 8.25,
+    flavor: 7.5,
+    balance: 0,
+    sweetness: 10,
+    overallImpression: 9,
+  };
+  for (const [key, value] of Object.entries(expectedStored))
+    assert.equal(sensory.json().brew[key], value);
+  phase = 'concurrent full assessment states and disjoint recipe/sensory updates';
+  const assessmentStates = ['quick', 'sensory'].map((tastingMode, i) => ({
+    ...Object.fromEntries(qualityKeys.map((key, j) => [key, i === 0 ? j * 0.25 : 10 - j * 0.25])),
+    tastingMode,
+    overallScore: i === 0 ? 1.25 : 99.75,
+    tastingTags: [i === 0 ? 'A' : 'B'],
+    notes: i === 0 ? 'quick state' : 'sensory state',
+  }));
+  const assessmentResponses = await Promise.all(
+    assessmentStates.map((state) => request(a, 'PATCH', `${base}/${copied.id}`, state)),
+  );
+  const assessmentKeys = [...qualityKeys, 'tastingMode', 'overallScore', 'tastingTags', 'notes'];
+  const assessmentOnly = (brew) =>
+    Object.fromEntries(assessmentKeys.map((key) => [key, brew[key]]));
+  for (let i = 0; i < assessmentStates.length; i++) {
+    assert.equal(assessmentResponses[i].statusCode, 200);
+    assert.deepEqual(assessmentOnly(assessmentResponses[i].json().brew), assessmentStates[i]);
+  }
+  const savedAssessment = (await request(a, 'GET', `${base}/${copied.id}`)).json().brew;
+  assert.ok(
+    assessmentStates.some(
+      (state) => JSON.stringify(state) === JSON.stringify(assessmentOnly(savedAssessment)),
+    ),
+  );
+  const disjoint = await Promise.all([
+    request(a, 'PATCH', `${base}/${copied.id}`, {
+      fragranceAroma: 0,
+      flavor: null,
+      tastingMode: 'sensory',
+    }),
+    request(a, 'PATCH', `${base}/${copied.id}`, {
+      grindSetting: '24 clicks',
+      waterGrams: 0.4,
+      pours: [{ waterGrams: 0.4, startTimeSeconds: 15 }],
+    }),
+  ]);
+  for (const r of disjoint) assert.equal(r.statusCode, 200);
+  const savedDisjoint = (await request(a, 'GET', `${base}/${copied.id}`)).json().brew;
+  assert.deepEqual(savedDisjoint, {
+    ...savedAssessment,
+    fragranceAroma: 0,
+    flavor: null,
+    tastingMode: 'sensory',
+    grindSetting: '24 clicks',
+    waterGrams: 0.4,
+    pours: [{ position: 0, waterGrams: 0.4, startTimeSeconds: 15 }],
+    updatedAt: savedDisjoint.updatedAt,
+  });
   phase = 'concurrent complete schedules/tags serialize without mixed children';
   const states = [
     {
@@ -596,6 +896,14 @@ try {
       waterGrams: 0.3,
       pours: [{ waterGrams: 0.3, startTimeSeconds }],
       tastingTags: ['rollback'],
+      tastingMode: 'quick',
+      fragranceAroma: 1.25,
+      flavor: 0.25,
+      balance: null,
+      sweetness: 9.75,
+      overallImpression: 0,
+      overallScore: 30.25,
+      notes: 'rollback sensory',
     };
     for (const [method, url, payload] of [
       ['POST', base, recipe(a.coffee.id, fault)],
@@ -612,12 +920,72 @@ try {
     (
       await request(a, 'PATCH', `${base}/${copied.id}`, {
         brewer: `fault-${suffix}`,
+        tastingMode: 'quick',
+        fragranceAroma: 1.25,
+        flavor: 0.25,
+        balance: null,
+        sweetness: 9.75,
+        overallImpression: 0,
+        overallScore: 30.25,
+        tastingTags: ['rollback'],
+        notes: 'rollback sensory',
         waterGrams: 0.3,
         pours: [{ waterGrams: 0.3, startTimeSeconds: 11 }],
       })
     ).statusCode,
     200,
   );
+  const retried = (await request(a, 'GET', `${base}/${copied.id}`)).json().brew;
+  assert.equal(retried.fragranceAroma, 1.25);
+  assert.equal(retried.flavor, 0.25);
+  assert.equal(retried.overallImpression, 0);
+  assert.equal(retried.overallScore, 30.25);
+  assert.equal(retried.tastingMode, 'quick');
+  assert.deepEqual(retried.tastingTags, ['rollback']);
+  phase = 'persisted corrupt expanded quality rejects reads/edits with no commit';
+  // Only on this verified disposable database: retain the exact check, mark it NOT VALID
+  // around one generated owner's corrupt row, then restore the row and validate in finally.
+  await verifyDatabase();
+  const constraint = (
+    await connection.pool.query(
+      "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='cupmemo.brews'::regclass AND conname='brews_flavor_quarter' AND convalidated",
+    )
+  ).rows;
+  assert.equal(constraint.length, 1);
+  corruptQuality = { id: copied.id, ownerId: a.id, flavor: retried.flavor };
+  const client = await connection.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('ALTER TABLE cupmemo.brews DROP CONSTRAINT brews_flavor_quarter');
+    const changed = await client.query(
+      'UPDATE cupmemo.brews SET flavor=0.1 WHERE id=$1 AND owner_id=$2',
+      [copied.id, a.id],
+    );
+    assert.equal(changed.rowCount, 1);
+    await client.query(
+      `ALTER TABLE cupmemo.brews ADD CONSTRAINT brews_flavor_quarter ${constraint[0].definition} NOT VALID`,
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  const corruptExpanded = await snapshot();
+  assert.equal(corruptExpanded.brews.find((row) => row.id === copied.id).flavor, '0.10');
+  for (const [method, url, payload] of [
+    ['GET', `${base}/${copied.id}`],
+    ['GET', base],
+    ['PATCH', `${base}/${copied.id}`, { flavor: 8.25, tastingMode: 'sensory', notes: 'repair' }],
+  ]) {
+    const response = await request(a, method, url, payload);
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(response.json(), { message: 'Brew service unavailable' });
+    assert.deepEqual(await snapshot(), corruptExpanded);
+  }
+  await removeInstrumentation();
+  assert.deepEqual((await request(a, 'GET', `${base}/${copied.id}`)).json().brew, retried);
   phase = 'persisted invalid projection is 503 not caller validation or repair';
   await connection.pool.query(
     'UPDATE cupmemo.brew_pours SET position=3 WHERE brew_id=$1 AND position=0',
@@ -906,7 +1274,7 @@ if (process.exitCode)
   );
 else
   process.stdout.write(
-    'Brew integration passed: real CRUD, A/B IDOR, decimal/calendar/merged validation, copy/edit, persistence/HTTP, hidden sensory, concurrent children/FK, POST/PATCH child and projection rollback, auth, refused/stalled TCP recovery, privacy and precise cleanup.\n' +
+    'Brew integration passed: real CRUD, A/B sensory IDOR, all8 optional quality/mode validation and non-destructive roundtrips, independent scores, decimal/calendar/merged validation, copy/edit, persistence/HTTP, stored sensory, concurrent full assessment/disjoint recipe/children/FK, POST/PATCH sensory child and persisted expanded/projection rollback, auth, refused/stalled TCP recovery, privacy and precise cleanup.\n' +
       JSON.stringify({ timings }) +
       '\n',
   );

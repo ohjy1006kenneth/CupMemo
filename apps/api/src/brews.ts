@@ -19,7 +19,7 @@ import {
 } from './authorization.js';
 
 const { brews, coffees, brewPours, brewTastingTags } = schema;
-// No owner, auth, or hidden expanded sensory columns cross this boundary.
+// Only the recipe and single shared assessment cross this boundary; no owner/auth fields.
 const fields = {
   id: brews.id,
   coffeeId: brews.coffeeId,
@@ -36,6 +36,11 @@ const fields = {
   acidity: brews.acidity,
   body: brews.body,
   aftertaste: brews.aftertaste,
+  fragranceAroma: brews.fragranceAroma,
+  flavor: brews.flavor,
+  balance: brews.balance,
+  sweetness: brews.sweetness,
+  overallImpression: brews.overallImpression,
   notes: brews.notes,
   createdAt: brews.createdAt,
   updatedAt: brews.updatedAt,
@@ -53,6 +58,11 @@ function project(row: Row, pours: Pour[], tastingTags: string[]) {
     acidity: row.acidity === null ? null : Number(row.acidity),
     body: row.body === null ? null : Number(row.body),
     aftertaste: row.aftertaste === null ? null : Number(row.aftertaste),
+    fragranceAroma: row.fragranceAroma === null ? null : Number(row.fragranceAroma),
+    flavor: row.flavor === null ? null : Number(row.flavor),
+    balance: row.balance === null ? null : Number(row.balance),
+    sweetness: row.sweetness === null ? null : Number(row.sweetness),
+    overallImpression: row.overallImpression === null ? null : Number(row.overallImpression),
     brewedAt: row.brewedAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -109,6 +119,12 @@ function parentValues(input: Omit<BrewCreate, 'pours' | 'tastingTags' | 'coffeeI
     acidity: input.acidity === null ? null : String(input.acidity),
     body: input.body === null ? null : String(input.body),
     aftertaste: input.aftertaste === null ? null : String(input.aftertaste),
+    fragranceAroma: input.fragranceAroma === null ? null : String(input.fragranceAroma),
+    flavor: input.flavor === null ? null : String(input.flavor),
+    balance: input.balance === null ? null : String(input.balance),
+    sweetness: input.sweetness === null ? null : String(input.sweetness),
+    overallImpression: input.overallImpression === null ? null : String(input.overallImpression),
+    tastingMode: input.tastingMode,
     brewedAt: new Date(input.brewedAt),
   };
 }
@@ -181,7 +197,6 @@ export function registerBrewRoutes(
               ...parentValues(values),
               coffeeId: coffee.id,
               ownerId: user.id,
-              tastingMode: 'quick',
             })
             .returning(fields);
           if (!row) throw new Error('Missing brew');
@@ -288,6 +303,12 @@ export function registerBrewRoutes(
                   acidity: existing.acidity,
                   body: existing.body,
                   aftertaste: existing.aftertaste,
+                  fragranceAroma: existing.fragranceAroma,
+                  flavor: existing.flavor,
+                  balance: existing.balance,
+                  sweetness: existing.sweetness,
+                  overallImpression: existing.overallImpression,
+                  tastingMode: existing.tastingMode,
                   tastingTags: existing.tastingTags,
                   notes: existing.notes,
                   pours: existing.pours.map(({ waterGrams, startTimeSeconds }) => ({

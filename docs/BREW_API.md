@@ -2,10 +2,13 @@
 
 Issue: https://github.com/ohjy1006kenneth/CupMemo/issues/18
 Primary HQ card: `t_584da139` (tenant `cupmemo`). Refs #18.
+Sensory extension: https://github.com/ohjy1006kenneth/CupMemo/issues/19,
+primary HQ card `t_def20d6a` (tenant `cupmemo`). Refs #19.
 
 Backend-only: production Fastify routes share the existing Drizzle pool and Better
-Auth guard. No schema/migrations, UI, production deployment, expanded sensory
-input (#19), archive, provenance/copy endpoint or OpenAPI generator (#20).
+Auth guard. Optional Sensory Detail and non-destructive mode switching extend
+these same routes. No schema/migrations, UI, production deployment, archive,
+provenance/copy endpoint or OpenAPI generator (#20).
 
 ## Routes and representation
 
@@ -18,9 +21,10 @@ input (#19), archive, provenance/copy endpoint or OpenAPI generator (#20).
 | DELETE | `/api/v1/brews/:id` | 204 empty body |
 
 The explicit flat public representation contains exactly:
-`id,coffeeId,brewer,grinder,grindSetting,doseGrams,waterGrams,waterTemperatureC,totalBrewTimeSeconds,brewedAt,overallScore,tastingMode,acidity,body,aftertaste,tastingTags,notes,pours,createdAt,updatedAt`.
+`id,coffeeId,brewer,grinder,grindSetting,doseGrams,waterGrams,waterTemperatureC,totalBrewTimeSeconds,brewedAt,overallScore,tastingMode,acidity,body,aftertaste,fragranceAroma,flavor,balance,sweetness,overallImpression,tastingTags,notes,pours,createdAt,updatedAt`.
 IDs are UUIDs, numbers are JSON numbers (not PostgreSQL numeric strings), and dates
-are normalized UTC ISO strings with milliseconds. No owner/auth/hidden sensory
+are normalized UTC ISO strings with milliseconds. All eight qualities are always
+present as JSON number or null. No owner/auth/private storage
 columns, ratio, cumulative water or provenance. Contracts and inferred types are
 browser-safe `@cupmemo/contracts` exports, independent of persistence. Every
 response is validated; corrupt stored output fails 503 rather than being repaired.
@@ -43,14 +47,25 @@ calendar dates, missing offsets, overflow and excessive precision are rejected.
 There is no implicit now or invented restriction on past/future brews. Server
 controls createdAt/updatedAt.
 
-Overall score is required, independent /100, 0..100 in quarter points. Optional
-acidity/body/aftertaste are nullable /10, 0..10 in quarter points. Omission defaults
-to null and zero remains a valid score. Optional notes trim to null when blank,
+Overall Score (`overallScore`) is required, independently entered /100, 0..100
+in quarter points. The eight optional **quality**, not intensity, fields all use
+the same finite JSON number validator, 0..10 in quarter points, or null:
+Fragrance/Aroma (`fragranceAroma`), Flavor (`flavor`), Aftertaste (`aftertaste`),
+Acidity (`acidity`), Body (`body`), Balance (`balance`), Sweetness (`sweetness`),
+and Overall Impression (`overallImpression`). Overall Impression /10 is separate
+from Overall Score /100; neither is calculated from the other or the attributes.
+No coercion, Cup Checks, uniformity/clean-cup/five-cup/defect fields or baseline
+formula. POST omission defaults each quality to null; zero is valid and distinct
+from absent. Optional notes trim to null when blank,
 max5000 code units; optional tags default to[], max32 distinct trimmed nonblank
 strings max100, case-sensitive. Duplicates after trimming are rejected. Output
 tags use JavaScript default UTF-16 lexical sort, not database collation. No score
-or example assessment is seeded. POST stores tastingMode quick; stored sensory
-mode may be returned, but #18 does not accept mode switching or expanded attributes.
+or example assessment is seeded. POST accepts optional `tastingMode`, exactly
+`quick` or `sensory`, defaulting to `quick`. Explicit null/unknown/case-variant
+mode is invalid. Either mode may contain none, some or all qualities. Expanded
+values in quick mode are retained collapsed assessment values, not an instruction
+to infer sensory mode. There is one shared assessment, one tags array and one
+notes field; no separate quick/detailed copies or mandatory questionnaire.
 
 Pours are 1..32 strict `{waterGrams,startTimeSeconds}` objects. Array order assigns
 contiguous zero-based positions; output adds position. Client positions, child
@@ -60,15 +75,22 @@ waterGrams. Total duration includes drawdown; last start need not equal duration
 No automatic schedule/total repair. Ratio and cumulative targets are derived.
 
 PATCH requires at least1 editable field from POST except coffeeId. It rejects
-unknown fields, owner/ID/timestamps, mode, expanded attributes and immutable coffee
-association even if unchanged. Omission preserves; null clears nullable values;
+unknown fields, owner/ID/timestamps and immutable coffee
+association even if unchanged. Mode-only and one-quality-only edits are meaningful.
+PATCH has no defaults: omission preserves every stored assessment field/mode;
+null clears only the supplied nullable quality/notes; zero persists;
 [] clears tags; supplied pours replace the entire nonempty schedule. Inside the
 same owner-locked transaction, validate existing output first, merge the partial
 input with the complete stored recipe, validate all invariants BEFORE mutation.
 Water-only mismatch or shortened duration below a retained start is400, with no
 parent/timestamp/child change. Invalid existing state is503, not caller400.
 Successful edits preserve ID/createdAt/coffeeId/count, explicitly update updatedAt,
-and preserve hidden expanded sensory columns and stored mode. A recipe sent to
+and preserve all omitted qualities and stored mode. Mode-only
+`quick -> sensory -> quick -> sensory` edits preserve all eight qualities,
+overallScore, tags, notes, recipe and pours. Expanded-only edits preserve mode;
+shared quality edits remain visible in both modes. Recipe-, notes-, tags- and
+overallScore-only edits do not clear or recalculate other assessment values.
+A recipe sent to
 ordinary POST creates a NEW ID; no separate copy endpoint.
 
 DELETE permanently removes only the owned brew and cascading pours/tags. Coffee,
@@ -86,7 +108,28 @@ GET/PATCH/DELETE lock the owner-scoped parent; PATCH writes and complete child
 replacements are atomic. Child reads use owner-joined SQL, and replacements are
 authorized by that same locked owned parent. Output validation is inside the write
 transaction. Parallel patches serialize to complete submitted states, never mixed
-child sets. Expanded sensory fields are not rewritten by quick/recipe edits.
+child sets. The complete merged assessment, including all qualities and mode,
+is explicitly written without defaulting omitted values or hardcoding quick.
+Existing valid nullable columns/mode require no migration/backfill. Formerly
+hidden sensory qualities are intentionally public only to their authenticated owner.
+
+## Sensory examples
+
+Use the unchanged required recipe/coffee/pours plus `overallScore: 87.25`:
+
+- With no mode/qualities: returns `tastingMode: "quick"`, all eight qualities null.
+- With `tastingMode: "sensory", acidity: 0, fragranceAroma: 8.25,
+  overallImpression: 7.75`: those values persist, other qualities remain null,
+  and overallScore stays 87.25. No follow-up write or questionnaire is required.
+- PATCH `{ "tastingMode": "quick" }`, then `{ "tastingMode": "sensory" }`:
+  changes only mode/updatedAt, preserving the same ID/coffee/createdAt/count and
+  complete recipe/assessment.
+- PATCH `{ "flavor": 0, "balance": null }`: updates those two qualities only,
+  preserving mode and the independent /100 score.
+- PATCH `{ "overallImpression": 10.25 }` or `{ "tastingMode": null }`:
+  generic400; complete graph/timestamp unchanged. Foreign sensory PATCH is the
+  same404 as an absent ID. Corrupt expanded stored output is generic503 before
+  mutation, never repaired through PATCH or classified as caller400.
 
 Strict collection query accepts only optional coffeeId UUID, limit and offset.
 Pagination values are unsigned ASCII decimal strings; defaults50/0, ranges1..100
@@ -153,11 +196,21 @@ corepack pnpm db:generate
 ```
 
 The brew harness exercises injection plus actual loopback HTTP and app/pool
-recreation; quick/null/zero/full assessments, copy/edit/delete/history, tied paging,
+recreation; quick/sensory none/partial/full8 assessments, all8 identical
+null/zero/quarter/bounds/type validation, independent /100-/10 scores,
+detail-after-quick, repeated non-destructive mode roundtrips and omission-preserving
+individual/recipe/notes/tags/score edits; copy/edit/delete/history, tied paging,
 reciprocal IDOR and association, unchanged validation snapshots, merged patches,
-hidden sensory preservation, complete concurrent schedules/tags, FK deletion
-race, and actual post-parent child/projection rollback. Exact generated-owner PG
-instrumentation is removed in finally, alongside exact generated users and all
+existing stored sensory preservation, concurrent complete assessments and disjoint
+recipe/sensory edits, complete concurrent schedules/tags, FK deletion
+race, and actual post-parent sensory/child/projection rollback plus restored retry.
+A local owner-predicate omission must fail the new reciprocal sensory PATCH
+assertion; restore the exact candidate and rerun successfully (never commit the
+negative mutation). Persisted invalid expanded output is exercised on the
+verified disposable DB by temporarily retaining the flavor check as NOT VALID
+around one exact generated-owner row, restoring the value and validating the
+original check in finally. No production hooks or committed schema changes.
+Exact generated-owner PG instrumentation is removed in finally, alongside exact generated users and all
 apps/pools/sockets. It tests denied real sessions/origins before tracked domain
 work, real refused/stalled TCP authority/domain failures, queue/drain bounds and
 same-pool recovery. `CUPMEMO_BREW_TEST_LOG` optionally saves verified sanitized

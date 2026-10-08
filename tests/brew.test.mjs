@@ -31,9 +31,73 @@ describe('brew contracts', () => {
       acidity: null,
       body: null,
       aftertaste: null,
+      fragranceAroma: null,
+      flavor: null,
+      balance: null,
+      sweetness: null,
+      overallImpression: null,
+      tastingMode: 'quick',
       tastingTags: [],
       notes: null,
     });
+  });
+  it('accepts optional shared sensory quality and explicit modes without patch defaults', () => {
+    const qualities = [
+      'acidity',
+      'body',
+      'aftertaste',
+      'fragranceAroma',
+      'flavor',
+      'balance',
+      'sweetness',
+      'overallImpression',
+    ];
+    for (const tastingMode of ['quick', 'sensory']) {
+      const minimal = contracts.brewCreateSchema.parse({ ...recipe, tastingMode });
+      expect(minimal.tastingMode).toBe(tastingMode);
+      for (const key of qualities) expect(minimal[key]).toBeNull();
+      expect(contracts.brewPatchSchema.parse({ tastingMode })).toEqual({ tastingMode });
+      for (const key of qualities) {
+        for (const value of [0, 0.25, 10, null]) {
+          expect(
+            contracts.brewCreateSchema.parse({ ...recipe, tastingMode, [key]: value })[key],
+          ).toBe(value);
+          expect(contracts.brewPatchSchema.parse({ [key]: value })).toEqual({ [key]: value });
+        }
+        for (const value of [-0.25, 10.25, 0.1, '8', true, {}, [], NaN, Infinity, -Infinity]) {
+          expect(
+            contracts.brewCreateSchema.safeParse({ ...recipe, tastingMode, [key]: value }).success,
+          ).toBe(false);
+          expect(contracts.brewPatchSchema.safeParse({ [key]: value }).success).toBe(false);
+        }
+      }
+    }
+    for (const tastingMode of [null, 'Quick', 'detailed', '', 0, true]) {
+      expect(contracts.brewCreateSchema.safeParse({ ...recipe, tastingMode }).success).toBe(false);
+      expect(contracts.brewPatchSchema.safeParse({ tastingMode }).success).toBe(false);
+    }
+    for (const extra of [
+      { quickAcidity: 8 },
+      { detailAcidity: 8 },
+      { assessment: { flavor: 8 } },
+      { cupChecks: [] },
+      { uniformity: 10 },
+      { cleanCup: 10 },
+      { defects: 0 },
+    ]) {
+      expect(contracts.brewCreateSchema.safeParse({ ...recipe, ...extra }).success).toBe(false);
+      expect(contracts.brewPatchSchema.safeParse(extra).success).toBe(false);
+    }
+    const independent = contracts.brewCreateSchema.parse({
+      ...recipe,
+      fragranceAroma: 8.25,
+      overallImpression: 7.75,
+      overallScore: 87.25,
+    });
+    expect(independent.tastingMode).toBe('quick');
+    expect(independent.overallScore).toBe(87.25);
+    expect(independent.overallImpression).toBe(7.75);
+    expect(contracts.brewPatchSchema.safeParse({ flavor: undefined }).success).toBe(false);
   });
   it('validates decimals exactly without coercion or epsilon mismatch allowance', () => {
     for (const value of [0.1, 0.29, 15, 99999.99])
@@ -115,8 +179,8 @@ describe('brew contracts', () => {
       { ownerId: 'x' },
       { id: recipe.coffeeId },
       { createdAt: recipe.brewedAt },
-      { tastingMode: 'quick' },
-      { flavor: 8 },
+      { tastingMode: null },
+      { flavor: 10.25 },
       { ratio: 20 },
       { archive: true },
       { pours: [] },
@@ -177,7 +241,7 @@ describe('brew contracts', () => {
       { waterGrams: '0.3' },
       { brewedAt: recipe.brewedAt },
       { pours: brew.pours.map((p) => ({ ...p, position: p.position + 1 })) },
-      { flavor: 8 },
+      { flavor: '8' },
     ])
       expect(contracts.brewSchema.safeParse({ ...brew, ...extra }).success).toBe(false);
   });
