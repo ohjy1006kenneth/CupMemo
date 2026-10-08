@@ -1,14 +1,20 @@
 @import 'tailwindcss';
+@import '@cupmemo/ui/styles.css';
 
 :root {
-  color-scheme: light;
-  --background: #f5f7fa;
-  --surface: #ffffff;
-  --text: #202632;
-  --secondary: #666f7d;
-  --accent: #365fc9;
-  --border: #e0e5ec;
-  --danger: #a33232;
+  --background: var(--cm-background);
+  --surface: var(--cm-surface);
+  --text: var(--cm-text-primary);
+  --secondary: var(--cm-text-secondary);
+  --accent: var(--cm-accent);
+  --border: var(--cm-border);
+  --danger: var(--cm-danger);
+}
+@theme inline {
+  --color-background: var(--cm-background);
+  --color-surface: var(--cm-surface);
+  --color-foreground: var(--cm-text-primary);
+  --color-accent: var(--cm-accent);
 }
 
 * {
@@ -22,7 +28,9 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--text);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--cm-font-sans);
+  font-size: var(--cm-type-body);
+  line-height: var(--cm-line-body);
 }
 a {
   color: var(--accent);
@@ -30,159 +38,116 @@ a {
 a:focus-visible,
 button:focus-visible,
 input:focus-visible {
-  outline: 3px solid #91a9ee;
+  outline: 3px solid var(--cm-focus-ring);
   outline-offset: 3px;
 }
 .auth-page {
   min-height: 100svh;
   display: grid;
   place-items: center;
-  padding: 32px 16px;
+  padding: var(--cm-space-8) var(--cm-space-4);
 }
 .auth-card,
 .account-card {
   overflow-wrap: anywhere;
   width: min(100%, 440px);
-  padding: clamp(24px, 7vw, 40px);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface);
-  box-shadow: 0 12px 36px rgb(32 38 50 / 5%);
+  padding: clamp(var(--cm-space-6), 7vw, var(--cm-space-10));
 }
 .brand {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--cm-control-height);
   color: var(--text);
-  font-size: 1.2rem;
-  font-weight: 750;
+  font-size: var(--cm-type-title);
+  font-weight: var(--cm-weight-strong);
   letter-spacing: -0.04em;
   text-decoration: none;
 }
 .eyebrow {
-  margin: 28px 0 10px;
+  margin: var(--cm-space-6) 0 var(--cm-space-2);
   color: var(--accent);
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: var(--cm-type-caption);
+  font-weight: var(--cm-weight-strong);
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 h1 {
   margin: 0;
-  font-size: clamp(1.8rem, 8vw, 2.2rem);
-  line-height: 1.12;
+  font-size: var(--cm-type-display);
+  font-weight: var(--cm-weight-medium);
+  line-height: var(--cm-line-heading);
   letter-spacing: -0.045em;
 }
 .auth-intro {
-  margin: 12px 0 24px;
+  margin: var(--cm-space-3) 0 var(--cm-space-6);
   color: var(--secondary);
-  line-height: 1.55;
+  line-height: var(--cm-line-body);
 }
 .auth-form {
   display: grid;
-  gap: 18px;
+  gap: var(--cm-space-5);
 }
 .field {
   display: grid;
-  gap: 8px;
+  gap: var(--cm-space-2);
 }
 .field label {
-  font-size: 0.9rem;
-  font-weight: 650;
-}
-.field input {
-  width: 100%;
-  min-height: 48px;
-  padding: 0 13px;
-  border: 1px solid #cbd3df;
-  border-radius: 8px;
-  background: white;
-  color: var(--text);
-  font: inherit;
-}
-.field input:focus-visible {
-  border-color: var(--accent);
+  font-size: var(--cm-type-label);
+  font-weight: var(--cm-weight-strong);
 }
 .field-hint {
   margin: 0;
   color: var(--secondary);
-  font-size: 0.84rem;
-}
-.primary-button,
-.secondary-button {
-  min-height: 48px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 18px;
-  border: 0;
-  border-radius: 8px;
-  font: inherit;
-  font-weight: 650;
-  text-decoration: none;
-  cursor: pointer;
+  font-size: var(--cm-type-label);
 }
 .primary-button {
   width: 100%;
-  margin-top: 2px;
-  background: var(--accent);
-  color: white;
-}
-.primary-button:hover:not(:disabled) {
-  background: #294da8;
-}
-.primary-button:disabled,
-.secondary-button:disabled {
-  cursor: wait;
-  opacity: 0.7;
 }
 .button-link {
   width: auto;
-  margin-top: 8px;
-}
-.secondary-button {
-  border: 1px solid var(--border);
-  background: white;
-  color: var(--text);
-}
-.secondary-button:hover:not(:disabled) {
-  background: #f1f4f8;
+  margin-top: var(--cm-space-2);
 }
 .form-error {
   margin: 0;
   color: var(--danger);
-  font-size: 0.9rem;
-  line-height: 1.45;
+  font-size: var(--cm-type-label);
+  line-height: var(--cm-line-body);
 }
 .form-switch {
-  margin: 2px 0 0;
+  margin: 0;
   color: var(--secondary);
   text-align: center;
-  font-size: 0.9rem;
+  font-size: var(--cm-type-label);
 }
 .form-switch a {
-  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--cm-control-height);
+  font-weight: var(--cm-weight-strong);
 }
 .account-note {
-  margin: 20px 0 0;
+  margin: var(--cm-space-5) 0 0;
   color: var(--secondary);
-  font-size: 0.82rem;
-  line-height: 1.5;
+  font-size: var(--cm-type-label);
+  line-height: var(--cm-line-body);
 }
 .account-page {
   width: min(100% - 32px, 880px);
   margin: 0 auto;
-  padding: 28px 0 56px;
+  padding: var(--cm-space-8) 0 var(--cm-space-12);
 }
 .account-header {
   min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: clamp(48px, 12vh, 112px);
+  gap: var(--cm-space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--cm-space-12);
 }
 .account-card {
   width: min(100%, 640px);
-  padding: clamp(28px, 6vw, 48px);
+  padding: clamp(var(--cm-space-6), 6vw, var(--cm-space-12));
 }
 .account-card .eyebrow {
   margin-top: 0;
@@ -193,7 +158,9 @@ h1 {
 .signout-area {
   display: grid;
   justify-items: end;
-  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  gap: var(--cm-space-2);
 }
 .signout-area .form-error {
   max-width: 280px;
@@ -212,7 +179,10 @@ h1 {
 }
 @media (max-width: 360px) {
   .auth-card {
-    padding: 24px 20px;
+    padding: var(--cm-space-6) var(--cm-space-5);
+  }
+  h1 {
+    font-size: var(--cm-type-heading);
   }
   .account-page {
     width: min(100% - 24px, 880px);

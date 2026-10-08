@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
+import { Button, Input } from '@cupmemo/ui';
 import { authClient } from '../auth/client';
 
 type AuthFormProps = { mode: 'sign-in' | 'sign-up' };
@@ -76,7 +77,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       {signingUp && (
         <div className="field">
           <label htmlFor="name">Name</label>
-          <input
+          <Input
             id="name"
             name="name"
             type="text"
@@ -101,7 +102,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       )}
       <div className="field">
         <label htmlFor="email">Email</label>
-        <input
+        <Input
           id="email"
           name="email"
           type="email"
@@ -124,7 +125,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       </div>
       <div className="field">
         <label htmlFor="password">Password</label>
-        <input
+        <Input
           id="password"
           name="password"
           type="password"
@@ -160,9 +161,9 @@ export function AuthForm({ mode }: AuthFormProps) {
           {error}
         </p>
       )}
-      <button className="primary-button" type="submit" disabled={pending}>
+      <Button className="primary-button" type="submit" disabled={pending}>
         {pending ? 'Please wait…' : signingUp ? 'Create account' : 'Sign in'}
-      </button>
+      </Button>
       <p className="form-switch">
         {signingUp ? 'Already have an account?' : 'New to CupMemo?'}{' '}
         <Link href={signingUp ? '/sign-in' : '/sign-up'}>

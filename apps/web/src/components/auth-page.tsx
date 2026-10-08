@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { Card } from '@cupmemo/ui';
 import { currentAuthSession } from '../auth/session';
 import { AuthForm } from './auth-form';
 
@@ -13,7 +14,7 @@ export async function AuthPage({ mode }: AuthPageProps) {
 
   return (
     <main className="auth-page">
-      <section className="auth-card" aria-labelledby="auth-title">
+      <Card className="auth-card" aria-labelledby="auth-title">
         <Link className="brand" href="/" aria-label="CupMemo home">
           CupMemo
         </Link>
@@ -28,7 +29,7 @@ export async function AuthPage({ mode }: AuthPageProps) {
         {signingUp && (
           <p className="account-note">Email verification is not required at this time.</p>
         )}
-      </section>
+      </Card>
     </main>
   );
 }
@@ -36,7 +37,7 @@ export async function AuthPage({ mode }: AuthPageProps) {
 function Unavailable() {
   return (
     <main className="auth-page">
-      <section className="auth-card" aria-labelledby="unavailable-title">
+      <Card className="auth-card" aria-labelledby="unavailable-title">
         <Link className="brand" href="/">
           CupMemo
         </Link>
@@ -45,7 +46,7 @@ function Unavailable() {
         <a className="primary-button button-link" href="">
           Try again
         </a>
-      </section>
+      </Card>
     </main>
   );
 }
