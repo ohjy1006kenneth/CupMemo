@@ -4,7 +4,7 @@ Primary HQ card: `t_18671053`. Issue: https://github.com/ohjy1006kenneth/CupMemo
 
 ## Implemented boundary
 
-`/` redirects to `/sign-in` or `/app`. `/sign-in` and `/sign-up` redirect signed-in visitors to `/app`. `/app` is a protected account landing, not a brew home or app shell. Brew features, email verification/reset delivery, OAuth, installability and offline support are not implemented by this outcome.
+`/` redirects to `/sign-in` or `/app`. `/sign-in` and `/sign-up` redirect signed-in visitors to `/app`. The original account landing is now the protected read-only app shell from [APP_SHELL.md](APP_SHELL.md) (Refs #22); its shared dynamic layout protects Beans, Journal and Gear while the unchanged mounted AccountSession suppresses all private shell children. Usable brew capture, email verification/reset delivery, OAuth, installability and offline support are not implemented by these outcomes.
 
 Fastify alone owns Better Auth and PostgreSQL. Forms use the official pinned Better Auth 1.7.7 React client with `basePath: '/api/v1/auth'` and an explicit browser `window.location.origin` base URL, avoiding public auth URL environment overrides. The pinned client appends the base path to that origin (a relative `baseURL` throws). Client instantiation during SSR performs no request. Browser requests use cookies through the existing same-origin Next rewrite; no public API environment variable, bearer identity, browser storage identity, Next auth handler or extra database pool is added.
 

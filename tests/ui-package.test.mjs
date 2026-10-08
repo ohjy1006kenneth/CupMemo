@@ -25,5 +25,11 @@ it('publishes built browser-safe UI and CSS with one consumer React instance', a
     /^corepack pnpm --filter @cupmemo\/ui build && corepack pnpm api:openapi:check &&/,
   );
   for (const script of ['dev', 'build'])
-    expect(web.scripts[script]).toMatch(/^corepack pnpm --filter @cupmemo\/ui build && next /);
+    expect(web.scripts[script]).toMatch(
+      /^corepack pnpm --filter @cupmemo\/contracts build && corepack pnpm --filter @cupmemo\/ui build && next /,
+    );
+  expect(web.dependencies['@cupmemo/contracts']).toBe('workspace:*');
+  expect(webRequire.resolve('@cupmemo/contracts')).toMatch(
+    /\/packages\/contracts\/dist\/index\.js$/,
+  );
 });

@@ -90,6 +90,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@cupmemo/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@cupmemo/ui':
         specifier: workspace:*
         version: link:../../packages/ui
