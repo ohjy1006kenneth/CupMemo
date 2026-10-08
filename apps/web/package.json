@@ -4,12 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "corepack pnpm --filter @cupmemo/ui build && next dev --hostname 127.0.0.1 --port 3101",
-    "build": "corepack pnpm --filter @cupmemo/ui build && next build",
+    "dev": "corepack pnpm --filter @cupmemo/contracts build && corepack pnpm --filter @cupmemo/ui build && next dev --hostname 127.0.0.1 --port 3101",
+    "build": "corepack pnpm --filter @cupmemo/contracts build && corepack pnpm --filter @cupmemo/ui build && next build",
     "start": "next start --hostname 127.0.0.1 --port 3101",
-    "typecheck": "tsc --project tsconfig.json --noEmit"
+    "typecheck": "corepack pnpm --filter @cupmemo/contracts build && corepack pnpm --filter @cupmemo/ui build && tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@cupmemo/contracts": "workspace:*",
     "@cupmemo/ui": "workspace:*",
     "better-auth": "1.7.7",
     "next": "16.3.8",
