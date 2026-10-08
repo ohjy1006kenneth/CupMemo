@@ -216,6 +216,10 @@ test('wrong credentials and duplicate signup are generic; failed revocation and 
   page,
 }) => {
   const email = await signup(page);
+  // The heading precedes the mounted shelf GET. Stop only after that real
+  // request settles: graceful shutdown can otherwise drain its keepalive
+  // connection past this test's deadline, before Sign out is ever clicked.
+  await expect(page.getByText('No coffees yet', { exact: true })).toBeVisible();
   await stopApi();
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page.locator('.form-error[role="alert"]')).toContainText(
