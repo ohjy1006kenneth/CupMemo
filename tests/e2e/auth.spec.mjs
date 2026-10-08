@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-/* global document, window, Event, getComputedStyle */
+/* global document, window, Event, getComputedStyle, localStorage, sessionStorage */
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import process from 'node:process';
@@ -93,8 +93,14 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await stopApi();
   if (connection) {
-    for (const email of emails)
-      await connection.pool.query('DELETE FROM public."user" WHERE email = $1', [email]);
+    for (const email of emails) {
+      const generated = await connection.pool.query(
+        'SELECT id FROM public."user" WHERE email = $1',
+        [email],
+      );
+      for (const { id } of generated.rows)
+        await connection.pool.query('DELETE FROM public."user" WHERE id = $1', [id]);
+    }
     await connection.close();
   }
   expect(apiOutput.includes(password)).toBe(false);
@@ -279,7 +285,7 @@ async function seedBrew(request, coffeeId, index = 0) {
 test('shell real empty destinations, anchors, direct links, reload, back/forward and keyboard', async ({
   page,
 }) => {
-  for (const route of ['/app', '/app/journal', '/app/gear']) {
+  for (const route of ['/app', '/app/journal', '/app/gear', '/app/coffees/new']) {
     await page.goto(route);
     await expect(page).toHaveURL(`${origin}/sign-in`);
   }
@@ -613,3 +619,389 @@ for (const width of [320, 360, 390, 430, 1280]) {
     await expect(page).toHaveURL(`${origin}/sign-in`);
   });
 }
+
+async function openManual(page) {
+  await page.getByRole('link', { name: 'Add coffee', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Add a coffee' })).toBeVisible();
+  await expect(page.getByLabel('Roaster (required)', { exact: true })).toHaveValue('');
+  await expect(page.getByRole('navigation').locator('[aria-current="page"]')).toHaveText('Beans');
+}
+async function fillManual(page, name = 'Manual private coffee') {
+  await page.getByLabel('Roaster (required)', { exact: true }).fill('  Manual roaster  ');
+  await page.getByLabel('Coffee name (required)', { exact: true }).fill(`  ${name}  `);
+}
+async function ownedCoffeeCount(email) {
+  const result = await connection.pool.query(
+    'SELECT count(*)::int AS count FROM cupmemo.coffees WHERE owner_id IN (SELECT id FROM public."user" WHERE email = $1)',
+    [email],
+  );
+  return result.rows[0].count;
+}
+
+test('manual real browser minimal and full optional writes persist through reload and fresh signin with no replay', async ({
+  page,
+  context,
+  browser,
+}, testInfo) => {
+  const email = await signup(page);
+  await expect(page.getByText('No coffees yet', { exact: true })).toBeVisible();
+  let posts = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url() === `${origin}/api/v1/coffees`) posts++;
+  });
+  await openManual(page);
+  await fillManual(page);
+  const created = page.waitForResponse(
+    (response) =>
+      response.url() === `${origin}/api/v1/coffees` && response.request().method() === 'POST',
+  );
+  await page.getByRole('button', { name: 'Add coffee to shelf', exact: true }).click();
+  expect((await created).status()).toBe(201);
+  await expect(page).toHaveURL(`${origin}/app`);
+  await expect(page.getByText('Manual private coffee', { exact: true })).toBeVisible();
+  expect(posts).toBe(1);
+  expect(await ownedCoffeeCount(email)).toBe(1);
+  await page.reload();
+  await expect(page.getByText('Manual private coffee', { exact: true })).toBeVisible();
+  const minimalList = await context.request.get('/api/v1/coffees');
+  const minimalCoffee = (await minimalList.json()).coffees[0];
+  expect(minimalCoffee).toMatchObject({
+    roaster: 'Manual roaster',
+    name: 'Manual private coffee',
+    country: null,
+    region: null,
+    producer: null,
+    farmStation: null,
+    variety: null,
+    process: null,
+    elevation: null,
+    roastDate: null,
+    tastingNotes: [],
+  });
+  await openManual(page);
+  await page.reload();
+  await expect(page.getByLabel('Coffee name (required)', { exact: true })).toHaveValue('');
+  expect(posts).toBe(1);
+  await fillManual(page, 'Full optional coffee');
+  for (const [label, value] of [
+    ['Country', 'Ethiopia'],
+    ['Region', 'Sidama'],
+    ['Producer', 'Smallholders'],
+    ['Farm / station', 'Station'],
+    ['Variety', '74158'],
+    ['Process', 'Washed'],
+    ['Elevation', '2,200–2,350 m'],
+  ])
+    await page.getByLabel(`${label} (optional)`, { exact: true }).fill(` ${value} `);
+  await page.getByLabel('Roast date (optional)', { exact: true }).fill('2028-02-29');
+  await page
+    .getByLabel('Roaster tasting notes (optional)', { exact: true })
+    .fill(' Peach \n\nFloral\nPeach, citrus');
+  await page.getByRole('button', { name: 'Add coffee to shelf', exact: true }).click();
+  await expect(page).toHaveURL(`${origin}/app`);
+  await expect(page.getByText('Full optional coffee', { exact: true })).toBeVisible();
+  const list = await context.request.get('/api/v1/coffees');
+  expect(list.status()).toBe(200);
+  const full = (await list.json()).coffees.find((coffee) => coffee.name === 'Full optional coffee');
+  expect(full).toMatchObject({
+    country: 'Ethiopia',
+    region: 'Sidama',
+    producer: 'Smallholders',
+    farmStation: 'Station',
+    variety: '74158',
+    process: 'Washed',
+    elevation: '2,200–2,350 m',
+    roastDate: '2028-02-29',
+    tastingNotes: ['Floral', 'Peach', 'Peach, citrus'],
+  });
+  expect(posts).toBe(2);
+  expect(await ownedCoffeeCount(email)).toBe(2);
+  await page.screenshot({
+    path: testInfo.outputPath('manual-real-saved-shelf.png'),
+    fullPage: true,
+  });
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page).toHaveURL(`${origin}/sign-in`);
+  const fresh = await browser.newContext({ baseURL: origin });
+  const freshPage = await fresh.newPage();
+  await signin(freshPage, email);
+  await expect(freshPage.getByText('Full optional coffee', { exact: true })).toBeVisible();
+  await fresh.close();
+});
+
+test('manual native cancel and ordinary nav/back unload dialogs retain or deliberately discard without writes', async ({
+  page,
+}) => {
+  const email = await signup(page);
+  await openManual(page);
+  await fillManual(page);
+  page.once('dialog', (dialog) => {
+    expect(dialog.type()).toBe('confirm');
+    expect(dialog.message()).toContain('Discard');
+    return dialog.dismiss();
+  });
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByLabel('Coffee name (required)', { exact: true })).toHaveValue(
+    '  Manual private coffee  ',
+  );
+  page.once('dialog', (dialog) => {
+    expect(dialog.type()).toBe('beforeunload');
+    return dialog.dismiss();
+  });
+  await page.getByRole('link', { name: 'Beans', exact: true }).click();
+  await expect(page).toHaveURL(`${origin}/app/coffees/new`);
+  const backWarning = page.waitForEvent('dialog');
+  page.once('dialog', (dialog) => {
+    expect(dialog.type()).toBe('beforeunload');
+    return dialog.dismiss();
+  });
+  // A dismissed back navigation never commits: don't wait for a nonexistent load.
+  await page.evaluate(() => window.history.back());
+  await backWarning;
+  await expect(page).toHaveURL(`${origin}/app/coffees/new`);
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page).toHaveURL(`${origin}/app`);
+  expect(await ownedCoffeeCount(email)).toBe(0);
+  await openManual(page);
+  page.once('dialog', () => {
+    throw new Error('Pristine cancel must not show a dialog');
+  });
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page).toHaveURL(`${origin}/app`);
+});
+
+test('manual real account isolation and revoked session POST401 clear the draft with no write', async ({
+  page,
+  context,
+}) => {
+  const emailA = await signup(page);
+  await openManual(page);
+  await fillManual(page, 'Account A coffee');
+  await page.getByRole('button', { name: 'Add coffee to shelf', exact: true }).click();
+  await expect(page).toHaveURL(`${origin}/app`);
+  await openManual(page);
+  await fillManual(page, 'Private unfinished A');
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page).toHaveURL(`${origin}/sign-in`);
+  const emailB = await signup(page);
+  await expect(page.getByText('No coffees yet', { exact: true })).toBeVisible();
+  expect((await (await context.request.get('/api/v1/coffees')).json()).coffees).toHaveLength(0);
+  await openManual(page);
+  await fillManual(page, 'Revoked must not save');
+  await connection.pool.query(
+    'DELETE FROM public.session WHERE user_id IN (SELECT id FROM public."user" WHERE email = $1)',
+    [emailB],
+  );
+  const denied = page.waitForResponse(
+    (response) =>
+      response.url() === `${origin}/api/v1/coffees` && response.request().method() === 'POST',
+  );
+  await page.getByRole('button', { name: 'Add coffee to shelf', exact: true }).click();
+  expect((await denied).status()).toBe(401);
+  await expect(page).toHaveURL(`${origin}/sign-in`);
+  await expect(page.getByLabel('Roaster (required)', { exact: true })).toHaveCount(0);
+  expect(await ownedCoffeeCount(emailB)).toBe(0);
+  expect(await ownedCoffeeCount(emailA)).toBe(1);
+  const storage = await page.evaluate(() => ({
+    keys: Object.keys(localStorage),
+    sessionKeys: Object.keys(sessionStorage),
+    broadcast: JSON.parse(localStorage.getItem('better-auth.message') || '{}'),
+  }));
+  // Existing pinned official auth cross-tab notification contains no credentials/draft.
+  expect(storage.keys).toEqual(['better-auth.message']);
+  expect(storage.sessionKeys).toEqual([]);
+  expect(Object.keys(storage.broadcast).sort()).toEqual(['clientId', 'data', 'event', 'timestamp']);
+  expect(Object.keys(storage.broadcast.data)).toEqual(['trigger']);
+});
+
+test('manual owned API outage produces uncertainty and check-shelf recovery without replay', async ({
+  page,
+}) => {
+  const email = await signup(page);
+  await openManual(page);
+  await fillManual(page);
+  await stopApi();
+  try {
+    await page.getByRole('button', { name: 'Add coffee to shelf', exact: true }).click();
+    await expect(page.locator('.coffee-form [role="alert"]')).toContainText('may have been saved');
+    await expect(
+      page.getByRole('button', { name: 'Add coffee to shelf', exact: true }),
+    ).toBeDisabled();
+  } finally {
+    await startApi();
+  }
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('link', { name: 'Check coffee shelf', exact: true }).click();
+  await expect(page.getByText('No coffees yet', { exact: true })).toBeVisible();
+  expect(await ownedCoffeeCount(email)).toBe(0);
+  await openManual(page);
+  await page.reload();
+  await expect(page.getByLabel('Coffee name (required)', { exact: true })).toHaveValue('');
+  expect(await ownedCoffeeCount(email)).toBe(0);
+});
+
+for (const fault of [400, 403, 500, 'malformed201', 'stalled-late']) {
+  test(`manual LABELED POST fault simulation ${fault} never creates false success`, async ({
+    page,
+  }, testInfo) => {
+    const email = await signup(page);
+    await openManual(page);
+    await fillManual(page);
+    let release;
+    const gate = new Promise((done) => {
+      release = done;
+    });
+    let posts = 0;
+    await page.route('**/api/v1/coffees', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      posts++;
+      if (fault === 'stalled-late') await gate;
+      await route
+        .fulfill({
+          status: typeof fault === 'number' ? fault : 201,
+          contentType: 'application/json',
+          body: '{"controlledFault":true}',
+        })
+        .catch(() => {});
+    });
+    await page.getByRole('button', { name: 'Add coffee to shelf', exact: true }).click();
+    if (fault === 'stalled-late') {
+      await expect(
+        page.getByRole('button', { name: 'Adding coffee…', exact: true }),
+      ).toBeDisabled();
+      await expect(page.getByLabel('Roaster (required)', { exact: true })).toHaveAttribute(
+        'readonly',
+        '',
+      );
+      await page.screenshot({
+        path: testInfo.outputPath('manual-controlled-pending.png'),
+        fullPage: true,
+      });
+      page.once('dialog', (dialog) => {
+        expect(dialog.message()).toContain('cannot roll back');
+        return dialog.dismiss();
+      });
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    }
+    await expect(page.locator('.coffee-form [role="alert"]')).toContainText(
+      fault === 400 || fault === 403 ? 'not added' : 'may have been saved',
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`manual-controlled-${fault}.png`),
+      fullPage: true,
+    });
+    if (fault === 400 || fault === 403) {
+      await expect(
+        page.getByRole('button', { name: 'Add coffee to shelf', exact: true }),
+      ).toBeEnabled();
+    } else {
+      await expect(
+        page.getByRole('button', { name: 'Add coffee to shelf', exact: true }),
+      ).toBeDisabled();
+      await page
+        .getByLabel('Coffee name (required)', { exact: true })
+        .fill('Changed uncertain draft');
+      await page.locator('form.coffee-form').evaluate((form) => form.requestSubmit());
+      expect(posts).toBe(1);
+    }
+    release();
+    await page.unrouteAll({ behavior: 'wait' });
+    await expect(page).toHaveURL(`${origin}/app/coffees/new`);
+    expect(await ownedCoffeeCount(email)).toBe(0);
+  });
+}
+
+test('manual rendered form light/dark phone and desktop, keyboard, long optional values and validation evidence', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000); // New ten-combination rendered form test, unchanged existing test deadlines.
+  const errors = [];
+  page.on('pageerror', () => errors.push('uncaught page error'));
+  await signup(page);
+  await openManual(page);
+  for (const colorScheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme });
+    for (const width of [320, 360, 390, 430, 1280]) {
+      await page.setViewportSize({ width, height: 700 });
+      await page.screenshot({
+        path: testInfo.outputPath(`manual-empty-${width}-${colorScheme}.png`),
+        fullPage: true,
+      });
+      await page.getByLabel('Roaster (required)', { exact: true }).focus();
+      await page.keyboard.press('Tab');
+      await expect(page.getByLabel('Coffee name (required)', { exact: true })).toBeFocused();
+      await fillManual(page, 'LongCoffeeLabel'.repeat(12));
+      await page
+        .getByLabel('Producer (optional)', { exact: true })
+        .fill('Long optional producer '.repeat(20));
+      await page.getByLabel('Elevation (optional)', { exact: true }).fill('2,200–2,350 m');
+      await page
+        .getByLabel('Roaster tasting notes (optional)', { exact: true })
+        .fill(' Peach \nPeach');
+      await page.getByRole('button', { name: 'Add coffee to shelf', exact: true }).click();
+      await expect(
+        page.getByLabel('Roaster tasting notes (optional)', { exact: true }),
+      ).toBeFocused();
+      await expect(page.locator('.coffee-form [role="alert"]')).toContainText('Check');
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+      expect(await page.getByRole('main').count()).toBe(1);
+      expect(await page.getByRole('heading', { level: 1 }).count()).toBe(1);
+      for (const control of await page.locator('form input, form textarea, form button').all()) {
+        expect((await control.boundingBox()).height).toBeGreaterThanOrEqual(44);
+      }
+      await page.getByRole('button', { name: 'Cancel', exact: true }).focus();
+      await page.screenshot({
+        path: testInfo.outputPath(`manual-filled-errors-${width}-${colorScheme}.png`),
+        fullPage: true,
+      });
+      if (width === 390) {
+        const colors = await page.evaluate(() => {
+          const input = getComputedStyle(document.querySelector('#roaster'));
+          const help = getComputedStyle(document.querySelector('#notes-help'));
+          const error = getComputedStyle(document.querySelector('.form-error'));
+          return {
+            text: input.color,
+            surface: input.backgroundColor,
+            border: input.borderTopColor,
+            secondary: help.color,
+            error: error.color,
+            background: getComputedStyle(document.body).backgroundColor,
+          };
+        });
+        const luminance = (rgb) => {
+          const values = rgb
+            .match(/[\d.]+/g)
+            .slice(0, 3)
+            .map(Number)
+            .map((value) => value / 255)
+            .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4));
+          return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
+        };
+        const contrast = (a, b) =>
+          (Math.max(luminance(a), luminance(b)) + 0.05) /
+          (Math.min(luminance(a), luminance(b)) + 0.05);
+        const ratios = {
+          inputText: contrast(colors.text, colors.surface),
+          inputBoundary: contrast(colors.border, colors.surface),
+          optionalHelp: contrast(colors.secondary, colors.background),
+          error: contrast(colors.error, colors.background),
+        };
+        expect(ratios.inputText).toBeGreaterThanOrEqual(4.5);
+        expect(ratios.inputBoundary).toBeGreaterThanOrEqual(3);
+        expect(ratios.optionalHelp).toBeGreaterThanOrEqual(4.5);
+        expect(ratios.error).toBeGreaterThanOrEqual(4.5);
+        await testInfo.attach(`manual-contrast-${colorScheme}`, {
+          body: JSON.stringify({ colors, ratios }, null, 2),
+          contentType: 'application/json',
+        });
+      }
+      page.once('dialog', (dialog) => dialog.accept());
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await openManual(page);
+    }
+  }
+  expect(errors).toHaveLength(0);
+});
