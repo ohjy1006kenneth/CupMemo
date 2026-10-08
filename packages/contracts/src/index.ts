@@ -145,6 +145,8 @@ const tags = z
   .refine((values) => new Set(values).size === values.length)
   .transform((values) => values.sort());
 const pour = z.strictObject({ waterGrams: grams, startTimeSeconds: seconds });
+const quality = quarter(10).nullable();
+const tastingMode = z.enum(['quick', 'sensory']);
 const brewEditable = {
   brewer: requiredText,
   grinder: requiredText,
@@ -155,9 +157,15 @@ const brewEditable = {
   totalBrewTimeSeconds: seconds,
   brewedAt: brewDate,
   overallScore: quarter(100),
-  acidity: quarter(10).nullable(),
-  body: quarter(10).nullable(),
-  aftertaste: quarter(10).nullable(),
+  tastingMode,
+  acidity: quality,
+  body: quality,
+  aftertaste: quality,
+  fragranceAroma: quality,
+  flavor: quality,
+  balance: quality,
+  sweetness: quality,
+  overallImpression: quality,
   tastingTags: tags,
   notes: brewNotes,
   pours: z.array(pour).min(1).max(32),
@@ -185,6 +193,12 @@ export const brewCreateSchema = z
     acidity: brewEditable.acidity.default(null),
     body: brewEditable.body.default(null),
     aftertaste: brewEditable.aftertaste.default(null),
+    fragranceAroma: quality.default(null),
+    flavor: quality.default(null),
+    balance: quality.default(null),
+    sweetness: quality.default(null),
+    overallImpression: quality.default(null),
+    tastingMode: tastingMode.default('quick'),
     tastingTags: tags.default([]),
     notes: brewNotes.default(null),
   })
@@ -213,7 +227,6 @@ export const brewSchema = z
     brewedAt: utcMillis,
     createdAt: utcMillis,
     updatedAt: utcMillis,
-    tastingMode: z.enum(['quick', 'sensory']),
     notes: storedText(5000).nullable(),
     tastingTags: storedNotes,
     pours: z

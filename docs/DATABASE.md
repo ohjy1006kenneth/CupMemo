@@ -79,8 +79,10 @@ boundary. There are no speculative triggers or deferrable constraints. Brew API
 contracts validate original numeric input before PostgreSQL fixed-scale rounding;
 merged PATCH recipes and output validation share the owner-locked transaction.
 See [BREW_API.md](BREW_API.md) for delivered quick evaluation, ordered children,
-private CRUD and real verification. Expanded sensory input remains future #19;
-existing hidden sensory columns/mode survive quick/recipe edits.
+private CRUD and real verification. Issue #19 extends the same API with all eight
+optional sensory qualities and quick/sensory mode input. Mode changes and partial
+assessment/recipe edits preserve omitted values in the same owner-locked
+transaction; no migration/backfill or UI implementation is introduced.
 
 ## Sensory model
 
