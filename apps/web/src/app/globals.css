@@ -309,6 +309,43 @@ h1 {
   gap: var(--cm-space-5);
   min-width: 0;
 }
+.brew-fields {
+  display: grid;
+  gap: var(--cm-space-5);
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.brew-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--cm-space-2) var(--cm-space-4);
+}
+.brew-facts > div {
+  display: contents;
+}
+.brew-facts dt {
+  color: var(--cm-text-secondary);
+}
+.brew-facts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.brew-detail section {
+  padding-block: var(--cm-space-4);
+  border-bottom: var(--cm-border-width) solid var(--cm-border);
+}
+.brew-detail-pours {
+  padding-inline-start: var(--cm-space-5);
+}
+.brew-detail-pours li {
+  margin-block: var(--cm-space-3);
+}
+.brew-written-notes {
+  white-space: pre-wrap;
+}
 .brew-entry h2 {
   font-size: var(--cm-type-title);
   font-weight: var(--cm-weight-medium);
@@ -360,6 +397,11 @@ h1 {
 }
 .brew-row {
   justify-content: space-between;
+}
+.brew-pour-actions .cm-button {
+  min-width: 44px;
+  min-height: 44px;
+  flex: 0 0 auto;
 }
 .brew-segment {
   margin-block: var(--cm-space-4);

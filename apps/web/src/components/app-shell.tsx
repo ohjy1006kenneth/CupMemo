@@ -14,7 +14,7 @@ const destinations = [
 
 export function AppShell({ name, children }: { name: string; children: ReactNode }) {
   const pathname = usePathname();
-  const tastingId = /^\/app\/brews\/([^/]+)\/tasting$/.exec(pathname)?.[1];
+  const tastingId = /^\/app\/brews\/([^/]+)(?:\/tasting)?$/.exec(pathname)?.[1];
   const tastingRoute = tastingId !== undefined && brewIdSchema.safeParse(tastingId).success;
   return (
     <div className="app-shell">
