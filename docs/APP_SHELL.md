@@ -2,6 +2,12 @@
 
 Issue: https://github.com/ohjy1006kenneth/CupMemo/issues/22. Primary HQ card: `t_c9c310ac`.
 
+The subsequent [private history/detail/saved edit outcome](BREW_HISTORY.md)
+(Refs #25, primary card `t_1befe331`) supersedes historical recent20-only Journal
+and unavailable-detail/recipe-edit limits below. Journal uses bounded pages and
+is current on valid UUID detail as well as tasting routes. Beans and the shared
+dynamic server gate/AccountSession/auth transport remain unchanged.
+
 ## Delivered boundary
 
 The dynamic `/app` layout reuses the existing authoritative `currentAuthSession`

@@ -4,8 +4,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 're
 import { useRouter } from 'next/navigation';
 import { Button } from '@cupmemo/ui';
 import { brewIdSchema, brewResponseSchema, type Brew, type BrewPatch } from '@cupmemo/contracts';
-import { assessmentFromBrew, parseAssessmentPatch, type Assessment } from './brew-draft';
+import { savedDraft, parseSavedPatch, patchMatches, type Draft } from './brew-draft';
 import { QuickTastingEditor } from './quick-tasting-editor';
+import { RecipeEditor } from './recipe-editor';
 
 type Request = {
   controller: AbortController;
@@ -25,7 +26,8 @@ export function SavedTastingEntry({ id }: { id: string }) {
 function SavedTastingRequest({ id }: { id: string | null }) {
   const router = useRouter();
   const [original, setOriginal] = useState<Brew | null>(null);
-  const [assessment, setAssessment] = useState<Assessment | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [panel, setPanel] = useState<'recipe' | 'tasting'>('tasting');
   const [readStatus, setReadStatus] = useState<'loading' | 'error' | 'ready' | 'unavailable'>(
     id ? 'loading' : 'unavailable',
   );
@@ -41,7 +43,7 @@ function SavedTastingRequest({ id }: { id: string | null }) {
     write = useRef<Request | null>(null),
     locked = useRef(false),
     protect = useRef(false);
-  const delta = original && assessment ? parseAssessmentPatch(original, assessment) : null;
+  const delta = original && draft ? parseSavedPatch(original, draft) : null;
   const guarded =
     !terminal &&
     ((!!delta && (!delta.success || delta.data !== null)) ||
@@ -70,7 +72,7 @@ function SavedTastingRequest({ id }: { id: string | null }) {
   function clear() {
     protect.current = false;
     setOriginal(null);
-    setAssessment(null);
+    setDraft(null);
     setErrors({});
     setMessage('');
   }
@@ -141,7 +143,7 @@ function SavedTastingRequest({ id }: { id: string | null }) {
         stop(current);
         read.current = null;
         setOriginal(result.data.brew);
-        setAssessment(assessmentFromBrew(result.data.brew));
+        setDraft(savedDraft(result.data.brew));
         setReadStatus('ready');
       } catch {
         failed();
@@ -174,13 +176,28 @@ function SavedTastingRequest({ id }: { id: string | null }) {
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!mounted.current || write.current || locked.current || !id || !original || !assessment)
-      return;
-    const result = parseAssessmentPatch(original, assessment);
+    if (!mounted.current || write.current || locked.current || !id || !original || !draft) return;
+    const result = parseSavedPatch(original, draft);
     if (!result.success) {
       const next: Record<string, string> = {};
       for (const issue of result.error.issues)
-        next[String(issue.path[0] ?? 'overallScore')] = 'Check this value.';
+        next[issue.path.join('.') || 'pours'] = 'Check this value.';
+      const recipeKeys = [
+        'brewer',
+        'grinder',
+        'grindSetting',
+        'doseGrams',
+        'waterGrams',
+        'waterTemperatureC',
+        'totalBrewTimeSeconds',
+        'brewedAt',
+        'pours',
+      ];
+      setPanel(
+        Object.keys(next).some((key) => recipeKeys.includes(key.split('.')[0]!))
+          ? 'recipe'
+          : 'tasting',
+      );
       setErrors(next);
       return;
     }
@@ -250,14 +267,7 @@ function SavedTastingRequest({ id }: { id: string | null }) {
         return;
       }
       const saved = parsed.data.brew;
-      if (
-        saved.id !== original.id ||
-        saved.coffeeId !== original.coffeeId ||
-        saved.createdAt !== original.createdAt ||
-        Object.entries(patch).some(
-          ([key, value]) => JSON.stringify(value) !== JSON.stringify(saved[key as keyof Brew]),
-        )
-      ) {
+      if (!patchMatches(original, saved, patch)) {
         uncertain();
         return;
       }
@@ -275,7 +285,7 @@ function SavedTastingRequest({ id }: { id: string | null }) {
   const pending = writeStatus === 'pending';
   return (
     <div className="brew-entry">
-      <h1>Edit your tasting</h1>
+      <h1>{panel === 'recipe' ? 'Edit your brew' : 'Edit your tasting'}</h1>
       {terminal ? (
         <p role="status">Leaving tasting editor…</p>
       ) : (
@@ -298,7 +308,7 @@ function SavedTastingRequest({ id }: { id: string | null }) {
               </Button>
             </>
           )}
-          {readStatus === 'ready' && original && assessment && (
+          {readStatus === 'ready' && original && draft && (
             <>
               <p className="auth-intro">
                 {original.brewer} ·{' '}
@@ -310,22 +320,52 @@ function SavedTastingRequest({ id }: { id: string | null }) {
                 </time>
               </p>
               <p className="field-hint">
-                Editing this saved tasting only. Recipe editing is outside this editor.
+                Editing this saved brew. Save changes includes both recipe and tasting.
               </p>
-              <QuickTastingEditor
-                saved
-                assessment={assessment}
-                onChange={(value) => {
-                  if (!write.current) {
-                    setAssessment(value);
-                    if (writeStatus === 'idle') setMessage('');
-                  }
-                }}
-                pending={pending}
-                locked={writeStatus === 'uncertain'}
-                errors={errors}
-                onSubmit={submit}
-              />
+              <div className="brew-segment" role="group" aria-label="Saved brew editor">
+                {(['recipe', 'tasting'] as const).map((value) => (
+                  <Button
+                    variant="secondary"
+                    key={value}
+                    disabled={pending}
+                    aria-pressed={panel === value}
+                    onClick={() => setPanel(value)}
+                  >
+                    {value === 'recipe' ? 'Recipe' : 'Tasting'}
+                  </Button>
+                ))}
+              </div>
+              {panel === 'recipe' ? (
+                <RecipeEditor
+                  coffeeId={original.coffeeId}
+                  saved={original}
+                  draft={draft}
+                  baseline={savedDraft(original).recipe}
+                  onChange={(value) => {
+                    if (!write.current) setDraft(value);
+                  }}
+                  onContinue={() => {}}
+                  pending={pending}
+                  locked={writeStatus === 'uncertain'}
+                  validationErrors={errors}
+                  onSubmit={submit}
+                />
+              ) : (
+                <QuickTastingEditor
+                  saved
+                  assessment={draft.assessment}
+                  onChange={(value) => {
+                    if (!write.current) {
+                      setDraft({ ...draft, assessment: value });
+                      if (writeStatus === 'idle') setMessage('');
+                    }
+                  }}
+                  pending={pending}
+                  locked={writeStatus === 'uncertain'}
+                  errors={errors}
+                  onSubmit={submit}
+                />
+              )}
               {message && (
                 <p
                   role={writeStatus === 'idle' ? 'status' : 'alert'}

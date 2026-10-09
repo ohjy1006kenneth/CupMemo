@@ -4,6 +4,11 @@ Issue: https://github.com/ohjy1006kenneth/CupMemo/issues/24.
 Primary HQ card: `t_ba3a6991` (tenant `cupmemo`).
 Owner contract: https://github.com/ohjy1006kenneth/CupMemo/issues/24#issuecomment-6074654889.
 
+The subsequent [private history/detail/saved edit outcome](BREW_HISTORY.md)
+(Refs #25, primary card `t_1befe331`) supersedes the narrow saved-entry and
+recent20-only limits described here. Both saved recipe and assessment now share
+one validated changed-only draft; new-brew sensory and POST policies are unchanged.
+
 ## One assessment
 
 The existing new-brew draft and QuickTastingEditor now share explicit quick/sensory

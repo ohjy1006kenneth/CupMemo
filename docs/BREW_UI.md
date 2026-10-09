@@ -4,6 +4,11 @@ Issue: https://github.com/ohjy1006kenneth/CupMemo/issues/23.
 Primary HQ card: `t_97784282` (tenant `cupmemo`). The complete owner execution
 contract is https://github.com/ohjy1006kenneth/CupMemo/issues/23#issuecomment-6072136615.
 
+The subsequent [private history/detail/saved edit outcome](BREW_HISTORY.md)
+(Refs #25, primary card `t_1befe331`) supersedes this document's historical
+recent20-only, unavailable-detail and narrow saved-edit limits. New-brew recipe,
+Continue, POST, cancellation and assessment initialization policies remain unchanged.
+
 ## Delivered flow
 
 Beans now has an ordinary primary Record a brew link to `/app/brews/new` and a

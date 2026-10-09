@@ -3,8 +3,10 @@ import { test, expect } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import process from 'node:process';
+import { URL } from 'node:url';
 import { registerBrewFlows } from './brew-flows.mjs';
 import { registerSensoryFlows } from './sensory-flows.mjs';
+import { registerHistoryFlows } from './history-flows.mjs';
 import { createDatabase, resolveDatabaseConfig } from '../../packages/database/dist/index.js';
 import {
   coffeeCreateSchema,
@@ -13,8 +15,10 @@ import {
   brewResponseSchema,
 } from '../../packages/contracts/dist/index.js';
 
-const origin = 'http://127.0.0.1:3314';
-const apiOrigin = 'http://127.0.0.1:4314';
+const origin = process.env.BETTER_AUTH_URL || 'http://127.0.0.1:3314';
+const apiOrigin = process.env.CUPMEMO_API_ORIGIN || 'http://127.0.0.1:4314';
+if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin) || !/^http:\/\/127\.0\.0\.1:\d+$/.test(apiOrigin))
+  throw new Error('E2E requires explicit loopback origins');
 const password = 'Browser-only-coffee-Strong8!';
 const emails = [];
 let connection;
@@ -27,7 +31,7 @@ async function startApi() {
     env: {
       ...process.env,
       NODE_ENV: 'development',
-      CUPMEMO_API_PORT: '4314',
+      CUPMEMO_API_PORT: new URL(apiOrigin).port,
       CUPMEMO_API_HOST: '127.0.0.1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -346,7 +350,7 @@ test('shell real owned records persist, recent twenty boundary, zero score and a
   await page.getByRole('link', { name: 'Journal', exact: true }).click();
   await expect(page.locator('.collection-list > li')).toHaveCount(20);
   await expect(page.locator('.brew-score').first()).toContainText('0.00/100');
-  await expect(page.getByText('Only the 20 most recent records are shown.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL(`${origin}/sign-in`);
   const emailB = await signup(page);
@@ -1027,6 +1031,17 @@ registerBrewFlows({
   origin,
 });
 registerSensoryFlows({
+  test,
+  expect,
+  signup,
+  signin,
+  seedBrew,
+  startApi,
+  stopApi,
+  getConnection: () => connection,
+  origin,
+});
+registerHistoryFlows({
   test,
   expect,
   signup,

@@ -147,7 +147,7 @@ function assessmentInput(a: Assessment) {
     notes: a.notes,
   };
 }
-export function parseDraft(coffeeId: string, draft: Draft, recipeOnly = false) {
+export function parseDraft(coffeeId: string, draft: Draft, recipeOnly = false, saved?: Brew) {
   const r = draft.recipe,
     a = draft.assessment;
   return brewCreateSchema.safeParse({
@@ -159,7 +159,10 @@ export function parseDraft(coffeeId: string, draft: Draft, recipeOnly = false) {
     waterGrams: numeric(r.waterGrams),
     waterTemperatureC: numeric(r.waterTemperatureC),
     totalBrewTimeSeconds: numeric(r.totalBrewTimeSeconds),
-    brewedAt: localToUTC(draft.localTime) ?? '',
+    brewedAt:
+      saved && draft.localTime === initializeDraft(saved, new Date(saved.brewedAt)).localTime
+        ? saved.brewedAt
+        : (localToUTC(draft.localTime) ?? ''),
     pours: r.pours.map((p) => ({
       waterGrams: numeric(p.waterGrams),
       startTimeSeconds: numeric(p.startTimeSeconds),
@@ -183,6 +186,43 @@ export function assessmentFromBrew(brew: Brew): Assessment {
     tastingTags: [...brew.tastingTags],
     notes: brew.notes ?? '',
   };
+}
+export function savedDraft(brew: Brew): Draft {
+  return {
+    ...initializeDraft(brew, new Date(brew.brewedAt)),
+    assessment: assessmentFromBrew(brew),
+  };
+}
+export function editableValue(brew: Brew, key: keyof BrewPatch) {
+  if (key === 'pours')
+    return brew.pours.map(({ waterGrams, startTimeSeconds }) => ({ waterGrams, startTimeSeconds }));
+  if (key === 'brewedAt') return new Date(brew.brewedAt).toISOString();
+  return brew[key];
+}
+export function parseSavedPatch(original: Brew, draft: Draft) {
+  // Full graph validation includes the hidden panel before a partial write is computed.
+  const normalized = parseDraft(original.coffeeId, draft, false, original);
+  if (!normalized.success) return normalized;
+  const changed = Object.fromEntries(
+    Object.entries(normalized.data).filter(
+      ([key, value]) =>
+        key !== 'coffeeId' &&
+        JSON.stringify(value) !== JSON.stringify(editableValue(original, key as keyof BrewPatch)),
+    ),
+  );
+  if (!Object.keys(changed).length) return { success: true as const, data: null };
+  return brewPatchSchema.safeParse(changed);
+}
+export function patchMatches(original: Brew, saved: Brew, patch: BrewPatch): boolean {
+  return (
+    saved.id === original.id &&
+    saved.coffeeId === original.coffeeId &&
+    saved.createdAt === original.createdAt &&
+    Object.entries(patch).every(
+      ([key, value]) =>
+        JSON.stringify(value) === JSON.stringify(editableValue(saved, key as keyof BrewPatch)),
+    )
+  );
 }
 export function parseAssessmentPatch(original: Brew, assessment: Assessment) {
   const normalized = brewPatchSchema.safeParse(assessmentInput(assessment));
