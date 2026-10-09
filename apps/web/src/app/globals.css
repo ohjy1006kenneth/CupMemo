@@ -398,6 +398,11 @@ h1 {
 .brew-row {
   justify-content: space-between;
 }
+.brew-pour-actions .cm-button {
+  min-width: 44px;
+  min-height: 44px;
+  flex: 0 0 auto;
+}
 .brew-segment {
   margin-block: var(--cm-space-4);
 }

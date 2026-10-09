@@ -506,6 +506,108 @@ export function registerHistoryFlows({
       page.once('dialog', (d) => d.accept());
       await button(page, 'Cancel changes').click();
     });
+  test('history shared saved and new recipe pour arrows retain 44px targets and chronological slots', async ({
+    page,
+    context,
+  }, info) => {
+    const { brew } = await fixture(page, context);
+    const original = await patch(context.request, brew.id, {
+      pours: [
+        { waterGrams: 50, startTimeSeconds: 0 },
+        { waterGrams: 75, startTimeSeconds: 45 },
+        { waterGrams: 125, startTimeSeconds: 90 },
+      ],
+    });
+    const measurements = [];
+    for (const surface of ['saved', 'new']) {
+      if (surface === 'saved') {
+        await edit(page, brew.id);
+        await page.getByLabel('Tasting notes (optional)').fill('Preserved across reorder');
+        await button(page, 'Recipe').click();
+      } else {
+        await patch(context.request, brew.id, {
+          pours: original.pours.map(({ waterGrams, startTimeSeconds }) => ({
+            waterGrams,
+            startTimeSeconds,
+          })),
+        });
+        await page.goto('/app/brews/new');
+        await button(page, 'Actual roaster · History coffee').click();
+        await expect(page.getByLabel('Grind setting (required)')).toHaveValue('22 clicks');
+      }
+      await expect(button(page, 'Move pour 1 earlier')).toBeDisabled();
+      await expect(button(page, 'Move pour 3 later')).toBeDisabled();
+      for (const width of [320, 360, 390, 430, 1280]) {
+        await page.setViewportSize({ width, height: width === 320 ? 480 : 700 });
+        for (const name of ['Move pour 2 earlier', 'Move pour 2 later']) {
+          const control = button(page, name);
+          await expect(control).toBeEnabled();
+          const geometry = await control.evaluate((e) => {
+            const r = e.getBoundingClientRect();
+            return {
+              width: r.width,
+              height: r.height,
+              dpr: window.devicePixelRatio,
+              viewport: window.innerWidth,
+              cssZoom: getComputedStyle(document.documentElement).zoom,
+            };
+          });
+          measurements.push({ surface, width, name, ...geometry });
+          await writeFile(
+            info.outputPath('pour-targets.json'),
+            JSON.stringify(measurements, null, 2),
+          );
+          expect(geometry.width).toBeGreaterThanOrEqual(44);
+          expect(geometry.height).toBeGreaterThanOrEqual(44);
+        }
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+        ).toBe(true);
+      }
+      await button(page, 'Move pour 2 earlier').focus();
+      await page.keyboard.press('Enter');
+      await expect(page.getByLabel('Pour 1 incremental water (g)', { exact: true })).toHaveValue(
+        '75',
+      );
+      await expect(page.getByLabel('Pour 2 incremental water (g)', { exact: true })).toHaveValue(
+        '50',
+      );
+      for (const [i, seconds] of [0, 45, 90].entries())
+        await expect(page.getByLabel(`Pour ${i + 1} start (seconds)`, { exact: true })).toHaveValue(
+          String(seconds),
+        );
+      await button(page, 'Move pour 2 later').click();
+      await expect(page.getByLabel('Pour 2 incremental water (g)', { exact: true })).toHaveValue(
+        '125',
+      );
+      if (surface === 'saved') {
+        await button(page, 'Tasting').click();
+        await expect(page.getByLabel('Tasting notes (optional)')).toHaveValue(
+          'Preserved across reorder',
+        );
+        await button(page, 'Recipe').click();
+        const { brew: updated, delta } = await save(page, brew.id);
+        expect(delta).toEqual({
+          pours: [
+            { waterGrams: 75, startTimeSeconds: 0 },
+            { waterGrams: 125, startTimeSeconds: 45 },
+            { waterGrams: 50, startTimeSeconds: 90 },
+          ],
+          notes: 'Preserved across reorder',
+        });
+        expect(updated.brewedAt).toBe(original.brewedAt);
+        expect(updated.createdAt).toBe(original.createdAt);
+        expect((await list(context.request)).brews).toHaveLength(1);
+      } else {
+        await button(page, 'Continue to tasting').click();
+        await expect(page.getByRole('heading', { name: 'How did it taste?' })).toBeVisible();
+        await expect(page.getByLabel('Overall score /100 (required)')).toHaveValue('');
+        expect((await list(context.request)).brews).toHaveLength(1);
+        page.once('dialog', (d) => d.accept());
+        await button(page, 'Cancel').click();
+      }
+    }
+  });
   test('history rendered long-label detail and both editors light/dark all widths with real geometry/contrast', async ({
     page,
     context,
@@ -521,6 +623,11 @@ export function registerHistoryFlows({
       notes: 'Long notes '.repeat(20),
       flavor: 0,
       fragranceAroma: 8.25,
+      pours: [
+        { waterGrams: 50, startTimeSeconds: 0 },
+        { waterGrams: 75, startTimeSeconds: 45 },
+        { waterGrams: 125, startTimeSeconds: 90 },
+      ],
     });
     const measurements = [];
     for (const colorScheme of ['light', 'dark']) {
@@ -545,8 +652,11 @@ export function registerHistoryFlows({
               '.brew-entry button, .brew-entry input:not([type="range"]), .brew-entry select, .brew-entry textarea, .brew-entry a.cm-button',
             )
             .all();
-          for (const control of controls)
-            expect((await control.boundingBox()).height).toBeGreaterThanOrEqual(44);
+          for (const control of controls) {
+            const box = await control.boundingBox();
+            expect(box.height).toBeGreaterThanOrEqual(44);
+            expect(box.width).toBeGreaterThanOrEqual(44);
+          }
           const colors = await page.evaluate(() => {
             const text = getComputedStyle(document.querySelector('.brew-entry'));
             const secondary = getComputedStyle(
