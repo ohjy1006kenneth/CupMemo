@@ -9,8 +9,10 @@ server gate and mounted AccountSession boundary. Beans is current on precisely
 `/app` and `/app/coffees/new`; Journal/Gear semantics and auth policy are unchanged.
 The shell provides the only main landmark. The page provides **Add a coffee** and
 an initially empty, single-column manual form using shared Input/Button/tokens.
-Record a brew remains disabled; no scan, invented metadata, source badge, detail,
-edit/delete, inventory, recipe, tasting, enrichment or community flow is added.
+The subsequent [new brew outcome](BREW_UI.md) (Refs #23, primary card `t_97784282`)
+adds the real primary Record a brew anchor; Add coffee remains secondary. This
+manual-entry outcome itself adds no scan, invented metadata, source badge, detail,
+edit/delete, inventory, recipe, tasting, enrichment or community flow.
 
 ## Input and validation
 

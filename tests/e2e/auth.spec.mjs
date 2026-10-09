@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import process from 'node:process';
+import { registerBrewFlows } from './brew-flows.mjs';
 import { createDatabase, resolveDatabaseConfig } from '../../packages/database/dist/index.js';
 import {
   coffeeCreateSchema,
@@ -289,16 +290,20 @@ async function seedBrew(request, coffeeId, index = 0) {
 test('shell real empty destinations, anchors, direct links, reload, back/forward and keyboard', async ({
   page,
 }) => {
-  for (const route of ['/app', '/app/journal', '/app/gear', '/app/coffees/new']) {
+  for (const route of ['/app', '/app/journal', '/app/gear', '/app/coffees/new', '/app/brews/new']) {
     await page.goto(route);
     await expect(page).toHaveURL(`${origin}/sign-in`);
   }
   await signup(page);
   await expect(page.getByText('No coffees yet', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Record a brew' })).toBeDisabled();
-  await expect(
-    page.getByText('Brew recording will be available in the next delivery.'),
-  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Record a brew' })).toHaveAttribute(
+    'href',
+    '/app/brews/new',
+  );
+  await expect(page.getByRole('link', { name: 'Add coffee' })).toHaveAttribute(
+    'href',
+    '/app/coffees/new',
+  );
   const nav = page.getByRole('navigation', { name: 'Primary' });
   expect(await nav.getByRole('link').allTextContents()).toEqual(['Beans', 'Journal', 'Gear']);
   await nav.getByRole('link', { name: 'Journal' }).focus();
@@ -1008,4 +1013,15 @@ test('manual rendered form light/dark phone and desktop, keyboard, long optional
     }
   }
   expect(errors).toHaveLength(0);
+});
+registerBrewFlows({
+  test,
+  expect,
+  signup,
+  signin,
+  seedBrew,
+  startApi,
+  stopApi,
+  getConnection: () => connection,
+  origin,
 });

@@ -30,10 +30,12 @@ The 430px phone-first column remains usable on desktop. The bottom navigation is
 an in-flow footer (deliberately not a fixed overlay) so it cannot obscure rows or
 focus at short heights; its padding includes the safe-area inset.
 
-Record a brew is explicitly disabled with next-delivery copy. Gear explicitly says
-saved equipment is not implemented. Neither constitutes a working capture/editor,
-settings store or fake save. No scan, detail, edit or Brew again controls are shipped.
-Issues #23 and #25 remain separate unfinished outcomes. Prior reference-only
+The subsequent [new brew flow](BREW_UI.md) (Refs #23, primary card `t_97784282`)
+replaces the disabled Record a brew with the real primary `/app/brews/new` anchor.
+Add coffee is secondary. Journal is current at exactly this new route; all Beans
+rules remain unchanged. Gear explicitly says saved equipment is not implemented.
+No scan, detail, edit or Brew again controls are shipped. Full history remains #25.
+Prior reference-only
 OCR/enrichment/community/platform discrepancies are not resolved by this slice.
 
 ## Read-only recent data

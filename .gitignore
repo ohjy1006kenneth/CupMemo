@@ -26,3 +26,5 @@ uploads/
 .DS_Store
 .idea/
 .vscode/
+# Task-owned sanitized implementation evidence (not application source).
+.task-evidence/
