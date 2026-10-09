@@ -40,6 +40,12 @@ OCR/enrichment/community/platform discrepancies are not resolved by this slice.
 
 ## Read-only recent data
 
+The subsequent [optional sensory and saved tasting](SENSORY_UI.md) outcome
+(Refs #24, primary card `t_ba3a6991`) adds real Edit tasting anchors to validated
+recent Journal rows. Journal is also current on exactly a valid UUID tasting
+route. This narrow assessment editor is not full history/detail/recipe editing;
+the recent20 limit and account boundary remain unchanged, and #25 remains open.
+
 `@cupmemo/contracts` is a dist-only browser-safe web dependency. Standalone web
 `dev`, `build` and `typecheck` prepare contracts and UI before their consumers.
 Beans requests `/api/v1/coffees?limit=20&offset=0`; Journal requests

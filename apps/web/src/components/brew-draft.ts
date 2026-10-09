@@ -1,4 +1,15 @@
-import { brewCreateSchema, type Brew } from '@cupmemo/contracts';
+import { brewCreateSchema, brewPatchSchema, type Brew, type BrewPatch } from '@cupmemo/contracts';
+
+export const qualities = [
+  ['fragranceAroma', 'Fragrance/Aroma'],
+  ['flavor', 'Flavor'],
+  ['aftertaste', 'Aftertaste'],
+  ['acidity', 'Acidity'],
+  ['body', 'Body'],
+  ['balance', 'Balance'],
+  ['sweetness', 'Sweetness'],
+  ['overallImpression', 'Overall Impression'],
+] as const;
 
 export type Recipe = {
   brewer: string;
@@ -11,10 +22,16 @@ export type Recipe = {
   pours: { waterGrams: string; startTimeSeconds: string }[];
 };
 export type Assessment = {
+  tastingMode: 'quick' | 'sensory';
   overallScore: string;
   acidity: string | null;
   body: string | null;
   aftertaste: string | null;
+  fragranceAroma: string | null;
+  flavor: string | null;
+  balance: string | null;
+  sweetness: string | null;
+  overallImpression: string | null;
   tastingTags: string[];
   notes: string;
 };
@@ -53,10 +70,16 @@ export function initializeDraft(latest?: Brew, now = new Date()): Draft {
     recipe,
     localTime: `${pad(now.getFullYear(), 4)}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
     assessment: {
+      tastingMode: 'quick',
       overallScore: '',
       acidity: null,
       body: null,
       aftertaste: null,
+      fragranceAroma: null,
+      flavor: null,
+      balance: null,
+      sweetness: null,
+      overallImpression: null,
       tastingTags: [],
       notes: '',
     },
@@ -113,6 +136,17 @@ export function pourTotal(recipe: Recipe): number | null {
 function numeric(value: string) {
   return /^\d+(?:\.\d{1,2})?$/.test(value) ? Number(value) : NaN;
 }
+function assessmentInput(a: Assessment) {
+  return {
+    overallScore: numeric(a.overallScore),
+    tastingMode: a.tastingMode,
+    ...Object.fromEntries(
+      qualities.map(([key]) => [key, a[key] === null ? null : numeric(a[key])]),
+    ),
+    tastingTags: [...a.tastingTags],
+    notes: a.notes,
+  };
+}
 export function parseDraft(coffeeId: string, draft: Draft, recipeOnly = false) {
   const r = draft.recipe,
     a = draft.assessment;
@@ -131,14 +165,37 @@ export function parseDraft(coffeeId: string, draft: Draft, recipeOnly = false) {
       startTimeSeconds: numeric(p.startTimeSeconds),
     })),
     // Internal recipe validation only: this placeholder never enters draft or POST.
-    overallScore: recipeOnly ? 0 : numeric(a.overallScore),
-    tastingMode: 'quick',
-    acidity: recipeOnly || a.acidity === null ? null : numeric(a.acidity),
-    body: recipeOnly || a.body === null ? null : numeric(a.body),
-    aftertaste: recipeOnly || a.aftertaste === null ? null : numeric(a.aftertaste),
-    tastingTags: recipeOnly ? [] : [...a.tastingTags],
-    notes: recipeOnly ? null : a.notes,
+    ...assessmentInput(recipeOnly ? { ...initializeDraft().assessment, overallScore: '0' } : a),
   });
+}
+export function assessmentFromBrew(brew: Brew): Assessment {
+  return {
+    tastingMode: brew.tastingMode,
+    overallScore: String(brew.overallScore),
+    acidity: brew.acidity === null ? null : String(brew.acidity),
+    body: brew.body === null ? null : String(brew.body),
+    aftertaste: brew.aftertaste === null ? null : String(brew.aftertaste),
+    fragranceAroma: brew.fragranceAroma === null ? null : String(brew.fragranceAroma),
+    flavor: brew.flavor === null ? null : String(brew.flavor),
+    balance: brew.balance === null ? null : String(brew.balance),
+    sweetness: brew.sweetness === null ? null : String(brew.sweetness),
+    overallImpression: brew.overallImpression === null ? null : String(brew.overallImpression),
+    tastingTags: [...brew.tastingTags],
+    notes: brew.notes ?? '',
+  };
+}
+export function parseAssessmentPatch(original: Brew, assessment: Assessment) {
+  const normalized = brewPatchSchema.safeParse(assessmentInput(assessment));
+  if (!normalized.success) return normalized;
+  const baseline = brewPatchSchema.parse(assessmentInput(assessmentFromBrew(original)));
+  const changed = Object.fromEntries(
+    Object.entries(normalized.data).filter(
+      ([key, value]) => JSON.stringify(value) !== JSON.stringify(baseline[key as keyof BrewPatch]),
+    ),
+  );
+  // The API refuses an empty PATCH. A normalized no-op never crosses that boundary.
+  if (Object.keys(changed).length === 0) return { success: true as const, data: null };
+  return brewPatchSchema.safeParse(changed);
 }
 export function movePour(recipe: Recipe, index: number, direction: -1 | 1): Recipe {
   const other = index + direction;

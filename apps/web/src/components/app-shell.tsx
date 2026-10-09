@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { Navigation, NavigationLink } from '@cupmemo/ui';
+import { brewIdSchema } from '@cupmemo/contracts';
 import { SignOutButton } from './sign-out-button';
 
 const destinations = [
@@ -13,6 +14,8 @@ const destinations = [
 
 export function AppShell({ name, children }: { name: string; children: ReactNode }) {
   const pathname = usePathname();
+  const tastingId = /^\/app\/brews\/([^/]+)\/tasting$/.exec(pathname)?.[1];
+  const tastingRoute = tastingId !== undefined && brewIdSchema.safeParse(tastingId).success;
   return (
     <div className="app-shell">
       <a className="skip-link" href="#app-content">
@@ -36,7 +39,7 @@ export function AppShell({ name, children }: { name: string; children: ReactNode
             current={
               pathname === href ||
               (href === '/app' && pathname === '/app/coffees/new') ||
-              (href === '/app/journal' && pathname === '/app/brews/new')
+              (href === '/app/journal' && (pathname === '/app/brews/new' || tastingRoute))
             }
           >
             {label}

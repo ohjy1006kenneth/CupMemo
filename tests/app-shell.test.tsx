@@ -10,6 +10,25 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('../apps/web/src/auth/client', () => ({ authClient: { signOut: vi.fn() } }));
 afterEach(cleanup);
+it('marks only validated UUID tasting routes current in Journal', () => {
+  for (const [pathname, current] of [
+    ['/app/brews/00000000-0000-4000-8000-000000000001/tasting', true],
+    ['/app/brews/not-a-uuid/tasting', false],
+    ['/app/brews/00000000-0000-4000-8000-000000000001/tasting/other', false],
+  ] as const) {
+    state.pathname = pathname;
+    const view = render(
+      <AppShell name="Jamie">
+        <h1>Edit your tasting</h1>
+      </AppShell>,
+    );
+    expect(screen.getByRole('link', { name: 'Journal' }).hasAttribute('aria-current')).toBe(
+      current,
+    );
+    view.unmount();
+  }
+  state.pathname = '/app/journal';
+});
 it('provides ordinary ordered destinations with exactly one current page and a skip target', () => {
   render(
     <AppShell name="Jamie">
