@@ -25,5 +25,8 @@ it('offers one ordinary coffee entry anchor with Beans current on the new route'
   );
   expect(screen.getByRole('link', { name: 'Beans' })).toHaveAttribute('aria-current', 'page');
   expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
-  expect(screen.getByRole('button', { name: 'Record a brew' })).toBeDisabled();
+  expect(screen.getByRole('link', { name: 'Record a brew' })).toHaveAttribute(
+    'href',
+    '/app/brews/new',
+  );
 });

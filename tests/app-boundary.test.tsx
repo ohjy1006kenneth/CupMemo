@@ -89,14 +89,20 @@ it('freshness pending/error/null suppresses all shell children and prevents coll
   await waitFor(() => expect(replace).toHaveBeenCalledWith('/sign-in'));
   expect(fetcher).toHaveBeenCalledOnce();
 });
-it('renders only the approved disabled brew and honest Gear boundary', () => {
+it('renders the approved working brew entry and unchanged honest Gear boundary', () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(() => new Promise(() => {})),
   );
   const view = render(<BeansPage />);
-  expect(screen.getByRole('button', { name: 'Record a brew' })).toBeDisabled();
-  expect(screen.getByText('Brew recording will be available in the next delivery.')).toBeVisible();
+  expect(screen.getByRole('link', { name: 'Record a brew' })).toHaveAttribute(
+    'href',
+    '/app/brews/new',
+  );
+  expect(screen.getByRole('link', { name: 'Add coffee' })).toHaveAttribute(
+    'href',
+    '/app/coffees/new',
+  );
   view.unmount();
   render(<GearPage />);
   expect(screen.getByRole('heading', { name: 'Your daily setup' })).toBeVisible();

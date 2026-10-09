@@ -3,8 +3,9 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { AppShell } from '../apps/web/src/components/app-shell';
 
+const state = vi.hoisted(() => ({ pathname: '/app/journal' }));
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/app/journal',
+  usePathname: () => state.pathname,
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
 }));
 vi.mock('../apps/web/src/auth/client', () => ({ authClient: { signOut: vi.fn() } }));
@@ -30,4 +31,19 @@ it('provides ordinary ordered destinations with exactly one current page and a s
   );
   expect(screen.getByRole('main')).toHaveAttribute('id', 'app-content');
   expect(screen.getByText('Welcome, Jamie')).toBeVisible();
+});
+it('marks Journal current on exactly the protected new-brew route, not invented descendants', () => {
+  for (const pathname of ['/app/brews/new', '/app/brews/new/unknown']) {
+    state.pathname = pathname;
+    const view = render(
+      <AppShell name="Jamie">
+        <h1>Choose a coffee</h1>
+      </AppShell>,
+    );
+    expect(screen.getByRole('link', { name: 'Journal' }).hasAttribute('aria-current')).toBe(
+      pathname === '/app/brews/new',
+    );
+    view.unmount();
+  }
+  state.pathname = '/app/journal';
 });

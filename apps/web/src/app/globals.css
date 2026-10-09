@@ -303,6 +303,112 @@ h1 {
   font-variant-numeric: tabular-nums;
   font-size: var(--cm-type-title);
 }
+.brew-entry,
+.brew-editor {
+  display: grid;
+  gap: var(--cm-space-5);
+  min-width: 0;
+}
+.brew-entry h2 {
+  font-size: var(--cm-type-title);
+  font-weight: var(--cm-weight-medium);
+  margin: 0 0 var(--cm-space-3);
+}
+.brew-entry h3 {
+  margin: 0;
+  font-size: var(--cm-type-body);
+  font-weight: var(--cm-weight-medium);
+}
+.brew-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--cm-space-4);
+}
+.brew-stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--cm-space-1);
+  min-width: 0;
+}
+.brew-grind-field {
+  grid-column: 1 / -1;
+}
+.shell-navigation .cm-navigation-link {
+  padding-inline: var(--cm-space-2);
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.brew-stepper .cm-button {
+  padding-inline: var(--cm-space-2);
+  min-width: 44px;
+  flex: 0 0 auto;
+}
+.brew-stepper .cm-input {
+  width: 100%;
+  min-width: 0;
+  padding-inline: var(--cm-space-2);
+  text-align: center;
+}
+.brew-row,
+.brew-pour-actions,
+.brew-segment,
+.brew-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cm-space-2);
+}
+.brew-row {
+  justify-content: space-between;
+}
+.brew-segment {
+  margin-block: var(--cm-space-4);
+}
+.brew-pour,
+.brew-quality {
+  display: grid;
+  gap: var(--cm-space-3);
+  padding-block: var(--cm-space-4);
+  border-top: var(--cm-border-width) solid var(--cm-border);
+}
+.brew-entry input[type='range'] {
+  width: 100%;
+  min-height: 44px;
+  accent-color: var(--cm-accent);
+}
+.brew-entry select {
+  width: 100%;
+}
+.brew-source,
+.brew-ratio,
+.brew-changes {
+  background: var(--cm-surface-secondary);
+  padding: var(--cm-space-3);
+  border-radius: var(--cm-radius-sm);
+  margin: 0;
+  font-size: var(--cm-type-label);
+}
+.brew-choices {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--cm-space-3);
+}
+.brew-choice {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+.brew-entry [aria-pressed='true'] {
+  border: 2px solid var(--cm-accent);
+  text-decoration: underline;
+}
+@media (max-width: 360px) {
+  .brew-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 @media (max-width: 360px) {
   .auth-page {
     padding-inline: var(--cm-space-2);

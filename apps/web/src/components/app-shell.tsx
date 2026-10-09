@@ -33,7 +33,11 @@ export function AppShell({ name, children }: { name: string; children: ReactNode
           <NavigationLink
             key={href}
             href={href}
-            current={pathname === href || (href === '/app' && pathname === '/app/coffees/new')}
+            current={
+              pathname === href ||
+              (href === '/app' && pathname === '/app/coffees/new') ||
+              (href === '/app/journal' && pathname === '/app/brews/new')
+            }
           >
             {label}
           </NavigationLink>
