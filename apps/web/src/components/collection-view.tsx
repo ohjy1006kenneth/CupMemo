@@ -165,6 +165,13 @@ function CollectionRequest({ kind }: { kind: Kind }) {
                     timeStyle: 'short',
                   })}
                 </time>
+                <a
+                  className="cm-button cm-button--secondary"
+                  href={`/app/brews/${brew.id}/tasting`}
+                  aria-label={`Edit tasting · ${brew.brewer} · ${new Date(brew.brewedAt).toLocaleString()} · ${brew.id}`}
+                >
+                  Edit tasting
+                </a>
               </div>
               <p className="brew-score">
                 <span className="visually-hidden">Overall score </span>

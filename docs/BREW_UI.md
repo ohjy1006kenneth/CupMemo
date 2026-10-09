@@ -60,6 +60,12 @@ using an internal recipe-only assessment placeholder that never enters draft/POS
 
 ## Quick evaluation and save
 
+The subsequent [Sensory Detail and narrow saved tasting](SENSORY_UI.md) outcome
+(Refs #24, primary card `t_ba3a6991`) supersedes the unavailable-expanded/editor
+statements below: the same assessment now expands optionally, and recent Journal
+rows open a real changed-only saved assessment editor. Recipe rules and POST
+failure/cancellation policies remain unchanged; full #25 remains separate.
+
 Overall /100 starts empty and must be deliberately entered in quarter points.
 Zero is valid; no seed, formula or attribute average. From blank, + selects0.25
 and - selects0. Optional Acidity, Body, Aftertaste are quality /10 in quarters:

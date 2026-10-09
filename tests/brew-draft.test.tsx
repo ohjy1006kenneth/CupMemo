@@ -21,10 +21,16 @@ it('initializes an explicit prototype recipe with a once-captured local time and
     totalBrewTimeSeconds: '168',
   });
   expect(draft.assessment).toEqual({
+    tastingMode: 'quick',
     overallScore: '',
     acidity: null,
     body: null,
     aftertaste: null,
+    fragranceAroma: null,
+    flavor: null,
+    balance: null,
+    sweetness: null,
+    overallImpression: null,
     tastingTags: [],
     notes: '',
   });

@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import process from 'node:process';
 import { registerBrewFlows } from './brew-flows.mjs';
+import { registerSensoryFlows } from './sensory-flows.mjs';
 import { createDatabase, resolveDatabaseConfig } from '../../packages/database/dist/index.js';
 import {
   coffeeCreateSchema,
@@ -1015,6 +1016,17 @@ test('manual rendered form light/dark phone and desktop, keyboard, long optional
   expect(errors).toHaveLength(0);
 });
 registerBrewFlows({
+  test,
+  expect,
+  signup,
+  signin,
+  seedBrew,
+  startApi,
+  stopApi,
+  getConnection: () => connection,
+  origin,
+});
+registerSensoryFlows({
   test,
   expect,
   signup,

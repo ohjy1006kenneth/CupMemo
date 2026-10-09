@@ -77,6 +77,36 @@ it('selects only real coffees, loads latest separately, and continues without a 
   expect(screen.getAllByText('Not rated')).toHaveLength(3);
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
+it('expands one optional assessment, retains hidden invalid text across mode/back, and focuses it before any POST', async () => {
+  await taste();
+  fill('Overall score /100 (required)', '0');
+  fireEvent.click(screen.getByRole('button', { name: 'Sensory Detail', exact: true }));
+  expect(screen.getAllByText('Not rated')).toHaveLength(8);
+  fireEvent.click(screen.getByRole('button', { name: 'Add Fragrance/Aroma rating' }));
+  fill('Fragrance/Aroma quality /10', '');
+  fireEvent.click(screen.getByRole('button', { name: 'Peach' }));
+  fill('Tasting notes (optional)', 'same notes');
+  fireEvent.click(screen.getByRole('button', { name: 'Quick rating' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Back to recipe' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continue to tasting' }));
+  submit();
+  await waitFor(() => expect(screen.getByLabelText('Fragrance/Aroma quality /10')).toHaveFocus());
+  expect(screen.getByLabelText('Fragrance/Aroma quality /10')).toHaveValue(null);
+  expect(screen.getByLabelText('Overall score /100 (required)')).toHaveValue(0);
+  expect(screen.getByLabelText('Tasting notes (optional)')).toHaveValue('same notes');
+  expect(screen.getByRole('button', { name: 'Peach' })).toHaveAttribute('aria-pressed', 'true');
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Clear Fragrance/Aroma rating' }));
+  expect(screen.getAllByText('Not rated')).toHaveLength(8);
+});
+it('overall range uses quarters without seeding blank score or recalculating quality', async () => {
+  await taste();
+  expect(screen.getByLabelText('Overall score /100 (required)')).toHaveValue(null);
+  fireEvent.change(screen.getByLabelText('Adjust overall score'), { target: { value: '88.25' } });
+  expect(screen.getByLabelText('Overall score /100 (required)')).toHaveValue(88.25);
+  expect(screen.getAllByText('Not rated')).toHaveLength(3);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
 it('posts strict user-selected overall-only data exactly once and confirms matching 201 to Journal', async () => {
   await taste();
   fill('Overall score /100 (required)', '87.25');
