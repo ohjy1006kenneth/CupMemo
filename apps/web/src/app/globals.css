@@ -333,7 +333,7 @@ h1 {
 .brew-grind-field {
   grid-column: 1 / -1;
 }
-.account-page .cm-navigation-link {
+.shell-navigation .cm-navigation-link {
   padding-inline: var(--cm-space-2);
   white-space: nowrap;
   overflow-wrap: normal;

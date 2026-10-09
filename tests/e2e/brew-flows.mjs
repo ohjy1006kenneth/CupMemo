@@ -462,6 +462,10 @@ export function registerBrewFlows({
         ).toBe(true);
         await expect(page.getByRole('main')).toHaveCount(1);
         await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+        await expect(page.getByRole('link', { name: 'Journal', exact: true })).toHaveCSS(
+          'white-space',
+          'nowrap',
+        );
         await page.screenshot({
           path: testInfo.outputPath(`brew-recipe-${width}-${colorScheme}.png`),
           fullPage: true,
