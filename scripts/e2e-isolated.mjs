@@ -387,14 +387,24 @@ export async function createServices({
   signal,
   execute: injectedExecute,
 }) {
-  const privateDir = await mkdtemp(path.join(os.tmpdir(), 'cupmemo-e2e-private-'));
+  const privateBase = await realpath(os.tmpdir());
+  const repository = await realpath(root);
+  if (privateBase === repository || contained(repository, privateBase))
+    throw new Error('Private temporary configuration must be outside repository');
+  const privateDir = await mkdtemp(path.join(privateBase, 'cupmemo-e2e-private-'));
   const envFile = path.join(privateDir, 'postgres.env');
   const cidFile = path.join(privateDir, 'container.id');
-  await writeFile(
-    envFile,
-    `POSTGRES_DB=${fixture.database}\nPOSTGRES_USER=${fixture.role}\nPOSTGRES_PASSWORD=${fixture.password}\n`,
-    { mode: 0o600, flag: 'wx' },
-  );
+  try {
+    await writeFile(
+      envFile,
+      `POSTGRES_DB=${fixture.database}\nPOSTGRES_USER=${fixture.role}\nPOSTGRES_PASSWORD=${fixture.password}\n`,
+      { mode: 0o600, flag: 'wx' },
+    );
+  } catch {
+    await rm(envFile, { force: true });
+    await rmdir(privateDir);
+    throw new Error('Private configuration creation failed');
+  }
   const execute =
     injectedExecute ??
     commandExecutor({

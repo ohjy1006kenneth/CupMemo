@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 /* global AbortController */
 import { URL } from 'node:url';
-import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, stat, realpath } from 'node:fs/promises';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 import os from 'node:os';
@@ -317,6 +317,21 @@ test('private Docker env file is mode0600 outside evidence and is completely rem
   } finally {
     if (envFile) await rm(path.dirname(envFile), { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('private configuration refuses a temporary base inside the repository', async () => {
+  const root = await realpath(os.tmpdir());
+  let services;
+  try {
+    await expect(
+      createServices({ root, output: root, env: {}, fixture: { ...fixture } }).then((value) => {
+        services = value;
+        return value;
+      }),
+    ).rejects.toThrow(/outside repository/);
+  } finally {
+    await services?.removePrivate();
   }
 });
 
