@@ -7,6 +7,7 @@ import { URL } from 'node:url';
 import { registerBrewFlows } from './brew-flows.mjs';
 import { registerSensoryFlows } from './sensory-flows.mjs';
 import { registerHistoryFlows } from './history-flows.mjs';
+import { registerPwaFlows } from './pwa-flows.mjs';
 import { createDatabase, resolveDatabaseConfig } from '../../packages/database/dist/index.js';
 import {
   coffeeCreateSchema,
@@ -1052,3 +1053,4 @@ registerHistoryFlows({
   getConnection: () => connection,
   origin,
 });
+registerPwaFlows({ test, expect, signup, origin });

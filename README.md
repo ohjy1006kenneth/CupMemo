@@ -8,7 +8,7 @@ GitHub Actions runs the same frozen install and quality gates for pull requests 
 
 ## Local runtime scaffold (Refs #7)
 
-This foundation runs a Next.js App Router web app and a separate Fastify API. Real email/password sign-up, sign-in, sign-out and protected account routes now use the API's Better Auth backend; brew/domain endpoints and the app shell remain separate work. See [authentication frontend and real browser checks](docs/AUTH_FRONTEND.md). API readiness checks the configured database; see [database operations](docs/DATABASE.md#readiness-and-migration-status). The minimal web manifest is metadata only: installability, icons, service worker, and offline behavior are not implemented or verified.
+This foundation runs a Next.js App Router web app and a separate Fastify API. Real email/password sign-up, sign-in, sign-out and protected account routes now use the API's Better Auth backend; brew/domain endpoints and the app shell remain separate work. See [authentication frontend and real browser checks](docs/AUTH_FRONTEND.md). API readiness checks the configured database; see [database operations](docs/DATABASE.md#readiness-and-migration-status). The subsequent [online-only PWA](docs/PWA.md) supplies installation metadata and icons; it deliberately has no service worker, offline private content, offline saves or durable draft guarantee. Public HTTPS and physical-device installation remain deployment-time verification gates.
 
 Use Node.js 24 and pnpm 10.34.6. From the repository root:
 
