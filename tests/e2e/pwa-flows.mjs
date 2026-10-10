@@ -52,11 +52,15 @@ export function registerPwaFlows({ test, expect, signup, origin }) {
     expect(parsed.url).toBe(`${origin}/manifest.webmanifest`);
     expect(parsed.errors.filter((error) => error.critical)).toHaveLength(0);
     const diagnostics = await cdp.send('Page.getInstallabilityErrors');
-    expect(diagnostics.installabilityErrors).toEqual([]);
     await writeFile(
       info.outputPath('pwa-manifest-diagnostics.json'),
       JSON.stringify({ parsed, diagnostics }, null, 2),
     );
+    // Playwright's isolated context is incognito, so native install is tested
+    // separately in the owned headed persistent profile, not asserted here.
+    expect(
+      diagnostics.installabilityErrors.filter((error) => error.errorId !== 'in-incognito'),
+    ).toEqual([]);
   });
 
   test('PWA online-only private navigation fails offline without private caches or replay', async ({
