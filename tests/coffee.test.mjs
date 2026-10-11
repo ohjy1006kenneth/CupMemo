@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import process from 'node:process';
+import { Buffer } from 'node:buffer';
 import { request as httpRequest } from 'node:http';
 import { connect } from 'node:net';
 import { setImmediate } from 'node:timers/promises';
