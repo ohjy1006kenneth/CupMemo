@@ -61,7 +61,15 @@ not snapshot/cursor pagination.
 ## Errors and privacy
 
 All coffee responses, including parser failures, carry `Cache-Control: no-store`
-and `Vary: Cookie`. Unsafe writes require the exact configured Origin and reject
+and Vary containing Cookie (preserving existing tokens or `*`). Exact namespace
+root `/api/v1/coffees` and slash-descendant escape routes have generic errors:
+unmatched paths/methods return404 `Resource not found`. Main-router malformed
+decoding returns400 `Invalid coffee request`; unsupported PUT/OPTIONS malformed
+targets entering the internal not-found router retain404 `Resource not found`.
+Neither fallback reads protected data or reflects/logs raw paths, queries, IDs or
+bodies. Near-prefix `/api/v1/coffees-other` and unrelated routing remain unchanged.
+Real HTTP HEAD has an empty body with the same status/privacy headers.
+Unsafe writes require the exact configured Origin and reject
 cross-site Fetch Metadata before private work. Session lookups do not renew valid
 sessions; the supported expired-session/stale-cookie cleanup remains unchanged.
 
