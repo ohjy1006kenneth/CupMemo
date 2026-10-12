@@ -3,8 +3,11 @@
 Issue: https://github.com/ohjy1006kenneth/CupMemo/issues/30. Primary HQ card:
 `t_ae1785b8` (board `hq`, tenant `cupmemo`). The
 [owner contract](https://github.com/ohjy1006kenneth/CupMemo/issues/30#issuecomment-6122828381)
-controls this documentation-only outcome. Its documentation PR and exact-head
-verification receipt are recorded on that same Issue/card, not a separate outcome.
+controls this documentation-only outcome. Documentation
+[PR76](https://github.com/ohjy1006kenneth/CupMemo/pull/76) and its
+[current-head checks](https://github.com/ohjy1006kenneth/CupMemo/pull/76/checks)
+must match the exact-head verification receipt on that same Issue/card, not a
+separate outcome.
 
 ## Decision boundary and identity
 
