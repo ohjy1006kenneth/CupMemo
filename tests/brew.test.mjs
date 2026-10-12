@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import process from 'node:process';
+import { Buffer } from 'node:buffer';
+import { request as httpRequest } from 'node:http';
+import { connect } from 'node:net';
 import { setImmediate } from 'node:timers/promises';
 import * as contracts from '../packages/contracts/src/index.ts';
 import { createApp } from '../apps/api/src/app.ts';
@@ -248,6 +251,173 @@ describe('brew contracts', () => {
 });
 
 describe('production brew boundary', () => {
+  it.each(['injection', 'HTTP'])(
+    'keeps malformed unsupported brew methods private over %s',
+    async (transport) => {
+      const chunks = [];
+      const capture = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        chunks.push(String(chunk));
+        return true;
+      });
+      const app = createApp();
+      let port;
+      try {
+        if (transport === 'HTTP') {
+          await app.listen({ host: '127.0.0.1', port: 0 });
+          port = app.server.address().port;
+        }
+        const send = async (method, url) => {
+          const payload = ['POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'].includes(method)
+            ? JSON.stringify({ note: 'private-body-sentinel' })
+            : undefined;
+          if (transport === 'injection') {
+            const response = await app.inject({
+              method,
+              url,
+              payload,
+              headers: payload ? { 'content-type': 'application/json' } : {},
+            });
+            return { status: response.statusCode, headers: response.headers, body: response.body };
+          }
+          return new Promise((resolve, reject) => {
+            const request = httpRequest(
+              {
+                host: '127.0.0.1',
+                port,
+                method,
+                path: url,
+                headers: payload
+                  ? {
+                      'content-type': 'application/json',
+                      'content-length': Buffer.byteLength(payload),
+                    }
+                  : {},
+              },
+              (response) => {
+                let body = '';
+                response.setEncoding('utf8');
+                response.on('data', (chunk) => {
+                  body += chunk;
+                });
+                response.on('end', () =>
+                  resolve({ status: response.statusCode, headers: response.headers, body }),
+                );
+              },
+            );
+            request.on('error', reject);
+            request.end(payload);
+          });
+        };
+        expect(JSON.parse((await send('GET', '/health')).body)).toEqual({ status: 'ok' });
+        for (const [method, status, message] of [
+          ['GET', 503, 'Authentication unavailable'],
+          ['POST', 404, 'Resource not found'],
+        ]) {
+          const response = await send(method, '/api/v1/brews/?note=private-query-sentinel');
+          expect(response.status).toBe(status);
+          expect(JSON.parse(response.body)).toEqual({ message });
+          expect(response.headers['cache-control']).toBe('no-store');
+          expect(response.headers.vary).toBe('Cookie');
+        }
+        const cases = [];
+        // Put the reproduced internal404 decoding escape first, not just safe GET controls.
+        for (const method of ['PUT', 'OPTIONS', 'GET', 'POST', 'PATCH', 'DELETE', 'HEAD']) {
+          for (const suffix of [
+            '/private-resource-id%ZZ',
+            '/private-resource-id%',
+            '/private-resource-id/unmatched%ZZ',
+            '/private-resource-id/unmatched%',
+          ])
+            cases.push([method, suffix, ['PUT', 'OPTIONS'].includes(method) ? 404 : 400]);
+          cases.push(
+            [method, '/private-resource-id/unmatched/', 404],
+            [method, '/private-resource-id/unmatched', 404],
+          );
+        }
+        for (const method of ['PATCH', 'DELETE', 'PUT', 'OPTIONS'])
+          cases.push([method, '', 404], [method, '?private=private-query-sentinel', 404]);
+        for (const method of ['PUT', 'OPTIONS']) cases.push([method, '/private-resource-id', 404]);
+        for (const [method, suffix, status] of cases) {
+          const response = await send(
+            method,
+            `/api/v1/brews${suffix}${suffix.includes('?') ? '&' : '?'}note=private-query-sentinel`,
+          );
+          expect(response.status, `${method} ${suffix}`).toBe(status);
+          if (method === 'HEAD' && transport === 'HTTP') expect(response.body).toBe('');
+          else if (method !== 'HEAD' || response.body !== '')
+            expect(JSON.parse(response.body)).toEqual({
+              message: status === 400 ? 'Invalid brew request' : 'Resource not found',
+            });
+          expect(response.headers['cache-control']).toBe('no-store');
+          expect(
+            response.headers.vary.split(',').map((value) => value.trim().toLowerCase()),
+          ).toContain('cookie');
+          for (const sentinel of [
+            'private-resource-id',
+            'private-query-sentinel',
+            'private-body-sentinel',
+            '%ZZ',
+          ])
+            expect(response.body).not.toContain(sentinel);
+        }
+        await app.close();
+        await setImmediate();
+        const output = chunks.join('');
+        expect(output).toContain('incoming request');
+        expect(output).toContain('request completed');
+        expect(output).toContain('/health');
+        for (const sentinel of [
+          'private-resource-id',
+          'private-query-sentinel',
+          'private-body-sentinel',
+          '%ZZ',
+        ])
+          expect(output).not.toContain(sentinel);
+      } finally {
+        await app.close();
+        capture.mockRestore();
+        if (port)
+          await new Promise((resolve, reject) => {
+            const socket = connect({ host: '127.0.0.1', port });
+            socket.on('connect', () => {
+              socket.destroy();
+              reject(new Error('Owned API port still open'));
+            });
+            socket.on('error', (error) => {
+              expect(error.code).toBe('ECONNREFUSED');
+              resolve();
+            });
+          });
+      }
+    },
+  );
+  it.each(['Accept-Encoding', 'cOoKiE, Accept-Encoding', '*'])(
+    'preserves existing Vary %s on private fallbacks',
+    async (vary) => {
+      const app = createApp();
+      for (const namespace of ['coffees', 'brews']) {
+        app.get(`/api/v1/${namespace}/vary-control`, async (_request, reply) => {
+          reply.header('vary', vary);
+          return reply.callNotFound();
+        });
+      }
+      try {
+        for (const namespace of ['coffees', 'brews']) {
+          const response = await app.inject({
+            url: `/api/v1/${namespace}/vary-control`,
+          });
+          expect(response.statusCode).toBe(404);
+          expect(response.json()).toEqual({ message: 'Resource not found' });
+          expect(response.headers['cache-control']).toBe('no-store');
+          expect(response.headers.vary).toBe(
+            vary === 'Accept-Encoding' ? 'Accept-Encoding, Cookie' : vary,
+          );
+        }
+      } finally {
+        await app.close();
+      }
+    },
+  );
   it.each([
     ['PUT', '/api/v1/brews/private-resource-id', 404],
     ['GET', '/api/v1/brews/private-resource-id/unknown', 404],
@@ -287,7 +457,12 @@ describe('production brew boundary', () => {
   it('preserves unrelated not-found and malformed-path routing', async () => {
     const app = createApp();
     try {
-      for (const url of ['/unrelated', '/api/v1/brews-other']) {
+      for (const url of [
+        '/unknown',
+        '/unrelated',
+        '/api/v1/brews-other',
+        '/api/v1/coffees-other',
+      ]) {
         const response = await app.inject({ url });
         expect(response.statusCode).toBe(404);
         expect(response.json()).toEqual({
@@ -300,12 +475,19 @@ describe('production brew boundary', () => {
       }
       const response = await app.inject({ url: '/api/v1/coffees/%ZZ' });
       expect(response.statusCode).toBe(400);
-      expect(response.json()).toEqual({
+      expect(response.json()).toEqual({ message: 'Invalid coffee request' });
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers.vary).toBe('Cookie');
+      const unrelated = await app.inject({ url: '/unrelated/%ZZ' });
+      expect(unrelated.statusCode).toBe(400);
+      expect(unrelated.json()).toEqual({
         error: 'Bad Request',
         code: 'FST_ERR_BAD_URL',
-        message: "'/api/v1/coffees/%ZZ' is not a valid url component",
+        message: "'/unrelated/%ZZ' is not a valid url component",
         statusCode: 400,
       });
+      expect(unrelated.headers['cache-control']).toBeUndefined();
+      expect(unrelated.headers.vary).toBeUndefined();
     } finally {
       await app.close();
     }

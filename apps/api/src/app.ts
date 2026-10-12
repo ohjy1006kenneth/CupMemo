@@ -8,9 +8,31 @@ import { registerBrewRoutes } from './brews.js';
 
 export const portSchema = z.coerce.number().int().min(1).max(65_535).default(4101);
 
-function isBrewUrl(url: string) {
+function privateNamespace(url: string) {
   const path = url.split('?')[0];
-  return path === '/api/v1/brews' || path.startsWith('/api/v1/brews/');
+  for (const namespace of ['coffees', 'brews'] as const) {
+    const root = `/api/v1/${namespace}`;
+    if (path === root || path.startsWith(`${root}/`)) return namespace;
+  }
+  return undefined;
+}
+
+function varyCookie(value: unknown) {
+  const tokens = String(value ?? '')
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean);
+  if (!tokens.some((token) => token === '*' || token.toLowerCase() === 'cookie'))
+    tokens.push('Cookie');
+  return tokens.join(', ');
+}
+
+function privateNotFound(reply: FastifyReply) {
+  return reply
+    .header('cache-control', 'no-store')
+    .header('vary', varyCookie(reply.getHeader('vary')))
+    .code(404)
+    .send({ message: 'Resource not found' });
 }
 
 export function parseApiConfig(env: NodeJS.ProcessEnv = process.env) {
@@ -38,10 +60,13 @@ export function createApp(
     routerOptions: {
       // Router decoding errors precede Fastify hooks and route error handlers.
       onBadUrl: (path, request, response) => {
-        const privateBrew = isBrewUrl(request.url ?? '');
+        const namespace = privateNamespace(request.url ?? '');
         const body = JSON.stringify(
-          privateBrew
-            ? { message: 'Invalid brew request' }
+          namespace
+            ? {
+                message:
+                  namespace === 'coffees' ? 'Invalid coffee request' : 'Invalid brew request',
+              }
             : {
                 error: 'Bad Request',
                 code: 'FST_ERR_BAD_URL',
@@ -52,7 +77,9 @@ export function createApp(
         response.writeHead(400, {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body),
-          ...(privateBrew ? { 'Cache-Control': 'no-store', Vary: 'Cookie' } : {}),
+          ...(namespace
+            ? { 'Cache-Control': 'no-store', Vary: varyCookie(response.getHeader('vary')) }
+            : {}),
         });
         response.end(body);
       },
@@ -82,16 +109,18 @@ export function createApp(
       },
     },
   });
-  // Stop only unmatched brew requests before Fastify's default 404 can echo
-  // their URL in both its public message and its separate info log.
+  // Early generic404 avoids parsing unmatched private bodies. The supported
+  // not-found handler also covers the internal404 router's decoding branch,
+  // which bypasses lifecycle hooks for unsupported malformed method targets.
   app.addHook('onRequest', async (request, reply) => {
-    if (request.is404 && isBrewUrl(request.url)) {
-      return reply
-        .header('cache-control', 'no-store')
-        .header('vary', 'Cookie')
-        .code(404)
-        .send({ message: 'Resource not found' });
-    }
+    if (request.is404 && privateNamespace(request.url)) return privateNotFound(reply);
+  });
+  app.setNotFoundHandler((request, reply) => {
+    if (privateNamespace(request.raw.url ?? '')) return privateNotFound(reply);
+    // Preserve Fastify's default public404 envelope and structured info event.
+    const message = `Route ${request.raw.method}:${request.raw.url} not found`;
+    request.log.info(message);
+    return reply.code(404).send({ message, error: 'Not Found', statusCode: 404 });
   });
   app.addContentTypeParser(
     'application/x-www-form-urlencoded',

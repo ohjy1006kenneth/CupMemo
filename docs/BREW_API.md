@@ -143,12 +143,18 @@ coffeeId plus limit1 supports future latest-recipe retrieval.
 
 ## Errors and runtime privacy
 
-All brew responses, including parser errors, have no-store and Vary Cookie.
+All brew responses, including parser errors, have no-store and Vary containing
+Cookie, preserving existing tokens or `*`.
 Unmatched brew-namespace paths and unsupported methods return generic404
 `Resource not found` before Fastify's default URL-echoing response/log handler.
-Malformed URL components return generic400 `Invalid brew request` at the router
-boundary, before route hooks can run. Neither boundary reflects method, path,
-resource ID or query. These boundaries do not change unrelated routing/errors.
+Main-router malformed decoding returns generic400 `Invalid brew request`, before
+route hooks can run. Unsupported PUT/OPTIONS malformed targets entering the
+internal not-found router retain404 `Resource not found`; its supported fallback
+handler remains private even when hooks do not run. Neither fallback reads
+protected data or reflects/logs method, path, resource ID, query or body. Exact
+`/api/v1/brews` and slash-descendants are private; near-prefix `/api/v1/brews-other`
+and unrelated routing/errors are unchanged. Real HTTP HEAD keeps an empty body
+with the appropriate status/privacy headers.
 Missing/foreign valid UUID GET/PATCH/DELETE and missing/foreign POST coffee return
 identical404 `{message:'Resource not found'}`. Invalid UUID/input/query/merged
 recipe returns400 `Invalid brew request`. Parser failures preserve413/415 with
