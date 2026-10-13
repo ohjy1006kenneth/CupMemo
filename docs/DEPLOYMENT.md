@@ -153,6 +153,10 @@ Commit only example files such as `.env.example`, never production values.
 
 ## Pre-deployment Pi audit
 
+See the [dated read-only runtime audit](PI_RUNTIME_AUDIT.md) (Refs #31). The
+repository/Docker root are on SSD; the observed USB ext4 partition has no mount.
+Actual production HDD path and target remain UNVERIFIED, not deployment approval.
+
 Before assigning ports or writing production paths:
 
 1. inspect OS/architecture
