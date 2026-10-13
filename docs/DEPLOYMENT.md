@@ -160,9 +160,12 @@ Commit only example files such as `.env.example`, never production values.
 
 ## Pre-deployment Pi audit
 
-See the [dated read-only runtime audit](PI_RUNTIME_AUDIT.md) (Refs #31). The
-repository/Docker root are on SSD; the observed USB ext4 partition has no mount.
-Actual production HDD path and target remain UNVERIFIED, not deployment approval.
+See the [historical pre-mount audit](PI_RUNTIME_AUDIT.md#historical-pre-mount-snapshot)
+and [current supplement](PI_RUNTIME_AUDIT.md#current-supplement) (Refs #31).
+Repository/Docker root and `/mnt/nas-hdd` resolve to SSD; the actual HDD is currently
+mounted at `/DATA/nas`. Production target, data directory, ownership/permissions
+and fail-closed Issue11 guard remain unapproved; path discovery is not deployment
+approval, and the world-writable mount root is not approved PostgreSQL PGDATA.
 
 Before assigning ports or writing production paths:
 

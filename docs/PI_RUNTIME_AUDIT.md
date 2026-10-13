@@ -1,5 +1,18 @@
 # Read-only Pi runtime audit (Refs #31)
 
+## Current-status navigation
+
+**Historical pre-mount snapshot below:** every original observation and decision
+after this banner is retained unchanged from the integrated F1 baseline. Its
+unmounted-HDD statements describe **2026-10-13T02:15:50-05:00**, not current state.
+See the [current supplement](#current-supplement) for fresh read-only observations
+at **2026-10-13T07:42:42-05:00**: the HDD is mounted at `/DATA/nas`, while
+`/mnt/nas-hdd` resolves to SSD/root. Neither path discovery nor persistent mount
+configuration approves a production data directory, deployment or Issue11 guard.
+Owner acceptance of the full original Issue31 remains pending.
+
+## Historical pre-mount snapshot
+
 Issue: https://github.com/ohjy1006kenneth/CupMemo/issues/31. Primary HQ card:
 `t_95163d0d`, board `hq`, tenant `cupmemo`. Original implementer:
 `code-monkey-cupmemo`, run2785. The [owner contract](https://github.com/ohjy1006kenneth/CupMemo/issues/31#issuecomment-6140325766)
@@ -254,3 +267,192 @@ coder → independent `cupmemo-code-reviewer` → `cupmemo`; docs-only requires 
 visual review. Technical zero-Blocking PASS may accept the document/evidence while
 retaining the unresolved HDD criterion. Only the owner integrates or decides
 Issue/card completion; neither specialist merges, closes nor self-approves.
+
+## Current supplement
+
+### Identity, evidence and observation limits
+
+Fresh observation starts **2026-10-13T07:42:42-05:00**; individual commands have
+their own start/end timestamps and exit statuses. Original coder
+`code-monkey-cupmemo`, original implementation run2785, current revision2814,
+SAME HQ card `t_95163d0d`, [Issue31](https://github.com/ohjy1006kenneth/CupMemo/issues/31).
+The [owner supplement contract](https://github.com/ohjy1006kenneth/CupMemo/issues/31#issuecomment-6144511537)
+authorizes only this read-only current-state documentation. Approved baseline is
+merged F1 `d0efc680840fadae2b7dfe984162ca97e39e984e`, tree
+`0e84650b99328de1752d85875df3e0dcfb357648`; its
+[main CI38389912784](https://github.com/ohjy1006kenneth/CupMemo/actions/runs/38389912784)
+completed SUCCESS. F1 is integrated, not a current formatting failure or production
+acceptance. Historical skipped-format controls and failures remain retained.
+
+Evidence locator: native `cupmemo31-current-2814.zip` and its external manifest
+on this SAME card. It contains full sanitized `IMPLEMENTATION.md`, task-private
+`probes.py`, original numbered JSON logs, check scripts/reports and publication
+receipts. Each probe records exact argv, timestamps, status and bounded output.
+References below are archive-relative filenames. Exact final commit/tree and CI
+belong in the external receipt, not a self-invalidating document hash. Prior native
+317–321 retain revision2807; 322–326 retain independent review2808, owner2809 and
+the superseding contract. They are historical receipts, not fresh worker execution.
+
+All current numbered probes completed exit0. Tailscale raw JSON was parsed only in
+memory into an allowlist; no peer identities, logins or endpoints were retained.
+No NAS contents, recursive scans, write probes, process argv/environment, full
+Docker inspect/logs, installation, local build/test/browser fixtures or host
+configuration changes were used. Capacity differences from older snapshots do not
+establish a cleanup, data-movement or deletion cause.
+
+### OBSERVED: current runtime and coexistence
+
+- `01-date.json`, `02-arch.json`, `03-cpu.json`, `06-model.json` and
+  `29-os-release.json`: Raspberry Pi5 Model B Rev1.1, aarch64, Debian GNU/Linux13
+  (trixie), full version13.4; four online Cortex-A76 CPUs, maximum2400MHz.
+- `04-memory.json`: RAM7.9Gi total,5.4Gi used,2.5Gi available; swap2.0Gi total/used,
+  only176Ki free. `05-load.json`: uptime3 days28 minutes, load0.26/0.45/0.54.
+  Instant load is not a sustained-capacity benchmark; nearly exhausted swap still
+  threatens coexistence even though SSD free space is higher than historically.
+- `07-docker-version.json`, `08-compose.json`, `09-docker-root.json`: Docker
+  server29.4.2, Compose v5.1.3, root `/var/lib/docker`.
+- `30-node.json`, `31-pnpm.json`: Node24.15.0, pnpm10.34.6. Existing project-local
+  Prettier3.9.9 checks only the two authorized Markdown files with this checkout's
+  configuration and explicit empty ignore path. No dependency installation.
+
+**HUMAN-GATED:** choose capacity/resource limits and coexistence strategy before
+production. Do not reclaim space by deleting other outcomes' evidence, pruning
+Docker, stopping workloads or inferring spare sustained capacity from these reads.
+
+### OBSERVED: actual current SSD/HDD paths
+
+- `11-devices.json`, `12-repo-mount.json`, `24-docker-target.json`: repository
+  `/home/juyoungoh/CupMemo` and Docker root `/var/lib/docker` resolve to `/` on
+  `/dev/nvme0n1p2`, ext4 SSD/root, UUID
+  `493d6733-2a8b-482b-b39f-a7ecc1ce8863`, label `rootfs`, options `rw,noatime`.
+  Physical NVMe is238.5G TEAM TM8FP6256G; root partition238G. Firmware partition
+  `/dev/nvme0n1p1` is512M vfat, UUID `5AC1-0D52`, mounted `/boot/firmware`.
+- `11-devices.json`, `21-hdd-source.json`, `22-hdd-target.json`:931.5G TOSHIBA
+  MQ04UBF100 USB disk `/dev/sda`, ext4 `/dev/sda1`, label `NAS_DATA`, UUID
+  `68391fd3-3c92-4cfe-82db-47a5e6abb2ee`, **currently mounted `/DATA/nas`**,
+  options `rw,nosuid,nodev,relatime`. Both source-UUID and target queries agree.
+- `23-old-target.json`: **`/mnt/nas-hdd` is NOT the current HDD mount**. It resolves
+  to `/` on the SSD UUID above. A directory name or earlier mount receipt cannot
+  establish current storage identity. Treat using it for HDD live data as an
+  SSD-fallback hazard; do not restore the earlier mount path automatically.
+- `14-space.json`: root234G total,134G used,88G available,61% used for repository,
+  Docker root and `/mnt/nas-hdd`; HDD916G total,86G used,784G available,10% used
+  at `/DATA/nas`. Device and filesystem sizes are different measurements.
+- `28-root-permissions.json`: mount root `/DATA/nas` is `root:root`, mode777;
+  `/mnt/nas-hdd` is `root:root`, mode755. World-writable mount-root permissions
+  are a risk, **not approved PostgreSQL PGDATA ownership/permissions**. No
+  production directory is selected or created; do not use the mount root as
+  PGDATA or automatically chown/chmod it.
+
+Actual mounted HDD path discovery is now retrievable, unlike the historical
+pre-mount snapshot. Permission intent, private contents, disk health, data movement
+and the cause of path/capacity changes remain **UNVERIFIED** and were not inspected.
+The fresh mapping corroborates owner2809/reviewer2808 current `/DATA/nas` receipts;
+earlier `/mnt/nas-hdd` mounting receipts remain evidence of earlier dated state only.
+
+### OBSERVED configuration / UNVERIFIED reboot continuity
+
+`25-fstab.json`: line5 maps HDD UUID `68391fd3-3c92-4cfe-82db-47a5e6abb2ee` to
+`/DATA/nas` as ext4 with
+`defaults,nosuid,nodev,nofail,x-systemd.device-timeout=10s`, dump0/pass2.
+`26-mount-unit.json`: `DATA-nas.mount` is active/mounted, What `/dev/sda1`, Where
+`/DATA/nas`, options `rw,nosuid,nodev,relatime`, generated fragment
+`/run/systemd/generator/DATA-nas.mount`. `27-boot-dependencies.json` includes
+`DATA-nas.mount` under `local-fs.target`.
+
+This is **persistent configuration evidence**, not proof of an actual successful
+reboot, future USB availability or application safety. `nofail` permits boot to
+continue without this mount; it does not implement the fail-closed Issue11 guard.
+No reboot, unmount, fstab/unit edit or storage write was performed. Production
+startup must independently verify expected mounted filesystem identity and the
+approved data directory's actual mapping before PostgreSQL may start.
+
+### OBSERVED: refreshed protected workloads and network inventory
+
+`10-containers.json` retains every current name, image, reported state and published
+port. The same18 names/images in the historical container table are present and
+Up; most report Up3 days, while `big-bear-syncthing` and `immich-server` report
+Up4 hours. Those are Docker status observations, not application health tests or
+an explanation of restart causes. Published mappings remain as in the historical
+table, including retained `cupmemo-t-1befe331` on loopback55425; container-only
+5432/6379 are not host-published ports. Preserve ALL containers, including fixtures
+not owned by this audit; no Docker lifecycle action was taken.
+
+`17-system-services.json` and `18-user-services.json` retain full current running
+unit inventories:36 system and27 user units, loaded/active/running. In particular:
+
+- Hermes: `hermes-dashboard.service`, `hermes-gateway.service`,
+  `hermes-gateway-cupmemo.service`; Trading/DashCraft:
+  `hermes-gateway-trading.service`, `hermes-gateway-dashcraft.service`.
+- Other user workloads: `lab-dashboard.service`, `news-feed.service`,
+  `rpi-connect.service`, `rpi-connect-wayvnc.service` and desktop/audio/portal units.
+  Historical `stock-evidence-*` units are not in this current running-unit list;
+  this observation neither establishes their disposition nor authorizes changes.
+- System: Docker/containerd, SSH/Tailscale/cron, all listed CasaOS units,
+  rclone/devmon/udisks2/smartmontools, Samba/NFS/rpcbind, NetworkManager and other
+  OS services. Preserve every listed workload, not just the named examples.
+- Shared dispatcher process hosting remains **UNVERIFIED** by running-unit names;
+  absence of a separately named unit does not imply absence of the owner-verified
+  singleton. Preserve its scheduling, global capacity and all other active claims.
+
+`15-tcp.json` / `16-udp.json` retain actual local addresses/ports without process
+argv. Current TCP IPv4 wildcard ports are
+22,53,111,139,445,2283,3000,3232,7575,7878,8000,8080,8384,8642,8765,9000,9443,10443,22000,23000,55913;
+IPv6 wildcard ports are
+22,53,111,139,445,2283,3000,3232,7575,8000,8080,8384,9000,9443,10443,22000,23000,55913;
+wildcard `*` TCP ports are80/8090. IPv4 loopback ports are
+5572,9239,35705,36891,38879,38925,44689,45197,45311,45763,45959,52827,55425.
+Local Tailscale-bound TCP ports are443/8443/8444/9119/36339 on IPv4 and
+443/8443/8444/32819 on IPv6. Historical8890/8445 are not in this fresh inventory;
+no availability reservation or ownership inference follows.
+UDP IPv4 wildcard ports are53,67,111,5353,21027,22000,41641,54215;
+wildcard `*` UDP ports are53,67,111,5353,21027,22000,34889,41641;
+local LAN/bridge/broadcast UDP binds include137/138. Listener inventory does not
+prove firewall/public reachability or service ownership.
+
+`20-network-names.json` retains the same13 network names as the historical network
+inventory; neither `cupmemo-prod_app` nor `cupmemo-prod_database` appears.
+**PROPOSED / unreserved:** retain future project `cupmemo-prod`, canonical four
+services, separate app and internal database networks, no global `container_name`,
+no other-project network reuse and no hardcoded subnet. Publish **no host ports by
+default**; no diagnostic port is required, chosen, reserved or opened. Tunnel
+outbound connectivity and fresh network/route/address/port overlap checks are
+required at future authorized activation. This naming plan is not implemented
+network isolation or a post-creation collision guarantee.
+
+`19-tailscale.json`: BackendState Running, Self.Online true, health present with0
+messages;7 known peers,1 Online=true,0 Active=true. This local daemon summary is
+**not developer-PC SSH or public HTTPS proof**. Those round-trips, Cloudflare and
+phone access remain **UNVERIFIED**; no peer probe/login or tunnel action occurred.
+
+### Original Issue31 audit criteria and remaining gates
+
+1. **Documented environment audit:** fresh runtime/resource/storage/container/
+   listener/unit/network/Tailscale evidence above, separately dated from historical
+   evidence. Exact-head documentation review/integration remains owner-gated.
+2. **Noncolliding choices:** proposed project/network names absent from current
+   names, no host publishing by default and no diagnostic reservation. Fresh
+   activation overlap/outbound checks and runtime isolation remain **UNVERIFIED**.
+3. **Actual SSD/HDD paths known:** fresh UUID/source/target/df evidence now identifies
+   SSD repository/Docker root and HDD `/DATA/nas`, with explicit `/mnt/nas-hdd`
+   SSD hazard. This supplies actual-path audit evidence, **not approval of a
+   production target, directory or PGDATA permissions**. Owner alone decides
+   whether the original audit criterion is fully accepted after exact-head review.
+4. **Protection plan:** preserve all observed workloads/units, private conditional
+   boundaries, capacity/permission risk and fail-closed storage requirements;
+   do not mutate competitors or assume unused sustained capacity.
+
+**HUMAN-GATED / UNVERIFIED production prerequisites remain prominent:**
+`deployment_target=null`; production-specific HDD directory/ownership/permissions,
+Issue11 absent-HDD/SSD-fallback guard, sustained capacity and network isolation,
+reboot continuity, public target/domain/tunnel/HTTPS, developer-PC SSH, backups and
+actual restore/disaster recovery, physical-phone/accessibility checks and production
+cookie/proxy/log privacy. All12 advisories, R1 and separate auth-redirect debt
+remain development/preparation-only, not public-production cleared. Minimum owner
+action is current-path audit acceptance plus separate production target/storage/
+permission/guard decisions, **not an invented missing-mount request**.
+
+Only the owner may accept/integrate and decide full original Issue/card completion.
+Same-card technical review follows on the exact new candidate; docs-only requires
+no visual review. Neither this supplement nor a zero-Blocking technical verdict
+automatically completes Issue31/11 or authorizes any production/storage mutation.
