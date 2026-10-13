@@ -179,16 +179,104 @@ Before assigning ports or writing production paths:
 
 Do not stop unrelated services merely to obtain a preferred port.
 
-## HDD startup guard
+## HDD startup guard (development/preparation only, Refs #11)
 
-Before PostgreSQL starts:
+Issue: https://github.com/ohjy1006kenneth/CupMemo/issues/11. Primary HQ card:
+`t_9cbb487a`. `infrastructure/scripts/postgres-hdd-guard.mjs` is a Node24 stdlib
+**host** preflight and trusted-operator foreground argv launcher. It is not
+installed service/Compose wiring or approval to start production PostgreSQL.
+Development database defaults are unchanged. No configuration is inferred or
+implicitly loaded from `.env`; explicitly supply all four variables:
 
-- verify the expected external HDD mount is present
-- verify the configured DB data directory resolves onto that mounted filesystem
+| Variable             | Required value (no default)                                                          |
+| -------------------- | ------------------------------------------------------------------------------------ |
+| `POSTGRES_HDD_MOUNT` | Absolute, normalized, nonroot expected filesystem mount root                         |
+| `POSTGRES_HDD_UUID`  | Expected ext4 UUID, canonical lowercase `8-4-4-4-12` hexadecimal form                |
+| `POSTGRES_DATA_DIR`  | Absolute, normalized, pre-existing strict child of the mount, outside the repository |
+| `POSTGRES_DATA_UID`  | Explicit positive decimal POSIX owner UID (not inferred or assumed999)               |
 
-If not, fail startup.
+Paths must have no symlink components, traversal or trailing slash. Data must be
+owned by the configured UID and have exactly0700 or0750 permissions (no special
+bits). Every ancestor from mount root through data must be non-group/world-writable.
+The guard does not mkdir, chmod, chown, inspect directory contents or connect to
+PostgreSQL. An operator must separately approve/provision safe storage; refusal is
+not authorization to modify a shared NAS.
 
-This is required to avoid Docker creating a normal directory on the root/SSD filesystem when the HDD is absent.
+After approval and explicit environment setup, the interface is:
+
+```sh
+node infrastructure/scripts/postgres-hdd-guard.mjs --check
+node infrastructure/scripts/postgres-hdd-guard.mjs -- <command> [args...]
+```
+
+Replace `<command>` locally with a trusted **foreground** command. Do not use a
+daemonizing command (including `docker compose up -d`) as evidence of ongoing
+protection. The launcher executes literal argv without a shell, preserves stdio
+and exit status, and forwards SIGINT/SIGTERM/SIGHUP. If the child ignores termination,
+it is killed after2000ms; the wrapper propagates the actual resulting signal.
+It does not manage descendant daemons. The trusted child inherits the operator's
+environment and can print its own output; never put credentials in argv. Guard
+diagnostics are fixed reasons and never echo environment, command argv or raw
+filesystem/probe exceptions. Invalid CLI/configuration fails before child launch.
+
+The guard uses `/usr/bin/findmnt` JSON with a2000ms timeout, SIGKILL on timeout and
+16KiB output limit per probe. Both mount and data must resolve to the **exact**
+expected target, UUID, ext4 type, filesystem root `/` and matching Linux device
+major/minor. It refuses root/SSD device fallback, unknown or ambiguous evidence,
+nested mounts/subdirectory binds and unsafe/unavailable paths. `lstat`/`realpath`
+reject symlinks; a second stat pass checks identity/ownership/modes after probes.
+Importing the module has no probing/launch side effects. Test injection exists
+only in exported function parameters, never in production CLI environment flags.
+
+### Current refusal controls and evidence limits
+
+The [current audit supplement](PI_RUNTIME_AUDIT.md#current-supplement) identifies
+HDD `/DATA/nas`, ext4 UUID `68391fd3-3c92-4cfe-82db-47a5e6abb2ee`.
+`/mnt/nas-hdd` resolves to SSD/root UUID `493d6733-2a8b-482b-b39f-a7ecc1ce8863`;
+it is not the HDD. `/DATA/nas` is root:root777, unsafe mount ancestry, and the
+mount root itself is not valid PGDATA. These remain refused controls, not enabled
+production values or a permission-repair instruction. No approved production data
+directory, owner UID, permissions or deployment target exists.
+
+Focused verification:
+
+```sh
+corepack pnpm exec vitest run tests/postgres-hdd-guard.test.mjs
+corepack pnpm exec prettier --ignore-path /dev/null --file-info docs/DEPLOYMENT.md
+corepack pnpm exec prettier --ignore-path /dev/null --check docs/DEPLOYMENT.md infrastructure/scripts/postgres-hdd-guard.mjs tests/postgres-hdd-guard.test.mjs
+```
+
+Tests use real disposable SSD directories/symlinks/modes and sentinel children,
+with explicitly **injected mount-table fixtures** for positive cases. Those are
+unit behavior, not a mounted test HDD or positive production launch. Actual bounded
+subprocess failure and foreground argv/status/signal controls are exercised.
+Real host CLI SSD/root777 refusals and exact-head root quality/CI results belong
+in the native implementation/review receipts on the primary card. Checks never
+write to the HDD, change mounts/permissions, or start a real database.
+
+### Remaining original acceptance and startup/restart boundary
+
+This preflight has a **check-to-launch race** and is not a hot-unmount lock. A
+trusted stable mount and unchanged paths are prerequisites; removal/replacement
+after checking is not prevented. A successful `--check` is not a reusable launch
+receipt: the launcher performs the same fresh guard itself.
+
+Docker daemon automatic restarts can bypass a host launcher. Future separately
+authorized [Issue32](https://github.com/ohjy1006kenneth/CupMemo/issues/32) Compose
+and [Issue42](https://github.com/ohjy1006kenneth/CupMemo/issues/42) service wiring
+must close **all** startup/reboot/restart bypasses, prevent bind-path auto-creation
+(`create_host_path: false` or equivalent), retain private DB networking and verify
+actual missing-HDD refusal before production. No Compose/systemd/permission
+deployment is delivered by this preparatory artifact.
+
+Original Issue11 acceptance remains separate: actual HDD identity is documented;
+data path is configurable; guard/safe fallback refusal are executable artifact
+tests; this procedure is documented. **Actual production-path approval and real
+PostgreSQL startup/reboot/restart protection remain UNVERIFIED.** Partial artifact
+integration must not close Issue11 or finish the same primary card. All12 dependency
+advisories, R1 and separate auth-redirect attribution retain the development-only
+[Issue30 risk disposition](https://github.com/ohjy1006kenneth/CupMemo/issues/30#issuecomment-6140040612),
+not public-production clearance.
 
 ## Backups
 
