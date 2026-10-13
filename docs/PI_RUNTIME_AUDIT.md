@@ -405,7 +405,7 @@ wildcard `*` TCP ports are80/8090. IPv4 loopback ports are
 Local Tailscale-bound TCP ports are443/8443/8444/9119/36339 on IPv4 and
 443/8443/8444/32819 on IPv6. Historical8890/8445 are not in this fresh inventory;
 no availability reservation or ownership inference follows.
-UDP IPv4 wildcard ports are53,67,111,5353,21027,22000,41641,54215;
+UDP IPv4 wildcard ports are53,67,111,137,138,5353,21027,22000,41641,54215;
 wildcard `*` UDP ports are53,67,111,5353,21027,22000,34889,41641;
 local LAN/bridge/broadcast UDP binds include137/138. Listener inventory does not
 prove firewall/public reachability or service ownership.
