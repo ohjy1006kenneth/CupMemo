@@ -5,6 +5,7 @@
 CupMemo initially runs on a Raspberry Pi 5 home server.
 
 Existing environment:
+
 - Raspberry Pi 5
 - SSD
 - external HDD
@@ -18,6 +19,7 @@ Do not disrupt Hermes or unrelated services.
 ### SSD
 
 Use the SSD for:
+
 - GitHub repository checkout
 - source code
 - node_modules/build context
@@ -28,6 +30,7 @@ Use the SSD for:
 ### External HDD
 
 Use the external HDD for:
+
 - production PostgreSQL data
 
 Do not place PostgreSQL's live data directory inside the Git repository.
@@ -46,6 +49,7 @@ cloudflared
 ```
 
 Use:
+
 - private Docker networking
 - health checks
 - sensible restart policies
@@ -96,6 +100,7 @@ https://cupmemo.example/api/v1/...
 ```
 
 The public routing/proxy layer should send:
+
 - normal app traffic to Next.js
 - `/api/v1/*` to Fastify
 
@@ -114,6 +119,7 @@ Prefer running `cloudflared` in the production Compose stack unless a strong tec
 Use current official Cloudflare documentation during implementation rather than relying on old commands.
 
 Goals:
+
 - public HTTPS
 - no home-router port forwarding
 - no public SSH
@@ -123,6 +129,7 @@ Goals:
 Tunnel credentials/tokens are secrets.
 
 Never:
+
 - commit them
 - put real values in documentation
 - print them unnecessarily in logs
@@ -172,6 +179,7 @@ Do not stop unrelated services merely to obtain a preferred port.
 ## HDD startup guard
 
 Before PostgreSQL starts:
+
 - verify the expected external HDD mount is present
 - verify the configured DB data directory resolves onto that mounted filesystem
 
@@ -184,6 +192,7 @@ This is required to avoid Docker creating a normal directory on the root/SSD fil
 Implement automated PostgreSQL dumps.
 
 Initial retention:
+
 - 7 daily
 - 4 weekly
 - 3 monthly
@@ -191,6 +200,7 @@ Initial retention:
 Where practical, keep at least one backup copy on storage separate from the live database, such as the SSD.
 
 Document:
+
 - backup command/job
 - backup location
 - retention
@@ -202,6 +212,7 @@ Perform an actual safe restoration test before considering backup/recovery compl
 ## Reboot/recovery expectations
 
 A normal Pi reboot should result in:
+
 1. required storage mounts available
 2. HDD guard passes
 3. PostgreSQL starts
@@ -217,6 +228,7 @@ If the HDD is absent, PostgreSQL should remain stopped and the failure should be
 The deployment should not assume the Pi forever.
 
 Possible future moves:
+
 - Next.js -> Vercel/Cloudflare/AWS
 - Fastify -> ECS/EC2/Fly/Render/etc.
 - PostgreSQL -> RDS/managed PostgreSQL

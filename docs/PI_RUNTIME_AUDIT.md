@@ -55,17 +55,17 @@ memory; peer identities, logins, endpoints and auth/config were never retained.
 
 ## OBSERVED: platform and resources
 
-| Check / command | Observation | Status / evidence |
-| --- | --- | --- |
-| `date -Is`; `uname -m` | 2026-10-13T02:15:50-05:00; aarch64 | exit0; `01-date.json`, `02-arch.json` |
-| File read `/etc/os-release` | Debian GNU/Linux13 (trixie), full version13.4 | readable; `os-release.json` |
-| Nonsecret `/proc/device-tree/model` read, trailing NUL removed | Raspberry Pi5 Model B Rev1.1 | exit0; `06-model.json` (file tool classified NUL-containing source as binary) |
-| `lscpu` | 4 online Cortex-A76 CPUs, max2400MHz | exit0; `03-cpu.json`; no stress test |
-| `free -h` | RAM7.9Gi total,5.1Gi used,2.7Gi available; swap2.0Gi total/used,832Ki free | exit0; `04-memory.json` |
-| `uptime` | Up2 days19:01; load0.47/0.36/0.36 | exit0; `05-load.json`; not a capacity benchmark |
-| `docker version --format '{{.Server.Version}}'` | Server29.4.2 | exit0; `07-docker-version.json` |
-| `docker compose version` | v5.1.3 | exit0; `08-compose.json` |
-| `docker info --format '{{.DockerRootDir}}'` | `/var/lib/docker` | exit0; `09-docker-root.json`; no full inspect |
+| Check / command                                                | Observation                                                                | Status / evidence                                                             |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `date -Is`; `uname -m`                                         | 2026-10-13T02:15:50-05:00; aarch64                                         | exit0; `01-date.json`, `02-arch.json`                                         |
+| File read `/etc/os-release`                                    | Debian GNU/Linux13 (trixie), full version13.4                              | readable; `os-release.json`                                                   |
+| Nonsecret `/proc/device-tree/model` read, trailing NUL removed | Raspberry Pi5 Model B Rev1.1                                               | exit0; `06-model.json` (file tool classified NUL-containing source as binary) |
+| `lscpu`                                                        | 4 online Cortex-A76 CPUs, max2400MHz                                       | exit0; `03-cpu.json`; no stress test                                          |
+| `free -h`                                                      | RAM7.9Gi total,5.1Gi used,2.7Gi available; swap2.0Gi total/used,832Ki free | exit0; `04-memory.json`                                                       |
+| `uptime`                                                       | Up2 days19:01; load0.47/0.36/0.36                                          | exit0; `05-load.json`; not a capacity benchmark                               |
+| `docker version --format '{{.Server.Version}}'`                | Server29.4.2                                                               | exit0; `07-docker-version.json`                                               |
+| `docker compose version`                                       | v5.1.3                                                                     | exit0; `08-compose.json`                                                      |
+| `docker info --format '{{.DockerRootDir}}'`                    | `/var/lib/docker`                                                          | exit0; `09-docker-root.json`; no full inspect                                 |
 
 **Coexistence risk:** a low instant load is not spare sustained capacity. Swap is
 almost exhausted, only2.7Gi RAM is available, and root is97% used. Builds, image
@@ -78,17 +78,17 @@ other outcomes' retained evidence to make room.
 
 ## OBSERVED / UNVERIFIED: storage
 
-| Device / path | Actual mapping / state | Evidence |
-| --- | --- | --- |
-| `/dev/nvme0n1` | 238.5G NVMe, TEAM TM8FP6256G; SSD | `11-devices.json`, exit0 |
-| `/dev/nvme0n1p1` | 512M vfat mounted `/boot/firmware` | `11-devices.json`, `13-mounts.json`, exit0 |
-| `/dev/nvme0n1p2` | 238G ext4 mounted `/` | same; actual repository filesystem |
-| `/home/juyoungoh/CupMemo` | `/` → `/dev/nvme0n1p2`, ext4, rw/noatime | `findmnt --target /home/juyoungoh/CupMemo`, `12-repo-mount.json`, exit0 |
-| Repository and `/var/lib/docker` capacity | Same root:234G total,214G used,7.6G available,97% used | `df -h` for each; `14-repo-space.json`, `09b-docker-space.json`, exit0 |
-| `/dev/sda` | 931.5G USB, TOSHIBA MQ04UBF100; observed external disk candidate | `11-devices.json`, exit0; not an approved production device |
-| `/dev/sda1` | 931.5G ext4; MOUNTPOINTS empty, no corresponding source in full mount table | `11-devices.json`, `findmnt --json -o TARGET,SOURCE,FSTYPE` in `13-mounts.json`, exit0 |
-| `loop0`, `zram0` | 2G swap devices; zram marked `[SWAP]` | `11-devices.json`; not application storage |
-| Actual production HDD mount/data directory | **UNVERIFIED**; absent approved mounted path | No guessed path, capacity or data contents |
+| Device / path                              | Actual mapping / state                                                      | Evidence                                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `/dev/nvme0n1`                             | 238.5G NVMe, TEAM TM8FP6256G; SSD                                           | `11-devices.json`, exit0                                                               |
+| `/dev/nvme0n1p1`                           | 512M vfat mounted `/boot/firmware`                                          | `11-devices.json`, `13-mounts.json`, exit0                                             |
+| `/dev/nvme0n1p2`                           | 238G ext4 mounted `/`                                                       | same; actual repository filesystem                                                     |
+| `/home/juyoungoh/CupMemo`                  | `/` → `/dev/nvme0n1p2`, ext4, rw/noatime                                    | `findmnt --target /home/juyoungoh/CupMemo`, `12-repo-mount.json`, exit0                |
+| Repository and `/var/lib/docker` capacity  | Same root:234G total,214G used,7.6G available,97% used                      | `df -h` for each; `14-repo-space.json`, `09b-docker-space.json`, exit0                 |
+| `/dev/sda`                                 | 931.5G USB, TOSHIBA MQ04UBF100; observed external disk candidate            | `11-devices.json`, exit0; not an approved production device                            |
+| `/dev/sda1`                                | 931.5G ext4; MOUNTPOINTS empty, no corresponding source in full mount table | `11-devices.json`, `findmnt --json -o TARGET,SOURCE,FSTYPE` in `13-mounts.json`, exit0 |
+| `loop0`, `zram0`                           | 2G swap devices; zram marked `[SWAP]`                                       | `11-devices.json`; not application storage                                             |
+| Actual production HDD mount/data directory | **UNVERIFIED**; absent approved mounted path                                | No guessed path, capacity or data contents                                             |
 
 `df` filesystem sizes and `lsblk` device sizes are different measurements, not
 contradictory claims of usable capacity. Unmounted ext4 does not establish
@@ -106,26 +106,26 @@ completed exit0 (`10-containers.json`). All listed containers were Up2 days;
 ALL of them, including historical CupMemo fixtures not owned by this audit.
 Host mappings are distinct from container-only exposed ports.
 
-| Name | Image | Health / host-published ports |
-| --- | --- | --- |
-| cupmemo-t-1befe331 | postgres:17.6 | no health label; **127.0.0.1:55425→5432 TCP**; historical fixture, not production |
-| homarr | ghcr.io/ajnart/homarr:0.16.1 | healthy; wildcard7575 TCP |
-| aiometadata | ghcr.io/cedya77/aiometadata:latest | healthy; wildcard3232 TCP |
-| aiostreams | ghcr.io/viren070/aiostreams:latest | healthy; wildcard3000 TCP |
-| sure-worker | ghcr.io/we-promise/sure:0.6.5-hotfix.1 | no health label; container-only3000 TCP |
-| sure-redis | redis:8.2.1-alpine3.22 | healthy; container-only6379 TCP |
-| sure-web | ghcr.io/we-promise/sure:0.6.5-hotfix.1 | no health label; wildcard23000→3000 TCP |
-| sure-db | postgres:16 | healthy; container-only5432 TCP |
-| big-bear-syncthing | syncthing/syncthing:2.0 | healthy; wildcard8384/22000 TCP,21027/22000 UDP |
-| aiometadata_redis | redis:7-alpine | healthy; container-only6379 TCP |
-| big-bear-portainer | portainer/portainer-ce:latest | no health label; wildcard8000/9000/9443 TCP |
-| big-bear-pihole | pihole/pihole:latest | healthy; wildcard53 TCP/UDP,67 UDP,8080→80/10443→443 TCP; container-only123 UDP |
-| immich-server | ghcr.io/immich-app/immich-server:v2.7.5 | healthy; wildcard2283 TCP |
-| immich-machine-learning | ghcr.io/immich-app/immich-machine-learning:v2.7.5 | healthy; no published ports reported |
-| immich-redis | redis:6.2.20-alpine | no health label; container-only6379 TCP |
-| immich-postgres | ghcr.io/immich-app/postgres:14-vectorchord0.3.0-pgvectors0.2.0 | healthy; container-only5432 TCP |
-| big-bear-upsnap | ghcr.io/seriousm4x/upsnap:5.3.4 | healthy; no published ports reported |
-| yastream | tamthai/yastream:latest | healthy; wildcard55913 TCP |
+| Name                    | Image                                                          | Health / host-published ports                                                     |
+| ----------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| cupmemo-t-1befe331      | postgres:17.6                                                  | no health label; **127.0.0.1:55425→5432 TCP**; historical fixture, not production |
+| homarr                  | ghcr.io/ajnart/homarr:0.16.1                                   | healthy; wildcard7575 TCP                                                         |
+| aiometadata             | ghcr.io/cedya77/aiometadata:latest                             | healthy; wildcard3232 TCP                                                         |
+| aiostreams              | ghcr.io/viren070/aiostreams:latest                             | healthy; wildcard3000 TCP                                                         |
+| sure-worker             | ghcr.io/we-promise/sure:0.6.5-hotfix.1                         | no health label; container-only3000 TCP                                           |
+| sure-redis              | redis:8.2.1-alpine3.22                                         | healthy; container-only6379 TCP                                                   |
+| sure-web                | ghcr.io/we-promise/sure:0.6.5-hotfix.1                         | no health label; wildcard23000→3000 TCP                                           |
+| sure-db                 | postgres:16                                                    | healthy; container-only5432 TCP                                                   |
+| big-bear-syncthing      | syncthing/syncthing:2.0                                        | healthy; wildcard8384/22000 TCP,21027/22000 UDP                                   |
+| aiometadata_redis       | redis:7-alpine                                                 | healthy; container-only6379 TCP                                                   |
+| big-bear-portainer      | portainer/portainer-ce:latest                                  | no health label; wildcard8000/9000/9443 TCP                                       |
+| big-bear-pihole         | pihole/pihole:latest                                           | healthy; wildcard53 TCP/UDP,67 UDP,8080→80/10443→443 TCP; container-only123 UDP   |
+| immich-server           | ghcr.io/immich-app/immich-server:v2.7.5                        | healthy; wildcard2283 TCP                                                         |
+| immich-machine-learning | ghcr.io/immich-app/immich-machine-learning:v2.7.5              | healthy; no published ports reported                                              |
+| immich-redis            | redis:6.2.20-alpine                                            | no health label; container-only6379 TCP                                           |
+| immich-postgres         | ghcr.io/immich-app/postgres:14-vectorchord0.3.0-pgvectors0.2.0 | healthy; container-only5432 TCP                                                   |
+| big-bear-upsnap         | ghcr.io/seriousm4x/upsnap:5.3.4                                | healthy; no published ports reported                                              |
+| yastream                | tamthai/yastream:latest                                        | healthy; wildcard55913 TCP                                                        |
 
 Wildcard mappings above are both IPv4 and IPv6 where reported by Docker. A blank
 mapping does not certify lack of network exposure (for example host networking was
@@ -139,17 +139,17 @@ ports remain in `15-tcp.json` / `16-udp.json`, without process argv. These are
 listener observations, not reachability/firewall tests or ownership attribution.
 IPv4/IPv6 variants are grouped here, not erased from original evidence.
 
-| Protocol / bind class | Observed ports |
-| --- | --- |
-| TCP IPv4 wildcard `0.0.0.0` | 22,53,111,139,445,2283,3000,3232,7575,7878,8000,8080,8384,8642,8765,9000,9443,10443,22000,23000,55913 |
-| TCP IPv6 wildcard `[::]` | 22,53,111,139,445,2283,3000,3232,7575,8000,8080,8384,9000,9443,10443,22000,23000,55913 |
-| TCP wildcard `*` as reported | 80,8090 |
-| TCP IPv4 loopback `127.0.0.1` | 5572,8890,9239,35705,36891,38879,38925,44689,45197,45311,45763,45959,52827,55425 |
-| TCP local Tailscale IPv4 bind | 443,8443,8444,8445,9119,36339 |
-| TCP local Tailscale IPv6 bind | 443,8443,8444,8445,32819 |
-| UDP IPv4 wildcard | 53,67,111,137,138,5353,21027,22000,41641,54215 |
-| UDP wildcard `*` as reported | 53,67,111,5353,21027,22000,34889,41641 |
-| UDP local LAN/bridge addresses and broadcasts | 137,138; original log preserves each address |
+| Protocol / bind class                         | Observed ports                                                                                        |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| TCP IPv4 wildcard `0.0.0.0`                   | 22,53,111,139,445,2283,3000,3232,7575,7878,8000,8080,8384,8642,8765,9000,9443,10443,22000,23000,55913 |
+| TCP IPv6 wildcard `[::]`                      | 22,53,111,139,445,2283,3000,3232,7575,8000,8080,8384,9000,9443,10443,22000,23000,55913                |
+| TCP wildcard `*` as reported                  | 80,8090                                                                                               |
+| TCP IPv4 loopback `127.0.0.1`                 | 5572,8890,9239,35705,36891,38879,38925,44689,45197,45311,45763,45959,52827,55425                      |
+| TCP local Tailscale IPv4 bind                 | 443,8443,8444,8445,9119,36339                                                                         |
+| TCP local Tailscale IPv6 bind                 | 443,8443,8444,8445,32819                                                                              |
+| UDP IPv4 wildcard                             | 53,67,111,137,138,5353,21027,22000,41641,54215                                                        |
+| UDP wildcard `*` as reported                  | 53,67,111,5353,21027,22000,34889,41641                                                                |
+| UDP local LAN/bridge addresses and broadcasts | 137,138; original log preserves each address                                                          |
 
 Thus3000/8000, existing web/admin ports and55425 are occupied; a private container
 port5432 or6379 does **not** imply a host listener. No diagnostic host port is
@@ -160,16 +160,16 @@ selected or reserved by this plan; no bind/listen server was opened.
 `18-user-services.json`). All listed units were loaded/active/running. Full inventories
 are retained, including desktop, storage, network and OS services.
 
-| Protected group | Observed unit names / boundary |
-| --- | --- |
-| Hermes | User `hermes-dashboard.service`, `hermes-gateway.service`, `hermes-gateway-cupmemo.service` |
-| Trading / DashCraft | User `hermes-gateway-trading.service`, `hermes-gateway-dashcraft.service`; preserve their capacity/claims |
-| Shared dispatcher | No separately named dispatcher unit in these running-unit lists; hosting/process identity **UNVERIFIED** by unit inventory, not evidence it is absent; preserve owner-verified singleton runtime and scheduling |
-| Retained Trading evidence | User `stock-evidence-t_f7d9f047-private.service`, `stock-evidence-t_f7d9f047-private-guard.service` |
-| Other user applications | `lab-dashboard.service`, `news-feed.service`, `rpi-connect.service`, `rpi-connect-wayvnc.service`; plus desktop/audio/portal services in full log |
-| Docker / administration | System `docker.service`, `containerd.service`, `ssh.service`, `tailscaled.service`, `cron.service` |
-| CasaOS | System `casaos.service`, `casaos-app-management.service`, `casaos-gateway.service`, `casaos-local-storage.service`, `casaos-message-bus.service`, `casaos-user-service.service` |
-| Storage/network/OS | System `rclone.service`, `devmon@devmon.service`, `udisks2.service`, `smartmontools.service`, `nfs-blkmap.service`, `rpcbind.service`, `smbd.service`, `nmbd.service`, `winbind.service`, `NetworkManager.service`; full inventory retains others |
+| Protected group           | Observed unit names / boundary                                                                                                                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hermes                    | User `hermes-dashboard.service`, `hermes-gateway.service`, `hermes-gateway-cupmemo.service`                                                                                                                                                       |
+| Trading / DashCraft       | User `hermes-gateway-trading.service`, `hermes-gateway-dashcraft.service`; preserve their capacity/claims                                                                                                                                         |
+| Shared dispatcher         | No separately named dispatcher unit in these running-unit lists; hosting/process identity **UNVERIFIED** by unit inventory, not evidence it is absent; preserve owner-verified singleton runtime and scheduling                                   |
+| Retained Trading evidence | User `stock-evidence-t_f7d9f047-private.service`, `stock-evidence-t_f7d9f047-private-guard.service`                                                                                                                                               |
+| Other user applications   | `lab-dashboard.service`, `news-feed.service`, `rpi-connect.service`, `rpi-connect-wayvnc.service`; plus desktop/audio/portal services in full log                                                                                                 |
+| Docker / administration   | System `docker.service`, `containerd.service`, `ssh.service`, `tailscaled.service`, `cron.service`                                                                                                                                                |
+| CasaOS                    | System `casaos.service`, `casaos-app-management.service`, `casaos-gateway.service`, `casaos-local-storage.service`, `casaos-message-bus.service`, `casaos-user-service.service`                                                                   |
+| Storage/network/OS        | System `rclone.service`, `devmon@devmon.service`, `udisks2.service`, `smartmontools.service`, `nfs-blkmap.service`, `rpcbind.service`, `smbd.service`, `nmbd.service`, `winbind.service`, `NetworkManager.service`; full inventory retains others |
 
 No unit/config/auth/shared-dispatcher changes or unrelated workload cleanup are
 permitted. Unit names do not prove which process owns every listener; attribution
@@ -177,15 +177,15 @@ and capacity guarantees remain unverified rather than guessed from port numbers.
 
 ## OBSERVED / UNVERIFIED: Tailscale
 
-| Allowlisted `tailscale status --json` summary | Result at observation |
-| --- | --- |
-| BackendState | Running |
-| Self.Online | true |
-| Health | present,0 messages; no reported messages |
-| Peer counts | 7 known,1 Online=true,0 Active=true |
-| Command result | exit0; `19-tailscale.json`; raw JSON excluded |
-| Developer-PC → Pi SSH round-trip | **UNVERIFIED**; no peer probe/login authorized |
-| Public HTTPS / Cloudflare / phone access | **UNVERIFIED**; not inferred from local Tailscale or SSH listeners |
+| Allowlisted `tailscale status --json` summary | Result at observation                                              |
+| --------------------------------------------- | ------------------------------------------------------------------ |
+| BackendState                                  | Running                                                            |
+| Self.Online                                   | true                                                               |
+| Health                                        | present,0 messages; no reported messages                           |
+| Peer counts                                   | 7 known,1 Online=true,0 Active=true                                |
+| Command result                                | exit0; `19-tailscale.json`; raw JSON excluded                      |
+| Developer-PC → Pi SSH round-trip              | **UNVERIFIED**; no peer probe/login authorized                     |
+| Public HTTPS / Cloudflare / phone access      | **UNVERIFIED**; not inferred from local Tailscale or SSH listeners |
 
 Online and Active are reported peer fields, not a proved connected developer
 session. Local status confirms only the local daemon's report. No peer names,
@@ -203,17 +203,17 @@ not a replacement architecture, installed stack or production release decision.
 `yastream_default`. Proposed names below were not in that observation; they are
 **unreserved**, requiring fresh name/listener/route checks at activation.
 
-| Future boundary | Conditional choice / rationale |
-| --- | --- |
-| Compose project | `cupmemo-prod`; no reuse of another project's resources |
-| Services | Canonical `cupmemo-web`, `cupmemo-api`, `cupmemo-postgres`, `cloudflared`, scoped by project; no global `container_name` overrides |
-| App network | Project-local `app`, effective `cupmemo-prod_app`; web/API and approved routing/tunnel connect here, not existing application networks |
-| Database network | Separate project-local `database`, effective `cupmemo-prod_database`, internal; API/PostgreSQL only, no web/tunnel access |
-| External entry | Future approved Cloudflare tunnel on app network; same public origin `/` → web and `/api/v1/*` → API, using separately reviewed routing configuration |
-| Host publishing | **None by default** for web/API/PostgreSQL; no new collision with observed host ports and no default5432/3000/8000 reuse |
-| Diagnostics | No chosen host port; if later required, check actual TCP/UDP/address binds immediately, select an owner-approved loopback-only port, mark conditional/unreserved and recheck before activation |
-| Subnets | No hardcoded CIDR selected; fresh Docker/LAN/Tailscale route-overlap discovery required before network creation; existing networks are not modified |
-| Storage | Production HDD path remains unset until owner approves device/mount/data directory and Issue11 fails safely with HDD absent |
+| Future boundary  | Conditional choice / rationale                                                                                                                                                                 |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compose project  | `cupmemo-prod`; no reuse of another project's resources                                                                                                                                        |
+| Services         | Canonical `cupmemo-web`, `cupmemo-api`, `cupmemo-postgres`, `cloudflared`, scoped by project; no global `container_name` overrides                                                             |
+| App network      | Project-local `app`, effective `cupmemo-prod_app`; web/API and approved routing/tunnel connect here, not existing application networks                                                         |
+| Database network | Separate project-local `database`, effective `cupmemo-prod_database`, internal; API/PostgreSQL only, no web/tunnel access                                                                      |
+| External entry   | Future approved Cloudflare tunnel on app network; same public origin `/` → web and `/api/v1/*` → API, using separately reviewed routing configuration                                          |
+| Host publishing  | **None by default** for web/API/PostgreSQL; no new collision with observed host ports and no default5432/3000/8000 reuse                                                                       |
+| Diagnostics      | No chosen host port; if later required, check actual TCP/UDP/address binds immediately, select an owner-approved loopback-only port, mark conditional/unreserved and recheck before activation |
+| Subnets          | No hardcoded CIDR selected; fresh Docker/LAN/Tailscale route-overlap discovery required before network creation; existing networks are not modified                                            |
+| Storage          | Production HDD path remains unset until owner approves device/mount/data directory and Issue11 fails safely with HDD absent                                                                    |
 
 A tunnel container needs outbound connectivity; do not declare the entire app
 network `internal` in a way that prevents that. Only the database network is
