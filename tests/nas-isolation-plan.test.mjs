@@ -163,7 +163,7 @@ describe('effective private Compose/runtime/folder invariance (unit fixtures)', 
 });
 const rootConfig = '[global]\n  include = /etc/samba/smb.casa.conf\n';
 const sambaConfig = '[nas]\npath = /home/juyoungoh/nas\nguest ok = yes\n';
-function fixture(action) {
+function fixture(action, backingFilesystem = fs) {
   const base = fs.mkdtempSync(path.join(os.homedir(), 'cupmemo-nas-unit-'));
   const physical = (entry) => (entry === '/' ? '/' : path.join(base, entry));
   for (const [entry, mode] of [
@@ -181,17 +181,26 @@ function fixture(action) {
   fs.writeFileSync(physical('/etc/samba/smb.conf'), rootConfig, { mode: 0o644 });
   fs.writeFileSync(physical('/etc/samba/smb.casa.conf'), sambaConfig, { mode: 0o644 });
   const calls = [];
+  // Model approved devices independently of the host's root/home mounts. Keep real
+  // inode, size, timestamps, mode and file type so production safety checks run.
+  const ssdDevice = 2050n;
+  const descriptors = new Map();
+  const metadata = (stat, entry) => {
+    const hdd = entry.startsWith('/DATA/nas');
+    const child = hdd && entry !== '/DATA/nas';
+    return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, {
+      uid: child ? 1000n : 0n,
+      gid: entry === '/DATA/nas/Projects' ? 982n : child ? 1000n : 0n,
+      dev: hdd ? 2049n : ssdDevice,
+    });
+  };
   const filesystem = {
-    ...fs,
+    ...backingFilesystem,
     lstatSync(entry, options) {
-      const stat = fs.lstatSync(physical(entry), options);
-      const hdd = entry.startsWith('/DATA/nas');
-      const child = hdd && entry !== '/DATA/nas';
-      return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, {
-        uid: child ? 1000n : 0n,
-        gid: entry === '/DATA/nas/Projects' ? 982n : child ? 1000n : 0n,
-        dev: hdd ? 2049n : fs.lstatSync('/', { bigint: true }).dev,
-      });
+      return metadata(backingFilesystem.lstatSync(physical(entry), options), entry);
+    },
+    fstatSync(fd, options) {
+      return metadata(backingFilesystem.fstatSync(fd, options), descriptors.get(fd));
     },
     realpathSync(entry) {
       const result = fs.realpathSync(physical(entry));
@@ -201,13 +210,29 @@ function fixture(action) {
       return fs.readFileSync(typeof entry === 'number' ? entry : physical(entry), options);
     },
     openSync(entry, flags, mode) {
-      return fs.openSync(physical(entry), flags, mode);
+      const fd = backingFilesystem.openSync(physical(entry), flags, mode);
+      descriptors.set(fd, entry);
+      return fd;
+    },
+    closeSync(fd) {
+      descriptors.delete(fd);
+      return backingFilesystem.closeSync(fd);
+    },
+  };
+  // Physical output paths retain real ownership, on the same modeled SSD.
+  const outputFilesystem = {
+    ...backingFilesystem,
+    lstatSync(entry, options) {
+      return Object.assign(backingFilesystem.lstatSync(entry, options), { dev: ssdDevice });
+    },
+    fstatSync(fd, options) {
+      return Object.assign(backingFilesystem.fstatSync(fd, options), { dev: ssdDevice });
     },
   };
   const execute = (command, args, options) => {
     calls.push({ command, args, options });
     if (command === '/usr/bin/findmnt') {
-      const dev = fs.lstatSync('/', { bigint: true }).dev;
+      const dev = ssdDevice;
       const id = `${((dev >> 8n) & 0xfffn) | ((dev >> 32n) & 0xfffff000n)}:${(dev & 0xffn) | ((dev >> 12n) & 0xffffff00n)}`;
       return JSON.stringify({
         filesystems: [
@@ -246,6 +271,7 @@ function fixture(action) {
       base,
       physical,
       filesystem,
+      outputFilesystem,
       execute,
       calls,
       sambaHashes: { root: digest(rootConfig), source: digest(sambaConfig) },
@@ -256,6 +282,39 @@ function fixture(action) {
 }
 
 describe('preflight: real SSD files with injected HDD/ACL/probe UNIT FIXTURES', () => {
+  it.each([2049n, 2052n])(
+    'keeps real source/output checks coherent when underlying root dev is %s and home differs',
+    (rootDevice) => {
+      const homeDevice = 2051n;
+      const backingFilesystem = {
+        ...fs,
+        lstatSync(entry, options) {
+          return Object.assign(fs.lstatSync(entry, options), {
+            dev: entry === '/' ? rootDevice : homeDevice,
+          });
+        },
+        fstatSync(fd, options) {
+          return Object.assign(fs.fstatSync(fd, options), { dev: homeDevice });
+        },
+      };
+      expect(rootDevice).not.toBe(homeDevice);
+      fixture((options) => {
+        expect(preflight('samba', options).source).toBe(sambaConfig);
+        const messages = [];
+        const output = options.physical('/output');
+        const result = runPlan(['--prepare', output, '--component', 'samba'], {
+          ...options,
+          diagnostic: (message) => messages.push(message),
+          report: () => {},
+        });
+        expect(messages).toEqual([]);
+        expect(result.code).toBe(0);
+        expect(fs.readFileSync(path.join(output, 'samba.candidate.conf'), 'utf8')).toBe(
+          transformSamba(sambaConfig),
+        );
+      }, backingFilesystem);
+    },
+  );
   it('checks read-only and labels eligibility separately from applied isolation', () =>
     fixture((options) => {
       const before = fs.readFileSync(options.physical('/etc/samba/smb.casa.conf'));
@@ -374,6 +433,7 @@ describe('bounded source reads (real SSD unit files)', () => {
         let closes = 0;
         let bytes = 0;
         const open = options.filesystem.openSync;
+        const fstat = options.filesystem.fstatSync;
         options.filesystem.openSync = (entry, ...args) => {
           if (fault === 'growth-after-open' && entry.endsWith('smb.casa.conf'))
             fs.appendFileSync(sourcePath, 'x'.repeat(65537));
@@ -382,7 +442,7 @@ describe('bounded source reads (real SSD unit files)', () => {
         };
         options.filesystem.fstatSync = (fd, opts) =>
           Object.assign(
-            fs.fstatSync(fd, opts),
+            fstat(fd, opts),
             fault === 'growth-after-open'
               ? { size: 1n }
               : fault === 'inode-drift'
@@ -519,8 +579,9 @@ describe('CLI boundary', () => {
         const candidate = path.join(output, 'samba.candidate.conf');
         const messages = [];
         let published = false;
+        const outputFilesystem = options.outputFilesystem;
         options.outputFilesystem = {
-          ...fs,
+          ...outputFilesystem,
           openSync(entry, flags, mode) {
             if (fault === 'exclusive-race' && entry === candidate)
               fs.writeFileSync(entry, 'FOREIGN_SENTINEL', { mode: 0o600, flag: 'wx' });
@@ -528,7 +589,7 @@ describe('CLI boundary', () => {
           },
           fstatSync(fd, opts) {
             if (fault === 'fstat-failure') throw new Error('SECRET_SENTINEL');
-            return fs.fstatSync(fd, opts);
+            return outputFilesystem.fstatSync(fd, opts);
           },
           writeFileSync(fd, bytes) {
             if (fault === 'replaced-inode') {
@@ -592,17 +653,19 @@ describe('CLI boundary', () => {
         }
         return original(cmd, args, opts);
       };
-      if (fault === 'owner')
+      if (fault === 'owner') {
+        const outputFilesystem = options.outputFilesystem;
         options.outputFilesystem = {
-          ...fs,
+          ...outputFilesystem,
           lstatSync(entry, opts) {
-            const s = fs.lstatSync(entry, opts);
+            const s = outputFilesystem.lstatSync(entry, opts);
             return Object.assign(s, entry === output ? { uid: 0n } : {});
           },
         };
+      }
       if (fault === 'write-failure')
         options.outputFilesystem = {
-          ...fs,
+          ...options.outputFilesystem,
           writeFileSync() {
             throw new Error('SECRET_SENTINEL');
           },
