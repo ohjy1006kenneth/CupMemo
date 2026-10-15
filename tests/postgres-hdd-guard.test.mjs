@@ -23,6 +23,10 @@ function deviceId(dev) {
   return `${((dev >> 8n) & 0xfffn) | ((dev >> 32n) & 0xfffff000n)}:${(dev & 0xffn) | ((dev >> 12n) & 0xffffff00n)}`;
 }
 
+function wrongDevice(matchingDevice) {
+  return matchingDevice === '0:0' ? '0:1' : '0:0';
+}
+
 function fixtureProbe(_target, changes = {}) {
   // Injected mount-table fixture, NOT an observation of an actual mounted HDD.
   return JSON.stringify({
@@ -199,13 +203,49 @@ test.each([
   ['unknown UUID', { uuid: null }],
   ['wrong filesystem', { fstype: 'xfs' }],
   ['unknown device', { 'maj:min': null }],
-  ['wrong device', { 'maj:min': '8:1' }],
+  ['wrong device', () => ({ 'maj:min': wrongDevice(device) })],
   ['bind subdirectory', { fsroot: '/subdir' }],
 ])('refuses %s mount evidence', (_name, changes) => {
+  if (typeof changes === 'function') {
+    changes = changes();
+    expect(changes['maj:min']).not.toBe(device);
+  }
   expect(() =>
     verifyPostgresHdd(env, { probe: (target) => fixtureProbe(target, changes), rootDevice: -1n }),
   ).toThrow('HDD guard: mount verification failed');
 });
+
+test.each(['8:1', '0:0', '259:2'])(
+  'refuses wrong-device evidence with injected matching fixture device %s',
+  (matchingDevice) => {
+    // Inject only fixture st_dev and mount evidence, not a real mounted HDD.
+    const [major, minor] = matchingDevice.split(':').map(BigInt);
+    const fixtureDev = (major << 8n) | minor;
+    const filesystem = {
+      ...fs,
+      lstatSync(entry, options) {
+        const stat = fs.lstatSync(entry, options);
+        if (entry === mount || entry === data) stat.dev = fixtureDev;
+        return stat;
+      },
+    };
+    device = deviceId(fixtureDev);
+    expect(device).toBe(matchingDevice);
+    expect(verifyPostgresHdd(env, { filesystem, probe: fixtureProbe, rootDevice: -1n })).toEqual({
+      verified: true,
+    });
+    const mismatchedDevice = wrongDevice(device);
+    expect(() =>
+      verifyPostgresHdd(env, {
+        filesystem,
+        probe: (target) => fixtureProbe(target, { 'maj:min': mismatchedDevice }),
+        rootDevice: -1n,
+      }),
+    ).toThrow('HDD guard: mount verification failed');
+    expect(mismatchedDevice).toMatch(/^\d+:\d+$/);
+    expect(mismatchedDevice).not.toBe(device);
+  },
+);
 
 test('refuses a nested data mount even on the expected filesystem', () => {
   expect(() =>
