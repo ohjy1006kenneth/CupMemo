@@ -179,6 +179,24 @@ Before assigning ports or writing production paths:
 
 Do not stop unrelated services merely to obtain a preferred port.
 
+## Current authorized NAS isolation preparation (Refs #11)
+
+The dated audit and preparatory guard observations below are retained history.
+The current user decision approves the existing HDD's root0777 ->0755 restrictions
+and narrow reserved-cupmemo Samba/Syncthing/known-backup isolation, preserving root
+ownership and existing child permissions/content. This resolves that prior
+permission question only; no PGDATA/UID provisioning, database startup, public
+deployment or startup/restart clearance is granted.
+
+See [NAS_ISOLATION.md](NAS_ISOLATION.md) for the read-only component preflight,
+exclusive private SSD candidate preparation, actual source provenance, independently
+reviewed owner-only staged rollout/rollback and required client/runtime controls.
+The coder/reviewer do not apply live NAS changes. Samba preparatory eligibility
+does not mean an installed veto; Syncthing's private managed source may safely
+refuse unavailable access. Root rclone dynamic/future backup exclusions remain
+UNVERIFIED and block any private database provisioning. No all-isolated PASS or
+replacement of the original PostgreSQL guard is implied.
+
 ## HDD startup guard (development/preparation only, Refs #11)
 
 Issue: https://github.com/ohjy1006kenneth/CupMemo/issues/11. Primary HQ card:
