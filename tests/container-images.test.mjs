@@ -103,6 +103,89 @@ function payloadFixture() {
 }
 
 describe('exact API test-payload assembly', () => {
+  it('accepts the installed Better Auth exports without shipping dormant dev-source targets', () => {
+    const f = payloadFixture();
+    try {
+      const installed = path.join(
+        root,
+        'node_modules/.pnpm/@better-auth+drizzle-adapter@1.7.7_@better-auth+core@1.7.7_@better-auth+utils@0.4.2_@be_866e6372712699d3ce53c2c24adcd989/node_modules/@better-auth/drizzle-adapter',
+      );
+      const manifestBytes = readFileSync(path.join(installed, 'package.json'), 'utf8');
+      const manifest = JSON.parse(manifestBytes);
+      const pkg = 'node_modules/@better-auth/drizzle-adapter';
+      f.put(`${pkg}/package.json`, manifestBytes);
+      for (const target of Object.values(manifest.exports)) {
+        expect(existsSync(path.join(installed, target['dev-source']))).toBe(false);
+        f.put(`${pkg}/${target.default}`, readFileSync(path.join(installed, target.default)));
+      }
+      const run = f.run();
+      expect(run.status, run.stderr).toBe(0);
+      expect(readFileSync(path.join(f.out, pkg, 'package.json'), 'utf8')).toBe(manifestBytes);
+      const evidence = JSON.parse(readFileSync(path.join(f.evidence, 'assembly.json'), 'utf8'));
+      expect(evidence.retained_before).toEqual(evidence.retained_after);
+    } finally {
+      rmSync(f.temp, { recursive: true, force: true });
+    }
+  });
+  for (const [name, exports] of [
+    [
+      'dormant conditions',
+      {
+        types: './absent.d.ts',
+        'dev-source': './src.ts',
+        bun: './bun.js',
+        browser: './browser.js',
+        custom: './custom.js',
+        node: './index.js',
+      },
+    ],
+    ['default before node', { default: './index.js', node: './absent.js' }],
+    [
+      'node before import and require',
+      { node: './index.js', import: './absent.mjs', require: './absent.cjs' },
+    ],
+    ['nested unmatched condition', { node: { custom: './absent.js' }, default: './index.js' }],
+    ['array first resolved target', [{ custom: './absent.js' }, './index.js', './absent.js']],
+    ['null blocks fallback', { node: null, default: './absent.js' }],
+    [
+      'separate import and require',
+      { import: './index.js', require: './index.js', default: './absent.js' },
+    ],
+  ]) {
+    it(`preserves Node export selection for ${name}`, () => {
+      const f = payloadFixture();
+      try {
+        f.put('package.json', JSON.stringify({ name: 'fixture', version: '1.0.0', exports }));
+        f.put('index.js');
+        const run = f.run();
+        expect(run.status, run.stderr).toBe(0);
+      } finally {
+        rmSync(f.temp, { recursive: true, force: true });
+      }
+    });
+  }
+  for (const exports of [
+    { import: './absent.mjs', require: './index.js' },
+    { import: './index.js', require: './absent.cjs' },
+    { node: './absent.js', default: './index.js' },
+    { default: './absent.js', node: './index.js' },
+    ['./absent.js', './index.js'],
+    { './feature': { node: { import: './absent.js', require: './index.js' } } },
+  ]) {
+    it(`rejects missing selected runtime export ${JSON.stringify(exports)} before deletion`, () => {
+      const f = payloadFixture();
+      try {
+        f.put('package.json', JSON.stringify({ name: 'fixture', version: '1.0.0', exports }));
+        f.put('index.js');
+        const run = f.run();
+        expect(run.status, run.stderr).not.toBe(0);
+        expect(run.stderr).toContain('export target missing:');
+        expect(existsSync(path.join(f.out, approvedPayloads[0], 'nested/test.js'))).toBe(true);
+      } finally {
+        rmSync(f.temp, { recursive: true, force: true });
+      }
+    });
+  }
   for (const fault of ['evidence directory symlink', 'evidence file symlink']) {
     it(`refuses ${fault} before deletion or external writes`, () => {
       const f = payloadFixture();

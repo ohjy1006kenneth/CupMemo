@@ -158,8 +158,26 @@ for(const [rel,meta] of Object.entries(before)) {
     retainedTarget(resolved,'entry');
     entries.push({package:rel,kind:'main',target:relative(out,resolved)});
   }
-  function exports(value) {
-    if(value===null) return;
+  // Resolve each subpath independently for Node's default import/require conditions.
+  // Object insertion order is precedence; unknown conditions are dormant, not targets.
+  function selectExport(value,conditions) {
+    if(value===null||typeof value==='string') return value;
+    if(Array.isArray(value)) {
+      for(const target of value) {
+        const selected=selectExport(target,conditions);
+        if(selected!==undefined&&selected!==null) return selected;
+      }
+      return null;
+    }
+    if(value&&typeof value==='object') for(const [condition,target] of Object.entries(value)) {
+      if(condition==='default'||conditions.has(condition)) {
+        const selected=selectExport(target,conditions);
+        if(selected!==undefined) return selected;
+      }
+    }
+  }
+  function validateExport(value) {
+    if(value===null||value===undefined) return;
     if(typeof value==='string') {
       assert.ok(value.startsWith('./'),'export target must be package relative: '+p);
       const target=resolve(dirname(p),value);
@@ -174,13 +192,15 @@ for(const [rel,meta] of Object.entries(before)) {
         retainedTarget(target,'export');
         entries.push({package:rel,kind:'export',target:relative(out,target)});
       }
-    } else if(Array.isArray(value)) value.forEach(exports);
-    else if(value&&typeof value==='object') for(const [condition,target] of Object.entries(value)) {
-      // Type declarations are not Node runtime entry conditions; retained hashes still cover them.
-      if(condition!=='types'&&condition!=='types@*') exports(target);
     }
   }
-  exports(manifest.exports);
+  const exportMap=manifest.exports;
+  const subpaths=exportMap&&typeof exportMap==='object'&&!Array.isArray(exportMap)&&Object.keys(exportMap).some(key=>key.startsWith('.'))
+    ?Object.values(exportMap):[exportMap];
+  for(const mode of ['import','require']) {
+    const conditions=new Set(['node','node-addons','module-sync',mode]);
+    for(const target of subpaths) validateExport(selectExport(target,conditions));
+  }
 }
 const removed=roots.map(path=>{
   let files=0,bytes=0,links=0;

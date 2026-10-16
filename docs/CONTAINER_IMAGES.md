@@ -60,8 +60,14 @@ inodes/link counts and symlink targets before/after, including adjacent worker,
 driver, resource, license/notice and package metadata files. Directory modes and
 ownership are compared; directory timestamps/link counts necessarily change when
 children are removed, and access times are not invariants of reading files.
-Runtime main/exports (including wildcard targets, excluding type-only conditions)
-and retained symlinks must resolve to existing retained targets within `/out`.
+Runtime main/exports (including wildcard targets) and retained symlinks must resolve
+to existing retained targets within `/out`. Export subpaths are selected separately
+for Node import and require, using default Node conditions (`node`, `node-addons`,
+`module-sync` and the respective mode) and first-matching property order, including
+`default`. Dormant type/build/custom/browser/Bun conditions are not runtime targets;
+their metadata and any shipped files remain covered by unchanged retained hashes.
+A missing selected target fails preflight rather than falling back to a later
+condition or array target.
 
 `assembly.json` records each removed relative root, file/link count and logical
 regular-file bytes, checked runtime entries and full retained before/after maps.
