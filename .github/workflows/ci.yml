@@ -291,6 +291,9 @@ jobs:
           import {pathToFileURL} from 'node:url';
           assert.notEqual(process.getuid(),0);
           const loaded=[];
+          // Supported deploy option prevents the workspace-hoisted builder self-link.
+          assert.ok(!existsSync('/work'),'builder work tree leaked into runtime');
+          assert.ok(!existsSync('/app/node_modules/.pnpm/node_modules/@cupmemo/api'),'unexpected workspace-hoisted self link');
           assert.ok(!existsSync('/app/assembly.json')&&!existsSync('/assembly-evidence'),'build-only evidence leaked into runtime');
           // API direct declarations resolve as ESM from the actual deployed app.
           const manifest=JSON.parse(readFileSync('package.json','utf8'));
@@ -400,7 +403,23 @@ jobs:
                       assembly = json.loads(assembly_path.read_text())
                       assert assembly['verified'] is True and len(assembly['removed']) == 40
                       assert assembly['retained_before'] == assembly['retained_after']
+                      raw_path = destination / 'raw.json'
+                      raw = json.loads(raw_path.read_text())
+                      assert raw['raw_snapshot'] == assembly['raw_snapshot']
+                      assert raw['link_inventory'] == assembly['link_inventory']
+                      removed_roots = [p['path'] for p in assembly['removed']]
+                      retained_raw = {p: m for p, m in raw['raw_snapshot'].items()
+                                      if not any(p == r or p.startswith(r + '/') for r in removed_roots)}
+                      assert retained_raw == assembly['retained_before']
+                      for link in raw['link_inventory']:
+                          if link['path'] not in retained_raw:
+                              continue
+                          assert link['exists'] and not link['readlink'].startswith('/')
+                          assert link['resolved'].startswith('/out/')
+                      assert 'node_modules/.pnpm/node_modules/@cupmemo/api' not in raw['raw_snapshot']
                       assert all(p['path'].startswith('node_modules/.pnpm/') for p in assembly['removed'])
+                      record('api-raw-identity', {'sha256': hashlib.sha256(raw_path.read_bytes()).hexdigest(),
+                             'links': len(raw['link_inventory']), 'normalizations': 0})
                       record('api-assembly-identity', {'image': image, 'sha256': hashlib.sha256(assembly_path.read_bytes()).hexdigest(),
                              'roots': len(assembly['removed']), 'removed_files': sum(p['files'] for p in assembly['removed']),
                              'removed_bytes': sum(p['bytes'] for p in assembly['removed']), 'runtime_entries': len(assembly['entries'])})

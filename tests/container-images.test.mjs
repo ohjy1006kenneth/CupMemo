@@ -103,6 +103,140 @@ function payloadFixture() {
 }
 
 describe('exact API test-payload assembly', () => {
+  it('uses supported workspace-hoist suppression for the observed deploy self-link', () => {
+    expect(read('infrastructure/docker/api.Dockerfile')).toContain(
+      'deploy --legacy --prod --no-optional --config.hoist-workspace-packages=false /out',
+    );
+  });
+  for (const fault of [
+    'observed self',
+    'wrong name',
+    'wrong version',
+    'wrong entry',
+    'wrong slot',
+    'other target',
+    'dangling',
+    'cycle',
+    'root alias',
+    'parent',
+    'removal',
+    'absolute retained',
+  ]) {
+    it(`refuses ${fault} links with complete raw diagnostics before any deletion`, () => {
+      const f = payloadFixture();
+      try {
+        const bytes = JSON.stringify({ name: '@cupmemo/api', version: '0.1.0' });
+        f.put('package.json', bytes);
+        const source = path.join(f.temp, 'work/apps/api');
+        mkdirSync(source, { recursive: true });
+        writeFileSync(
+          path.join(source, 'package.json'),
+          fault === 'wrong name'
+            ? '{"name":"third-party","version":"0.1.0"}'
+            : fault === 'wrong version'
+              ? '{"name":"@cupmemo/api","version":"999.0.0"}'
+              : bytes,
+        );
+        if (fault === 'wrong entry')
+          writeFileSync(path.join(source, 'server.js'), 'not runtime payload');
+        const rel =
+          fault === 'wrong slot'
+            ? 'dist/api-alias'
+            : 'node_modules/.pnpm/node_modules/@cupmemo/api';
+        const link = path.join(f.out, rel);
+        mkdirSync(path.dirname(link), { recursive: true });
+        let target = source;
+        if (fault === 'other target') {
+          target = path.join(f.temp, 'work/apps/other');
+          mkdirSync(target, { recursive: true });
+        }
+        if (fault === 'dangling') target = path.join(f.temp, 'absent');
+        if (fault === 'cycle') target = link;
+        if (fault === 'root alias') target = f.out;
+        if (fault === 'parent') target = f.temp;
+        if (fault === 'removal') target = path.join(f.out, approvedPayloads[0]);
+        if (fault === 'absolute retained') target = path.join(f.out, 'dist/server.js');
+        const readlink =
+          fault === 'absolute retained' ? target : path.relative(path.dirname(link), target);
+        symlinkSync(readlink, link);
+        const run = f.run();
+        expect(run.status, run.stderr).not.toBe(0);
+        expect(run.stderr).toMatch(/confinement|symlink/);
+        expect(existsSync(path.join(f.out, approvedPayloads[0]))).toBe(true);
+        expect(readlinkSync(link)).toBe(readlink);
+        expect(
+          existsSync(path.join(f.evidence, 'raw.json')),
+          'complete pre-mutation raw evidence must survive refusal',
+        ).toBe(true);
+        const raw = JSON.parse(readFileSync(path.join(f.evidence, 'raw.json'), 'utf8'));
+        expect(raw.link_inventory.find((item) => item.path === rel)).toMatchObject({
+          readlink,
+          source_package: { name: '@cupmemo/api', version: '0.1.0' },
+          runtime_package: { name: '@cupmemo/api', version: '0.1.0' },
+        });
+        expect(raw.raw_snapshot[rel].link).toBe(readlink);
+        expect(run.stdout).toContain('raw-link-inventory');
+        expect(existsSync(path.join(f.evidence, 'assembly.json'))).toBe(false);
+      } finally {
+        rmSync(f.temp, { recursive: true, force: true });
+      }
+    });
+  }
+  it('imports the retained compiled fixture after relocation with no builder tree', () => {
+    const f = payloadFixture();
+    try {
+      f.put('package.json', '{"name":"@cupmemo/api","version":"0.1.0","type":"module"}');
+      const pkg = 'node_modules/.pnpm/retained-runtime@1.0.0/node_modules/retained-runtime';
+      f.put(
+        `${pkg}/package.json`,
+        '{"name":"retained-runtime","version":"1.0.0","type":"module","exports":"./index.js"}',
+      );
+      f.put(`${pkg}/index.js`, 'export const portable = 32;');
+      symlinkSync(
+        '.pnpm/retained-runtime@1.0.0/node_modules/retained-runtime',
+        path.join(f.out, 'node_modules/retained-runtime'),
+      );
+      f.put(
+        'dist/app.js',
+        "import {portable} from 'retained-runtime'; if(portable!==32) throw Error('bad entry'); console.log(portable);",
+      );
+      const run = f.run();
+      expect(run.status, run.stderr).toBe(0);
+      const app = path.join(f.temp, 'app');
+      renameSync(f.out, app);
+      const imported = spawnSync(process.execPath, [path.join(app, 'dist/app.js')], {
+        encoding: 'utf8',
+        timeout: 10000,
+      });
+      expect(imported.status, imported.stderr).toBe(0);
+      expect(imported.stdout.trim()).toBe('32');
+      const evidence = JSON.parse(readFileSync(path.join(f.evidence, 'assembly.json'), 'utf8'));
+      expect(evidence.retained_before).toEqual(evidence.retained_after);
+      expect(evidence.link_inventory).toHaveLength(1);
+    } finally {
+      rmSync(f.temp, { recursive: true, force: true });
+    }
+  });
+  for (const fault of ['root deletion', 'baseline reset mutation']) {
+    it(`refuses ${fault} without resetting the raw baseline or deleting the root`, () => {
+      const f = payloadFixture();
+      try {
+        const run = f.run((script) =>
+          fault === 'root deletion'
+            ? script.replace('for(const root of roots)', "roots[0]='';\nfor(const root of roots)")
+            : script.replace(
+                'const before=',
+                "writeFileSync(join(out,'dist/server.js'),'corrupt');\nconst before=",
+              ),
+        );
+        expect(run.status, run.stderr).not.toBe(0);
+        expect(run.stderr).toMatch(/confinement|retained payload changed/);
+        expect(existsSync(path.join(f.out, 'package.json'))).toBe(true);
+      } finally {
+        rmSync(f.temp, { recursive: true, force: true });
+      }
+    });
+  }
   for (const [nested, privatePackage] of [
     ['benchmark', true],
     ['dist/esm', false],
@@ -615,7 +749,7 @@ describe('application image preparation', () => {
       expect(dockerfile).toContain('install --frozen-lockfile');
       if (service === 'api') {
         expect(dockerfile).toContain(
-          '--filter @cupmemo/api deploy --legacy --prod --no-optional /out',
+          '--filter @cupmemo/api deploy --legacy --prod --no-optional --config.hoist-workspace-packages=false /out',
         );
       } else {
         expect(dockerfile).not.toMatch(/\bdeploy\b/);

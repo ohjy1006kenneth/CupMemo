@@ -17,7 +17,7 @@ COPY apps/api/src ./apps/api/src
 RUN corepack pnpm --filter @cupmemo/contracts build \
     && corepack pnpm --filter @cupmemo/database build \
     && corepack pnpm --filter @cupmemo/api build
-RUN corepack pnpm --filter @cupmemo/api deploy --legacy --prod --no-optional /out \
+RUN corepack pnpm --filter @cupmemo/api deploy --legacy --prod --no-optional --config.hoist-workspace-packages=false /out \
     && rm -rf /out/dist /out/node_modules/@cupmemo/contracts/dist /out/node_modules/@cupmemo/database/dist /out/node_modules/@cupmemo/database/drizzle \
     && cp -a apps/api/dist /out/dist \
     && cp -a packages/contracts/dist /out/node_modules/@cupmemo/contracts/dist \
@@ -105,6 +105,53 @@ if(readdirSync(dirname(evidence)).includes(evidence.split('/').at(-1))) {
 }
 assert.equal(roots.length,40);
 assert.equal(new Set(roots).size,40);
+function snapshot(all=false) {
+  const result={};
+  function walk(dir) {
+    for(const name of readdirSync(dir).sort()) {
+      const p=join(dir,name), rel=relative(out,p), st=lstatSync(p);
+      if(!all&&excluded(rel)) continue;
+      const meta={mode:st.mode,uid:st.uid,gid:st.gid};
+      if(st.isDirectory()) {
+        result[rel]={type:'directory',...meta,ino:st.ino};
+        walk(p);
+      }
+      else {
+        assert.ok(st.isFile()||st.isSymbolicLink(),'unsupported retained file type: '+rel);
+        result[rel]={...meta,size:st.size,mtime_ms:st.mtimeMs,ctime_ms:st.ctimeMs,ino:st.ino,nlink:st.nlink,
+          ...(st.isSymbolicLink()?{link:readlinkSync(p)}:{sha256:createHash('sha256').update(readFileSync(p)).digest('hex')})};
+      }
+    }
+  }
+  walk(out); return result;
+}
+const raw_snapshot=snapshot(true);
+function identity(dir) {
+  try {
+    const manifest=JSON.parse(readFileSync(join(dir,'package.json'),'utf8'));
+    return {name:manifest.name??null,version:manifest.version??null};
+  } catch { return null; }
+}
+function ownerIdentity(p) {
+  for(let dir=dirname(p);dir===out||dir.startsWith(out+'/');dir=dirname(dir)) {
+    const value=identity(dir);
+    if(value) return {path:relative(out,dir)||'.',...value};
+  }
+  return null;
+}
+const link_inventory=Object.entries(raw_snapshot).filter(([,meta])=>meta.link!==undefined).map(([path,meta])=>{
+  const p=join(out,path);
+  let target=null,error=null;
+  try { target=realpathSync(p); } catch(e) { error=e.code; }
+  return {path,readlink:meta.link,readlink_hex:readlinkSync(p,{encoding:'buffer'}).toString('hex'),
+    resolved:target,exists:target!==null,error,source_package:ownerIdentity(p),
+    destination_package:target?identity(target):null,runtime_package:identity(out)};
+});
+// Complete diagnostics precede any mutation; logs survive failed BuildKit layers.
+console.log(JSON.stringify({assembly:'raw-link-inventory',links:link_inventory}));
+mkdirSync(evidence,{recursive:true});
+assert.ok(!readdirSync(evidence).includes('raw.json'),'preflight evidence output already exists: raw.json');
+writeFileSync(join(evidence,'raw.json'),JSON.stringify({link_inventory,raw_snapshot},null,2)+'\n');
 for(const [store,name,dir] of approved) {
   const packageRoot=join(out,'node_modules/.pnpm',store,'node_modules',name);
   const target=join(packageRoot,dir);
@@ -118,30 +165,24 @@ for(const [store,name,dir] of approved) {
   assert.equal(manifest.name,name,'preflight package name drift');
   assert.equal(manifest.version,store.slice(store.lastIndexOf('@')+1),'preflight version drift');
 }
-function snapshot() {
-  const result={};
-  function walk(dir) {
-    for(const name of readdirSync(dir).sort()) {
-      const p=join(dir,name), rel=relative(out,p), st=lstatSync(p);
-      if(excluded(rel)) continue;
-      const meta={mode:st.mode,uid:st.uid,gid:st.gid};
-      if(st.isDirectory()) { result[rel]={type:'directory',...meta}; walk(p); }
-      else {
-        assert.ok(st.isFile()||st.isSymbolicLink(),'unsupported retained file type: '+rel);
-        result[rel]={...meta,size:st.size,mtime_ms:st.mtimeMs,ctime_ms:st.ctimeMs,ino:st.ino,nlink:st.nlink,
-          ...(st.isSymbolicLink()?{link:readlinkSync(p)}:{sha256:createHash('sha256').update(readFileSync(p)).digest('hex')})};
-      }
-    }
-  }
-  walk(out); return result;
+// Supported workspace-hoist suppression avoids the generated builder self-link.
+// No link is retargeted or exempted: every retained link must remain portable.
+for(const link of link_inventory) {
+  if(excluded(link.path)) continue;
+  assert.ok(link.exists,'retained symlink target missing or cycle: '+link.path+' -> '+link.readlink+' ('+link.error+')');
+  assert.ok(!isAbsolute(link.readlink),'confinement: retained symlink must be relative: '+link.path+' -> '+link.readlink);
+  assert.ok(link.resolved.startsWith(out+'/'),'confinement: retained symlink '+link.path+' -> '+link.resolved);
+  assert.ok(!excluded(relative(out,link.resolved)),'retained symlink target resolves into removal: '+link.path+' -> '+link.resolved);
 }
-const before=snapshot();
+// Derive the retained baseline from the ORIGINAL snapshot, never reset it.
+const before=Object.fromEntries(Object.entries(raw_snapshot).filter(([path])=>!excluded(path)));
 const entries=[];
 function retainedTarget(p,label) {
   assert.ok(!excluded(confined(p)),label+' target is approved for removal: '+p);
   let real;
   try { real=realpathSync(p); } catch { assert.fail(label+' target missing: '+p); }
-  assert.ok(!excluded(confined(real)),label+' target resolves into removal: '+p);
+  assert.ok(real.startsWith(out+'/'),'confinement: '+label+' '+p+' -> '+real);
+  assert.ok(!excluded(confined(real)),label+' target resolves into removal: '+p+' -> '+real);
 }
 // Package boundaries are /out and immediate node_modules entries, not arbitrary
 // nested manifests. The recursive snapshot still audits every retained file/link.
@@ -224,10 +265,15 @@ const removed=roots.map(path=>{
   count(join(out,path)); return {path,files,bytes,links};
 });
 mkdirSync(evidence,{recursive:true});
-const manifest={removed,entries,retained_before:before,retained_after:null,verified:false};
+const manifest={link_inventory,raw_snapshot,removed,entries,retained_before:before,retained_after:null,verified:false};
 writeFileSync(join(evidence,'assembly.json'),JSON.stringify(manifest,null,2)+'\n');
 console.log(JSON.stringify({assembly:'preflight',roots:removed.length,files:removed.reduce((n,p)=>n+p.files,0),bytes:removed.reduce((n,p)=>n+p.bytes,0)}));
-for(const root of roots) rmSync(join(out,root),{recursive:true});
+for(const root of roots) {
+  const target=join(out,root);
+  confined(target); // Root equality is NEVER authorized for deletion.
+  noSymlinkAncestors(target);
+  rmSync(target,{recursive:true});
+}
 const after=snapshot();
 manifest.retained_after=after;
 writeFileSync(join(evidence,'assembly.json'),JSON.stringify(manifest,null,2)+'\n');

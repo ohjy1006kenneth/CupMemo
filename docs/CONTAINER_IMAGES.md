@@ -42,7 +42,40 @@ not copy these asset trees automatically). Docker fails if the generated server
 or route-manifest layout changes; real pinned Next16.3.8 ARM64 CI must still prove
 traced contracts/UI, compiled pages and all required assets resolve.
 
-API uses pinned pnpm10.34.6's supported `deploy --legacy --prod --no-optional`.
+API uses pinned pnpm10.34.6's supported
+`deploy --legacy --prod --no-optional --config.hoist-workspace-packages=false`.
+The deployment-local option prevents pnpm from hoisting the selected workspace
+project back to its builder directory; it does not change manifests, lockfiles,
+workspace configuration or production dependency selection. This is the preferred
+supported packaging correction under the owner's deploy-link decision, rather
+than a link-rewriting exception.
+
+A disposable offline deploy from the unchanged manifests reproduced exactly one
+external link: `node_modules/.pnpm/node_modules/@cupmemo/api`, pointing at the
+local disposable `work/apps/api`, identified as `@cupmemo/api@0.1.0`. It is not a
+claim that the literal builder `/work` target has already been observed in CI.
+With workspace hoisting disabled, the complete link inventory changed from215 to
+214 and had no external targets. All114 package manifests matched. The complete
+file/path comparison found only the missing self-link, six generated `.bin`
+wrappers differing solely by the disposable output-root prefix, and generated
+`.modules.yaml` ordering/`prunedAt` differences (parsed metadata otherwise equal).
+No generated files were rewritten to obtain that comparison. Raw trial logs,
+full inventories and exact and explicitly contextualized comparisons are retained
+outside the repository under
+`/home/juyoungoh/.hermes/profiles/code-monkey-cupmemo/workspace/evidence/t_7077042b/run3205/local`
+(original execution paths: `/tmp/issue32-run3205`). Those deploy-only trials had
+no compiled API output and do not replace final-image imports or native CI.
+
+There is **no normalization step or root-equality exception**: any retained
+external, absolute, dangling, cyclic, parent/root or removal-target link fails,
+regardless of package identity. The builder emits a complete raw link inventory
+before payload validation/removal: originating relative path, readlink text and
+hex bytes, resolved target/existence/error and source/destination/runtime package
+identity. `raw.json` records this inventory and the full pre-removal snapshot;
+confinement errors identify the offending link and target. Complete link diagnostics
+also go to the original build log so a failed layer does not hide the origin.
+The strict retained baseline is derived from that original snapshot, not reset.
+
 This retains declared production dependencies and portable workspace links without
 lockfile or injection-setting changes. Compiled contracts/database dist and
 committed Drizzle resources are copied explicitly; no migrations execute. Known
@@ -79,8 +112,14 @@ A missing selected target fails preflight rather than falling back to a later
 condition or array target.
 
 `assembly.json` records each removed relative root, file/link count and logical
-regular-file bytes, checked runtime entries and full retained before/after maps.
-It is stored outside `/out`. A separate **build-only scratch export stage** copies
+regular-file bytes, checked runtime entries, original raw inventory/snapshot and
+full retained before/after maps. CI checks `raw.json` against `assembly.json`,
+derives the retained set using only the exact removal roots, requires complete
+retained equality, verifies no generated self-link remains and records both
+manifest SHA-256 values. There are zero link-normalization exceptions. Final-image
+imports still execute compiled app/auth/database and retained dependency behavior
+with `/work` absent; local deploy comparison is not a substitute for that probe.
+Evidence is stored outside `/out`. A separate **build-only scratch export stage** copies
 only this metadata to CI via the BuildKit local exporter, without starting a
 container, using a host mount or adding evidence to runtime. CI validates the
 manifest and records its SHA-256 with the actual API image ID. Partial build logs
