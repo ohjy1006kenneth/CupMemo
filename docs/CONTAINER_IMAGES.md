@@ -32,17 +32,33 @@ No secret ARG, `.env`, private npm configuration or enabled auth/DB example is
 accepted. Public base/dependency registries must be reachable during builds;
 smokes have no external networking.
 
-`pnpm deploy --legacy --prod` creates portable production dependency trees with
-workspace links; it does not require changing workspace injection settings or
-regenerating the lockfile. Compiled contracts plus UI (web), or database (API),
-are explicitly installed into those trees. The API preserves committed Drizzle
-assets alongside the compiled database package, but does not run them. Source
-entrypoints and build configs are removed from deployed packages where practical.
-Transitive peer dependencies retained by the frozen pnpm graph may still include
-optional tooling; `--prod` alone is **not** audited minimal-runtime acceptance.
+Web uses Next's `output: 'standalone'` with an explicit repository-root tracing
+boundary resolved from the ESM `apps/web/next.config.ts` URL, independent of cwd.
+Only generated traced runtime files are copied from `.next/standalone`; no web
+pnpm deployment/full dependency tree or untraced workspace sources are copied.
+The monorepo layout is `/app/apps/web/server.js`, with public assets at
+`/app/apps/web/public` and static chunks at `/app/apps/web/.next/static` (Next does
+not copy these asset trees automatically). Docker fails if the generated server
+or route-manifest layout changes; real pinned Next16.3.8 ARM64 CI must still prove
+traced contracts/UI, compiled pages and all required assets resolve.
+
+API uses pinned pnpm10.34.6's supported `deploy --legacy --prod --no-optional`.
+This retains declared production dependencies and portable workspace links without
+lockfile or injection-setting changes. Compiled contracts/database dist and
+committed Drizzle resources are copied explicitly; no migrations execute. Only
+known first-party source/build-config payload is excluded. Library internals are
+not manually pruned. CI records retained packages and unresolved optional
+peer/dependency declarations of those packages (not a complete lockfile diff),
+requires API's declared dependency imports plus each workspace dependency including
+`pg`, and rejects retained Next/React closure. If supported selection still keeps
+forbidden dependencies, fails imports or misses size targets, retain the actual
+failure for owner disposition rather than deleting library internals.
+
 The upstream base retains Node/npm utilities. CI inventories retained packages,
 flags compiler/test tooling and forbidden files, and measures actual sizes before
-any efficiency acceptance. It does not silently strip required dependencies.
+any efficiency acceptance. Monorepo `apps`/`packages` directories are no longer
+blanket-forbidden: their first-party source/config/cache payload remains audited,
+alongside unchanged recursive secret/context/test/tooling exclusions.
 
 ## Network and configuration boundary
 
@@ -51,9 +67,13 @@ any efficiency acceptance. It does not silently strip required dependencies.
   EXPOSE publishes no host port; these images change no loopback development
   commands/defaults.
 - Web builds with server-only `CUPMEMO_API_ORIGIN=http://cupmemo-api:4101`.
-  Next embeds the `/api/v1/:path*` rewrite in `.next/routes-manifest.json`.
-  No source TypeScript Next config is loaded at runtime: the built route manifest
-  supplies the rewrite, avoiding a runtime TypeScript compiler requirement.
+  Next embeds the `/api/v1/:path*` rewrite in
+  `apps/web/.next/routes-manifest.json` under the runtime root. The generated
+  standalone `server.js` embeds the serialized Next config; no source TypeScript
+  Next config or runtime compiler is required. Runtime `HOSTNAME=0.0.0.0` and
+  `PORT=3101` configure that direct Node server. Runtime `CUPMEMO_API_ORIGIN`
+  defaults to the same internal API origin for server-side session fetches; it
+  is not a secret and does not retarget the compiled rewrite.
   Changing an environment variable after build does **not** retarget this rewrite.
   A different private API service name requires a reviewed rebuild. The browser
   still calls same-origin `/api/v1`; no internal target is a NEXT_PUBLIC variable.
@@ -71,7 +91,17 @@ any efficiency acceptance. It does not silently strip required dependencies.
   signals, with the existing API graceful pool shutdown unchanged. The web smoke
   exercises the actual image default CMD, not a substitute server command.
 
-## Native CI execution (actual results pending)
+## Native CI execution (correction results pending)
+
+Historical candidate `a6896684fbea4e2c7b71f12d8790c93279cf402d`, CI run
+`38845509487`, produced web711888204 and API708884389 uncompressed bytes:
+both failed the unchanged500/300MiB targets and retained unwanted closure.
+Those original results remain failures, not acceptance of this correction.
+The owner correction explicitly authorizes a seventh file,
+`apps/web/next.config.ts`, alongside the existing image/context/test/doc/workflow
+scope. No dependency, lockfile, package metadata or quality-job change is authorized.
+New exact-candidate native ARM64 image and quality jobs plus independent affected
+review are required; no local heavy build or new image result is claimed here.
 
 The additional `container-images` job in `.github/workflows/ci.yml` runs on the
 standard GitHub-hosted `ubuntu-24.04-arm` runner, on the existing pull-request and
@@ -111,8 +141,12 @@ The inline workflow is the executable acceptance procedure. It:
    read-only root, private64MiB `/tmp` tmpfs, all capabilities dropped,
    no-new-privileges and nonroot image user. Inspects effective container controls.
    Web uses memory512MiB, memory-swap512MiB (**no swap allowance**), CPU1 and
-   pids128. Internal clients assert the real `/sign-in` HTML form and a referenced
-   nonempty static asset return200, and the compiled private rewrite is exact.
+   pids128. Internal clients assert the real `/sign-in` HTML form and every
+   referenced static asset return200, validate `/manifest.webmanifest` and all
+   declared icons plus touch/SVG assets, and check the exact compiled private
+   rewrite. A real anonymous `/app` redirect loads compiled layout/session/origin
+   modules without Cookie, fake session or DB. This is module-loading/anonymous
+   behavior only, not authenticated session acceptance.
    Finite readiness and per-request deadlines prevent unbounded waits.
 6. Records web startup-to-ready, idle and short repeated-request Docker memory/CPU
    stats, request outcomes, actual SIGTERM completion, exit/error/OOM state. The
@@ -162,9 +196,9 @@ failure stops execution immediately and preserves partial results. Missing
 measurements are not PASS. Inspect actual largest layers/directories/dependencies
 before proposing the smallest scoped packaging correction. An exception requires
 an evidence-backed owner disposition before acceptance; the workflow does not
-waive targets. Next standalone/tracing changes require a separate narrow owner
-amendment based on measurements; no Next config, app behavior or packaging draft
-is changed by this CI addition.
+waive targets. This owner-authorized correction uses standalone/tracing and
+supported API optional-dependency selection in response to the historical misses;
+its actual image measurements remain pending native CI.
 
 **UNVERIFIED until actual execution and review:** both native builds, runtime
 exclusions, image targets, shared/unique bytes, imports, bounded web page/static
@@ -198,9 +232,9 @@ quality CI plus actual ARM64 results and same-card independent LIGHT technical
 review are required before owner acceptance. A PR must use `Refs #32`, not close
 Issue32. No application/UI behavior was intentionally changed.
 
-Rollback preparation by reverting only the six authorized source files through
-normal review (the five image/context/test/doc files plus the additional CI
-file), preserving the existing quality job. Optionally remove only exact
+Rollback preparation by reverting only the seven authorized source files through
+normal review (the five image/context/test/doc files plus CI and Next config),
+preserving the existing quality job. Optionally remove only exact
 identified task-owned image IDs after checking no task container still uses them.
 Never prune shared caches, remove other images/volumes, touch database data or
 change live services. Production Compose/HDD restart protection, private

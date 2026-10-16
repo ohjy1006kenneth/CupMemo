@@ -177,8 +177,9 @@ jobs:
           import {join,dirname} from 'node:path';
           import {execFileSync} from 'node:child_process';
           import {createHash} from 'node:crypto';
+          import {createRequire} from 'node:module';
           assert.notEqual(process.getuid(),0);
-          const packages=[], directories=new Map(), forbidden=[], inherited_base_configs=[];
+          const packages=[], directories=new Map(), forbidden=[], inherited_base_configs=[], optionalDeclarations=[];
           const baseNpmConfig=__BASE_NPM_CONFIG__;
           const bannedNames=new Set(['.git','.worktrees','.npmrc','.pnpmfile.cjs','.pnpm-store','.env','context-probe.txt','logs','test','tests','__tests__','fixtures','__fixtures__']);
           function walk(path) {
@@ -195,7 +196,16 @@ jobs:
                 total+=st.size;
                 if(entry.name==='package.json') {
                   const v=JSON.parse(readFileSync(p,'utf8'));
-                  if(v.name&&v.version) packages.push({name:v.name,version:v.version,path:dirname(p)});
+                  if(v.name&&v.version) {
+                    packages.push({name:v.name,version:v.version,path:dirname(p)});
+                    const optional=new Set([...Object.keys(v.optionalDependencies??{}),...Object.entries(v.peerDependenciesMeta??{}).filter(([,meta])=>meta.optional).map(([name])=>name)]);
+                    const require=createRequire(p);
+                    for(const name of optional) {
+                      let resolved=false;
+                      try { require.resolve(name); resolved=true; } catch {}
+                      optionalDeclarations.push({owner:v.name,name,resolved,path:dirname(p)});
+                    }
+                  }
                 }
               }
             }
@@ -203,11 +213,23 @@ jobs:
             return total;
           }
           walk('/app'); walk('/usr/local/lib/node_modules');
-          for(const p of ['/app/src','/app/apps','/app/packages','/app/data','/app/backups','/app/uploads','/app/evidence','/app/PGDATA','/app/tsconfig.json','/app/next.config.ts','/app/.next/cache','/work','/out','/root/.local/share/pnpm/store'])
+          for(const p of ['/app/src','/app/data','/app/backups','/app/uploads','/app/evidence','/app/PGDATA','/app/tsconfig.json','/app/next.config.ts','/app/.next/cache','/app/apps/web/.next/cache','/work','/out','/root/.local/share/pnpm/store'])
             if(existsSync(p)) forbidden.push(p);
+          // Monorepo standalone legitimately contains apps/web and traced packages.
+          // Inspect first-party payload, never blanket-allow their source/config trees.
+          function workspace(path) {
+            if(!existsSync(path)) return;
+            for(const entry of readdirSync(path,{withFileTypes:true})) {
+              const p=join(path,entry.name);
+              if(['node_modules','.next','dist','public','drizzle'].includes(entry.name)) continue;
+              if(entry.name==='src'||/^(tsconfig.*\.json|next-env\.d\.ts|next\.config\.ts|postcss\.config\..*)$/.test(entry.name)) forbidden.push(p);
+              else if(entry.isDirectory()&&!entry.isSymbolicLink()) workspace(p);
+            }
+          }
+          workspace('/app/apps'); workspace('/app/packages');
           const tooling=packages.filter(p=>['typescript','tsx','ts-node','vitest','eslint','@playwright/test','drizzle-kit','@cupmemo/config'].includes(p.name));
           const os_packages=execFileSync('dpkg-query',['-W','-f=${Package}\t${Version}\n'],{encoding:'utf8'}).trim().split('\n');
-          console.log(JSON.stringify({uid:process.getuid(),node:process.version,packages,os_packages,largest_directories:[...directories].sort((a,b)=>b[1]-a[1]).slice(0,40),forbidden,tooling,inherited_base_configs,units:'logical regular-file bytes; symlinks not followed; not image disk/RAM bytes'}));
+          console.log(JSON.stringify({uid:process.getuid(),node:process.version,packages,omitted_optional:optionalDeclarations.filter(p=>!p.resolved),os_packages,largest_directories:[...directories].sort((a,b)=>b[1]-a[1]).slice(0,40),forbidden,tooling,inherited_base_configs,units:'logical regular-file bytes; symlinks not followed; not image disk/RAM bytes'}));
           '''
           base_config_probe = r'''
           import assert from 'node:assert/strict';
@@ -222,7 +244,7 @@ jobs:
           import assert from 'node:assert/strict';
           import {readFileSync} from 'node:fs';
           assert.notEqual(process.getuid(),0);
-          const manifest=JSON.parse(readFileSync('.next/routes-manifest.json','utf8'));
+          const manifest=JSON.parse(readFileSync('apps/web/.next/routes-manifest.json','utf8'));
           const rewrites=Array.isArray(manifest.rewrites)?manifest.rewrites:Object.values(manifest.rewrites).flat();
           assert.ok(rewrites.some(r=>r.source==='/api/v1/:path*'&&r.destination==='http://cupmemo-api:4101/api/v1/:path*'));
           const base='http://127.0.0.1:3101';
@@ -230,22 +252,62 @@ jobs:
           assert.equal(response.status,200);
           const html=await response.text();
           assert.match(html,/<html/); assert.match(html,/<form/);
-          const asset=html.match(/(?:src|href)="([^" ]*\/_next\/static\/[^" ]+)"/);
-          assert.ok(asset);
-          const url=new URL(asset[1].replaceAll('&amp;','&'),base);
-          assert.equal(url.origin,base);
-          const staticResponse=await fetch(url,{signal:AbortSignal.timeout(2000)});
-          assert.equal(staticResponse.status,200);
-          const bytes=(await staticResponse.arrayBuffer()).byteLength;
-          assert.ok(bytes>0);
-          console.log(JSON.stringify({page_status:response.status,html_bytes:Buffer.byteLength(html),static_path:url.pathname,static_bytes:bytes,compiled_internal_rewrite:true}));
+          const assets=[...new Set([...html.matchAll(/(?:src|href)="([^" ]*\/_next\/static\/[^" ]+)"/g)].map(match=>match[1].replaceAll('&amp;','&')))];
+          assert.ok(assets.length>0);
+          const static_assets=[];
+          for(const asset of assets) {
+            const url=new URL(asset,base);
+            assert.equal(url.origin,base);
+            const r=await fetch(url,{signal:AbortSignal.timeout(2000)});
+            assert.equal(r.status,200);
+            const bytes=(await r.arrayBuffer()).byteLength;
+            assert.ok(bytes>0);
+            static_assets.push({path:url.pathname,bytes});
+          }
+          const pwaResponse=await fetch(base+'/manifest.webmanifest',{signal:AbortSignal.timeout(2000)});
+          assert.equal(pwaResponse.status,200);
+          const pwa=await pwaResponse.json();
+          assert.equal(pwa.name,'CupMemo'); assert.equal(pwa.display,'standalone');
+          const public_assets=[];
+          for(const asset of [...pwa.icons.map(icon=>icon.src),'/icons/apple-touch-icon.png','/icons/monogram.svg']) {
+            const url=new URL(asset,base); assert.equal(url.origin,base);
+            const r=await fetch(url,{signal:AbortSignal.timeout(2000)});
+            assert.equal(r.status,200);
+            const bytes=(await r.arrayBuffer()).byteLength; assert.ok(bytes>0);
+            public_assets.push({path:url.pathname,bytes});
+          }
+          // Real compiled app/layout + session + origin code, with no Cookie/DB or fake session.
+          assert.equal(process.env.CUPMEMO_API_ORIGIN,'http://cupmemo-api:4101');
+          const privatePage=await fetch(base+'/app', {redirect:'manual',signal:AbortSignal.timeout(2000)});
+          assert.ok([307,308].includes(privatePage.status));
+          assert.equal(new URL(privatePage.headers.get('location'),base).pathname,'/sign-in');
+          console.log(JSON.stringify({page_status:response.status,html_bytes:Buffer.byteLength(html),static_assets,public_assets,pwa_status:pwaResponse.status,compiled_internal_rewrite:true,compiled_session_origin_loading:'anonymous redirect only; authenticated DB flows UNVERIFIED'}));
           '''
           imports = r'''
           import assert from 'node:assert/strict';
+          import {readFileSync,realpathSync} from 'node:fs';
+          import {createRequire} from 'node:module';
+          import {pathToFileURL} from 'node:url';
           assert.notEqual(process.getuid(),0);
-          for(const name of ['@cupmemo/contracts','@cupmemo/database','fastify','better-auth','@better-auth/drizzle-adapter','drizzle-orm','zod']) await import(name);
+          const loaded=[];
+          // API direct declarations resolve as ESM from the actual deployed app.
+          const manifest=JSON.parse(readFileSync('package.json','utf8'));
+          for(const name of Object.keys(manifest.dependencies ?? {})) { await import(name); loaded.push(name); }
+          // Resolve each workspace's own declared closure, not accidental root hoists.
+          for(const workspace of ['database','contracts']) {
+            const file=realpathSync(`node_modules/@cupmemo/${workspace}/package.json`);
+            const manifest=JSON.parse(readFileSync(file,'utf8'));
+            const require=createRequire(file);
+            for(const name of Object.keys(manifest.dependencies ?? {})) {
+              await import(pathToFileURL(require.resolve(name)).href);
+              loaded.push(`@cupmemo/${workspace}:${name}`);
+            }
+          }
+          const databaseRequire=createRequire(realpathSync('node_modules/@cupmemo/database/package.json'));
+          await import(pathToFileURL(databaseRequire.resolve('pg')).href);
           await import('./dist/app.js'); await import('./dist/auth.js');
-          console.log('runtime imports resolved without a database');
+          await import('@cupmemo/database');
+          console.log(JSON.stringify({loaded,compiled:['app','auth','database'],database_connected:false}));
           await new Promise(resolve=>setTimeout(resolve,3000));
           '''
 
@@ -261,7 +323,7 @@ jobs:
               run(['docker', 'version'])
               hashes = {p: hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in
                         ['.dockerignore', 'infrastructure/docker/web.Dockerfile', 'infrastructure/docker/api.Dockerfile',
-                         'tests/container-images.test.mjs', '.github/workflows/ci.yml', 'docs/CONTAINER_IMAGES.md', 'pnpm-lock.yaml']}
+                         'apps/web/next.config.ts', 'tests/container-images.test.mjs', '.github/workflows/ci.yml', 'docs/CONTAINER_IMAGES.md', 'pnpm-lock.yaml']}
               record('source-hashes', hashes)
               base_refs = set()
               for kind in ('web', 'api'):
@@ -288,7 +350,7 @@ jobs:
                   assert info['Os'] == 'linux' and info['Architecture'] == 'arm64'
                   assert info['Config']['User'] == 'node' and not info['Config']['Volumes']
                   assert info['Config']['Entrypoint'] == base_info['Config']['Entrypoint']
-                  assert info['Config']['Cmd'] == (['node','node_modules/next/dist/bin/next','start','--hostname','0.0.0.0','--port','3101'] if kind == 'web' else ['node','dist/server.js'])
+                  assert info['Config']['Cmd'] == (['node','apps/web/server.js'] if kind == 'web' else ['node','dist/server.js'])
                   assert info['RootFS']['Layers'][:len(base_info['RootFS']['Layers'])] == base_info['RootFS']['Layers']
                   run(['docker', 'history', '--no-trunc', '--format', '{{json .}}', image])
                   # Stream save: count original uncompressed layer tar bytes, never retain an archive or duplicate it on disk.
@@ -331,6 +393,13 @@ jobs:
                   run(['docker', 'start', name])
                   inventory = json.loads(wait_exit(name, 0)['logs'])
                   record(kind + '-inventory', inventory)
+                  if kind == 'api':
+                      unwanted = [p for p in inventory['packages'] if p['name'] in ('next','react','react-dom')]
+                      record('api-dependency-selection', {'method': 'pnpm deploy --legacy --prod --no-optional',
+                             'omitted_optional_declarations': inventory['omitted_optional'], 'unexpected_web_closure': unwanted,
+                             'note': 'omissions are unresolved optional declarations in retained packages, not a full lockfile diff'})
+                      if unwanted:
+                          violations.append('api: optional web peer closure retained; no manual library pruning authorized')
                   if inventory['forbidden'] or inventory['tooling']:
                       violations.append(kind + ': runtime exclusions failed; inspect inventory before scoped correction')
                   if kind == 'web':
@@ -380,7 +449,11 @@ jobs:
                       name = create('api-imports', image, memory, imports)
                       run(['docker', 'start', name])
                       record('api-import-stats', stats(name))
-                      assert wait_exit(name, 0)['logs'] == 'runtime imports resolved without a database'
+                      resolved = json.loads(wait_exit(name, 0)['logs'])
+                      record('api-imports', resolved)
+                      assert resolved['database_connected'] is False
+                      assert resolved['compiled'] == ['app', 'auth', 'database']
+                      assert '@cupmemo/database:pg' in resolved['loaded']
               common = set(images['web']['RootFS']['Layers']) & set(images['api']['RootFS']['Layers'])
               record('combined-size', {'unique_uncompressed_layer_tar_bytes': sum(layers.values()),
                      'shared_uncompressed_layer_tar_bytes': sum(layers[d] for d in common),

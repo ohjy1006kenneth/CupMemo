@@ -17,7 +17,7 @@ COPY apps/api/src ./apps/api/src
 RUN corepack pnpm --filter @cupmemo/contracts build \
     && corepack pnpm --filter @cupmemo/database build \
     && corepack pnpm --filter @cupmemo/api build
-RUN corepack pnpm --filter @cupmemo/api deploy --legacy --prod /out \
+RUN corepack pnpm --filter @cupmemo/api deploy --legacy --prod --no-optional /out \
     && rm -rf /out/dist /out/node_modules/@cupmemo/contracts/dist /out/node_modules/@cupmemo/database/dist /out/node_modules/@cupmemo/database/drizzle \
     && cp -a apps/api/dist /out/dist \
     && cp -a packages/contracts/dist /out/node_modules/@cupmemo/contracts/dist \

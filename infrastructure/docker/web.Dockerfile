@@ -18,20 +18,19 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Next compiles this server-side rewrite into .next/routes-manifest.json.
 ENV CUPMEMO_API_ORIGIN=http://cupmemo-api:4101
 RUN corepack pnpm --filter @cupmemo/web build
-# Legacy deploy works with this unchanged, non-injected workspace lockfile.
-RUN corepack pnpm --filter @cupmemo/web deploy --legacy --prod /out \
-    && rm -rf /out/.next /out/public /out/node_modules/@cupmemo/contracts/dist /out/node_modules/@cupmemo/ui/dist \
-    && cp -a apps/web/.next /out/.next \
-    && cp -a apps/web/public /out/public \
-    && cp -a packages/contracts/dist /out/node_modules/@cupmemo/contracts/dist \
-    && cp -a packages/ui/dist /out/node_modules/@cupmemo/ui/dist \
-    && rm -rf /out/src /out/next.config.ts /out/postcss.config.mjs /out/tsconfig.json /out/next-env.d.ts /out/.next/cache \
-    && rm -rf /out/node_modules/@cupmemo/contracts/src /out/node_modules/@cupmemo/contracts/tsconfig.json /out/node_modules/@cupmemo/ui/src/index.tsx /out/node_modules/@cupmemo/ui/tsconfig.json
+# With repository-root tracing, Next emits apps/web/server.js beneath standalone.
+# Fail on a changed layout rather than copying a full dependency installation.
+RUN test -f apps/web/.next/standalone/apps/web/server.js \
+    && test -f apps/web/.next/standalone/apps/web/.next/routes-manifest.json
 
 FROM node:24-bookworm-slim@sha256:156e9bc7a0a267cc6ca77b4283e32b123479342df684ce297455d7b95ff5a6b5 AS runtime
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3101
+# Session fetches read this server-only origin at runtime as well as build time.
+ENV CUPMEMO_API_ORIGIN=http://cupmemo-api:4101
 WORKDIR /app
-COPY --from=build --chown=node:node /out/ ./
+COPY --from=build --chown=node:node /work/apps/web/.next/standalone/ ./
+COPY --from=build --chown=node:node /work/apps/web/public/ ./apps/web/public/
+COPY --from=build --chown=node:node /work/apps/web/.next/static/ ./apps/web/.next/static/
 USER node
 EXPOSE 3101
-CMD ["node", "node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0", "--port", "3101"]
+CMD ["node", "apps/web/server.js"]
