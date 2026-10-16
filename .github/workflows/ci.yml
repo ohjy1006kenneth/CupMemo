@@ -118,12 +118,22 @@ jobs:
               return sample
 
           def wait_exit(name, expected):
-              assert run(['docker', 'wait', name], timeout=35) == str(expected)
-              state = inspect_container(name)['State']
-              assert state['ExitCode'] == expected and not state['OOMKilled'] and not state['Error']
-              return run(['docker', 'logs', name])
+              # Only the explicitly TERM-signalled Next smoke supports both normal and signal exits.
+              assert isinstance(expected, int) or (name == prefix + '-web-smoke' and expected == (0, 143))
+              allowed = (expected,) if isinstance(expected, int) else expected
+              waited = None
+              try:
+                  waited = run(['docker', 'wait', name], timeout=35)
+              finally:
+                  # Preserve actual state/logs even if wait times out or the exit is unexpected.
+                  state = inspect_container(name)['State']
+                  record(name + '-exit', {'wait_output': waited, 'allowed_exits': allowed, 'state': state})
+                  logs = run(['docker', 'logs', name])
+              assert waited == str(state['ExitCode']) and state['ExitCode'] in allowed
+              assert not state['Running'] and not state['OOMKilled'] and not state['Error']
+              return {'logs': logs, 'state': state}
 
-          def create(kind, image, memory, script=None):
+          def create(kind, image, memory, script=None, user=None):
               name = prefix + '-' + kind
               args = ['docker', 'create', '--name', name, '--label', 'cupmemo.issue32=' + prefix,
                       '--network', 'none', '--read-only', '--tmpfs', '/tmp:rw,noexec,nosuid,size=64m',
@@ -131,6 +141,8 @@ jobs:
                       '--memory-swap', memory, '--cpus', '1', '--pids-limit', '128']
               if script is not None:
                   args += ['--entrypoint', 'node']
+              if user is not None:
+                  args += ['--user', user]
               args += [image]
               if script is not None:
                   args += ['--input-type=module', '-e', script]
@@ -164,14 +176,19 @@ jobs:
           import {readdirSync,lstatSync,readFileSync,existsSync} from 'node:fs';
           import {join,dirname} from 'node:path';
           import {execFileSync} from 'node:child_process';
+          import {createHash} from 'node:crypto';
           assert.notEqual(process.getuid(),0);
-          const packages=[], directories=new Map(), forbidden=[];
+          const packages=[], directories=new Map(), forbidden=[], inherited_base_configs=[];
+          const baseNpmConfig=__BASE_NPM_CONFIG__;
           const bannedNames=new Set(['.git','.worktrees','.npmrc','.pnpmfile.cjs','.pnpm-store','.env','context-probe.txt','logs','test','tests','__tests__','fixtures','__fixtures__']);
           function walk(path) {
             let total=0;
             for(const entry of readdirSync(path,{withFileTypes:true})) {
               const p=join(path,entry.name), st=lstatSync(p);
-              if(bannedNames.has(entry.name)||entry.name.startsWith('.env.')||/\.(pem|key|log)$/.test(entry.name)) forbidden.push(p);
+              // Only unchanged bytes at the exact trusted base path are inherited public npm config.
+              const inherited=p==='/usr/local/lib/node_modules/npm/.npmrc'&&p===baseNpmConfig.path&&st.isFile()&&!st.isSymbolicLink()&&createHash('sha256').update(readFileSync(p)).digest('hex')===baseNpmConfig.sha256;
+              if(inherited) inherited_base_configs.push({path:p,sha256:baseNpmConfig.sha256});
+              if(!inherited&&(bannedNames.has(entry.name)||entry.name.startsWith('.env.')||/\.(pem|key|log)$/.test(entry.name))) forbidden.push(p);
               if(st.isSymbolicLink()) continue;
               if(st.isDirectory()) total+=walk(p);
               else if(st.isFile()) {
@@ -190,7 +207,16 @@ jobs:
             if(existsSync(p)) forbidden.push(p);
           const tooling=packages.filter(p=>['typescript','tsx','ts-node','vitest','eslint','@playwright/test','drizzle-kit','@cupmemo/config'].includes(p.name));
           const os_packages=execFileSync('dpkg-query',['-W','-f=${Package}\t${Version}\n'],{encoding:'utf8'}).trim().split('\n');
-          console.log(JSON.stringify({uid:process.getuid(),node:process.version,packages,os_packages,largest_directories:[...directories].sort((a,b)=>b[1]-a[1]).slice(0,40),forbidden,tooling,units:'logical regular-file bytes; symlinks not followed; not image disk/RAM bytes'}));
+          console.log(JSON.stringify({uid:process.getuid(),node:process.version,packages,os_packages,largest_directories:[...directories].sort((a,b)=>b[1]-a[1]).slice(0,40),forbidden,tooling,inherited_base_configs,units:'logical regular-file bytes; symlinks not followed; not image disk/RAM bytes'}));
+          '''
+          base_config_probe = r'''
+          import assert from 'node:assert/strict';
+          import {lstatSync,readFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const path='/usr/local/lib/node_modules/npm/.npmrc';
+          const st=lstatSync(path);
+          assert.ok(st.isFile()&&!st.isSymbolicLink());
+          console.log(JSON.stringify({path,sha256:createHash('sha256').update(readFileSync(path)).digest('hex')}));
           '''
           web_probe = r'''
           import assert from 'node:assert/strict';
@@ -247,6 +273,10 @@ jobs:
               base_info = json.loads(run(['docker', 'image', 'inspect', base]))[0]
               record('base', base_info)
               assert base_info['Os'] == 'linux' and base_info['Architecture'] == 'arm64'
+              name = create('base-npm-config', base_info['Id'], '256m', base_config_probe, user='node')
+              run(['docker', 'start', name])
+              base_npm_config = json.loads(wait_exit(name, 0)['logs'])
+              record('base-public-npm-config', {'image': base_info['Id'], 'reference': base, **base_npm_config})
               for kind, budget, memory in [('web', 500, '512m'), ('api', 300, '256m')]:
                   resources(kind)
                   tag = prefix + '-' + kind
@@ -297,9 +327,9 @@ jobs:
                          'compressed_transfer_bytes': None, 'disposition': 'pending owner exception or packaging correction if target exceeded'})
                   if info['Size'] > budget * 1024**2:
                       violations.append(kind + ': size target exceeded; evidence-backed owner disposition required')
-                  name = create(kind + '-audit', image, memory, audit)
+                  name = create(kind + '-audit', image, memory, audit.replace('__BASE_NPM_CONFIG__', json.dumps(base_npm_config)))
                   run(['docker', 'start', name])
-                  inventory = json.loads(wait_exit(name, 0))
+                  inventory = json.loads(wait_exit(name, 0)['logs'])
                   record(kind + '-inventory', inventory)
                   if inventory['forbidden'] or inventory['tooling']:
                       violations.append(kind + ': runtime exclusions failed; inspect inventory before scoped correction')
@@ -337,19 +367,20 @@ jobs:
                       record('web-load', {'argv': load_command, 'exit': load_code, 'requests': 40, 'samples': 3})
                       assert load_code == 0
                       stopped = time.monotonic()
-                      run(['docker', 'kill', '--signal=TERM', name])
-                      wait_exit(name, 0)
-                      record('web-termination', {'signal': 'SIGTERM', 'elapsed_seconds': time.monotonic() - stopped})
+                      run(['docker', 'kill', '--signal=TERM', name], timeout=10)
+                      result = wait_exit(name, (0, 143))
+                      record('web-termination', {'signal': 'SIGTERM', 'actual_exit': result['state']['ExitCode'],
+                             'elapsed_seconds': time.monotonic() - stopped})
                   else:
                       name = create('api-refusal', image, memory)
                       run(['docker', 'start', name])
-                      message = wait_exit(name, 1)
+                      message = wait_exit(name, 1)['logs']
                       assert message == 'API startup failed. Check non-secret configuration and port availability.'
                       record('api-refusal', {'expected_exit': 1, 'positive_DB_API_memory_load': 'UNVERIFIED; negative startup control only'})
                       name = create('api-imports', image, memory, imports)
                       run(['docker', 'start', name])
                       record('api-import-stats', stats(name))
-                      assert wait_exit(name, 0) == 'runtime imports resolved without a database'
+                      assert wait_exit(name, 0)['logs'] == 'runtime imports resolved without a database'
               common = set(images['web']['RootFS']['Layers']) & set(images['api']['RootFS']['Layers'])
               record('combined-size', {'unique_uncompressed_layer_tar_bytes': sum(layers.values()),
                      'shared_uncompressed_layer_tar_bytes': sum(layers[d] for d in common),
