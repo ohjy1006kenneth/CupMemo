@@ -103,6 +103,133 @@ function payloadFixture() {
 }
 
 describe('exact API test-payload assembly', () => {
+  for (const [nested, privatePackage] of [
+    ['benchmark', true],
+    ['dist/esm', false],
+  ]) {
+    it(`preserves nested ${nested} metadata without treating it as a dependency root`, () => {
+      const f = payloadFixture();
+      try {
+        const pkg = 'node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri';
+        const rel = `${pkg}/${nested}/package.json`;
+        const bytes = JSON.stringify({
+          name: 'nested-scope',
+          version: '1.0.0',
+          private: privatePackage,
+          type: 'module',
+          main: 'index.js',
+          exports: './absent.js',
+        });
+        f.put(rel, bytes);
+        f.put(`${pkg}/${nested}/resource.txt`, 'preserved nested resource');
+        const before = lstatSync(path.join(f.out, rel));
+        const run = f.run();
+        expect(run.status, run.stderr).toBe(0);
+        expect(readFileSync(path.join(f.out, rel), 'utf8')).toBe(bytes);
+        expect(existsSync(path.join(f.out, pkg, nested, 'index.js'))).toBe(false);
+        expect(readFileSync(path.join(f.out, pkg, nested, 'resource.txt'), 'utf8')).toBe(
+          'preserved nested resource',
+        );
+        const evidence = JSON.parse(readFileSync(path.join(f.evidence, 'assembly.json'), 'utf8'));
+        expect(evidence.retained_before).toEqual(evidence.retained_after);
+        expect(evidence.retained_after[rel]).toMatchObject({
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+          ino: before.ino,
+          mode: before.mode,
+          mtime_ms: before.mtimeMs,
+        });
+        expect(evidence.entries.some((entry) => entry.package === rel)).toBe(false);
+      } finally {
+        rmSync(f.temp, { recursive: true, force: true });
+      }
+    });
+  }
+  for (const pkg of [
+    'node_modules/direct-runtime',
+    'node_modules/@scope/runtime',
+    'node_modules/.pnpm/runtime@1.0.0/node_modules/runtime',
+    'node_modules/.pnpm/@scope+runtime@1.0.0/node_modules/@scope/runtime',
+    'node_modules/parent/node_modules/nested-runtime',
+  ]) {
+    for (const kind of ['main', 'exports']) {
+      it(`rejects missing ${kind} at runtime boundary ${pkg} before deletion`, () => {
+        const f = payloadFixture();
+        try {
+          f.put(
+            `${pkg}/package.json`,
+            JSON.stringify({ name: 'runtime', version: '1.0.0', [kind]: './absent.js' }),
+          );
+          const run = f.run();
+          expect(run.status, run.stderr).not.toBe(0);
+          expect(run.stderr).toContain(`${kind === 'main' ? 'entry' : 'export'} target missing:`);
+          expect(existsSync(path.join(f.out, approvedPayloads[0], 'nested/test.js'))).toBe(true);
+          expect(existsSync(path.join(f.evidence, 'assembly.json'))).toBe(false);
+        } finally {
+          rmSync(f.temp, { recursive: true, force: true });
+        }
+      });
+    }
+  }
+  it('validates actual package boundaries even without name/version metadata', () => {
+    const f = payloadFixture();
+    try {
+      f.put('node_modules/runtime/package.json', '{"private":true,"main":"absent.js"}');
+      const run = f.run();
+      expect(run.status, run.stderr).not.toBe(0);
+      expect(run.stderr).toContain('entry target missing:');
+      expect(existsSync(path.join(f.out, approvedPayloads[0]))).toBe(true);
+    } finally {
+      rmSync(f.temp, { recursive: true, force: true });
+    }
+  });
+  it('deduplicates direct, scoped and nested aliases of a pnpm real package root', () => {
+    const f = payloadFixture();
+    try {
+      const pkg = 'node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri';
+      for (const alias of [
+        'node_modules/uri-alias',
+        'node_modules/@scope/uri-alias',
+        'node_modules/parent/node_modules/uri-alias',
+        'node_modules/.pnpm/node_modules/uri-alias',
+      ]) {
+        const target = path.join(f.out, alias);
+        mkdirSync(path.dirname(target), { recursive: true });
+        symlinkSync(path.relative(path.dirname(target), path.join(f.out, pkg)), target);
+      }
+      const run = f.run();
+      expect(run.status, run.stderr).toBe(0);
+      const evidence = JSON.parse(readFileSync(path.join(f.evidence, 'assembly.json'), 'utf8'));
+      expect(evidence.entries.filter((entry) => entry.package === `${pkg}/package.json`)).toEqual([
+        { package: `${pkg}/package.json`, kind: 'main', target: `${pkg}/index.js` },
+        { package: `${pkg}/package.json`, kind: 'export', target: `${pkg}/index.js` },
+        { package: `${pkg}/package.json`, kind: 'export', target: `${pkg}/index.js` },
+      ]);
+      expect(evidence.entries.some((entry) => entry.package.includes('uri-alias'))).toBe(false);
+      expect(evidence.retained_before).toEqual(evidence.retained_after);
+    } finally {
+      rmSync(f.temp, { recursive: true, force: true });
+    }
+  });
+  for (const destination of ['sibling', 'parent']) {
+    it(`refuses package aliases to the external ${destination} before deletion`, () => {
+      const f = payloadFixture();
+      try {
+        const external = destination === 'parent' ? f.temp : path.join(f.temp, 'external');
+        mkdirSync(external, { recursive: true });
+        const bytes = '{"name":"external","version":"1.0.0"}';
+        writeFileSync(path.join(external, 'package.json'), bytes);
+        symlinkSync(external, path.join(f.out, 'node_modules/external'));
+        const run = f.run();
+        expect(run.status, run.stderr).not.toBe(0);
+        expect(run.stderr).toContain('confinement:');
+        expect(readFileSync(path.join(external, 'package.json'), 'utf8')).toBe(bytes);
+        expect(existsSync(path.join(f.out, approvedPayloads[0]))).toBe(true);
+        expect(existsSync(path.join(f.evidence, 'assembly.json'))).toBe(false);
+      } finally {
+        rmSync(f.temp, { recursive: true, force: true });
+      }
+    });
+  }
   it('accepts the installed Better Auth exports without shipping dormant dev-source targets', () => {
     const f = payloadFixture();
     try {

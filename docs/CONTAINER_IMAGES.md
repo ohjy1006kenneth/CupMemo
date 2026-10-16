@@ -60,8 +60,17 @@ inodes/link counts and symlink targets before/after, including adjacent worker,
 driver, resource, license/notice and package metadata files. Directory modes and
 ownership are compared; directory timestamps/link counts necessarily change when
 children are removed, and access times are not invariants of reading files.
-Runtime main/exports (including wildcard targets) and retained symlinks must resolve
-to existing retained targets within `/out`. Export subpaths are selected separately
+Runtime main/exports are validated at real deployed package boundaries: `/out`
+and immediate package entries under every `node_modules`, including scoped
+packages, pnpm store roots and nested dependencies. Symlink aliases are confined
+to `/out` and deduplicated by real package path. Selection does not depend on
+package name, version or `private` metadata. Nested manifests inside a package
+(for example `benchmark/package.json` or `dist/esm/package.json`) remain unchanged
+and fully covered by the recursive preservation audit, but do not independently
+declare dependency roots or require their own main/exports targets to exist.
+Runtime main/exports (including wildcard targets) at selected package roots and
+all retained symlinks must resolve to existing retained targets within `/out`.
+Export subpaths are selected separately
 for Node import and require, using default Node conditions (`node`, `node-addons`,
 `module-sync` and the respective mode) and first-matching property order, including
 `default`. Dormant type/build/custom/browser/Bun conditions are not runtime targets;
@@ -132,6 +141,10 @@ Subsequent candidate `68fb6593f097af03f35487b55053c0c8de5a0fd2`, native CI
 `38947906803`, met both size caps and passed bounded smokes/imports, but its API
 inventory rejected48 test/fixture paths under the40 approved nonnested roots.
 Its quality PASS does not convert the container-images FAIL into acceptance.
+The later assembly cycles `38950254807` and `38950906794` also remain failures.
+The owner's package-boundary correction addresses an upstream nested private
+`fast-uri@3.1.8/benchmark/package.json` whose declared main was already absent;
+it does not change upstream bytes, the 40 removal roots or the recursive audit.
 The exact assembly revision requires new final-head API evidence and both required
 CI jobs; valid unchanged web/app/context evidence is not an excuse to bypass CI.
 The owner correction explicitly authorizes a seventh file,

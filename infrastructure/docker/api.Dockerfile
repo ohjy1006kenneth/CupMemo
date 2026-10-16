@@ -81,7 +81,7 @@ const roots=approved.map(([store,name,dir])=>`node_modules/.pnpm/${store}/node_m
 const excluded=p=>roots.some(root=>p===root||p.startsWith(root+'/'));
 function confined(p) {
   const rel=relative(out,p);
-  assert.ok(rel!==''&&!rel.startsWith('../')&&!isAbsolute(rel),'confinement: '+p);
+  assert.ok(rel!==''&&rel!=='..'&&!rel.startsWith('../')&&!isAbsolute(rel),'confinement: '+p);
   return rel;
 }
 function noSymlinkAncestors(p) {
@@ -143,12 +143,23 @@ function retainedTarget(p,label) {
   try { real=realpathSync(p); } catch { assert.fail(label+' target missing: '+p); }
   assert.ok(!excluded(confined(real)),label+' target resolves into removal: '+p);
 }
+// Package boundaries are /out and immediate node_modules entries, not arbitrary
+// nested manifests. The recursive snapshot still audits every retained file/link.
+const packageRoots=new Set([out]);
 for(const [rel,meta] of Object.entries(before)) {
   const p=join(out,rel);
   if(meta.link!==undefined) retainedTarget(p,'retained symlink');
-  if(!rel.endsWith('package.json')||!meta.sha256) continue;
+  if(meta.type!=='directory'&&meta.link===undefined) continue;
+  const parts=rel.split('/'), name=parts.at(-1), parent=parts.at(-2);
+  if(name.startsWith('.')||name.startsWith('@')) continue;
+  if(parent!=='node_modules'&&!(parent?.startsWith('@')&&parts.at(-3)==='node_modules')) continue;
+  retainedTarget(p,'runtime package');
+  packageRoots.add(realpathSync(p));
+}
+for(const packageRoot of packageRoots) {
+  const p=join(packageRoot,'package.json'), rel=relative(out,p);
+  if(!before[rel]) continue;
   const manifest=JSON.parse(readFileSync(p,'utf8'));
-  if(!manifest.name||!manifest.version) continue;
   const require=createRequire(p);
   if(manifest.main) {
     const target=resolve(dirname(p),manifest.main);
