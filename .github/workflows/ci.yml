@@ -395,7 +395,7 @@ jobs:
                   record(kind + '-inventory', inventory)
                   if kind == 'api':
                       unwanted = [p for p in inventory['packages'] if p['name'] in ('next','react','react-dom')]
-                      record('api-dependency-selection', {'method': 'pnpm deploy --legacy --prod --no-optional',
+                      record('api-dependency-selection', {'method': 'pnpm10.34.6 portable production selection with --legacy --prod --no-optional; see API Dockerfile',
                              'omitted_optional_declarations': inventory['omitted_optional'], 'unexpected_web_closure': unwanted,
                              'note': 'omissions are unresolved optional declarations in retained packages, not a full lockfile diff'})
                       if unwanted:

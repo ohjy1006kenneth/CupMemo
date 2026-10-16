@@ -43,7 +43,7 @@ describe('application image preparation', () => {
   });
   it('accepts traced monorepo layout but rejects first-party source and tooling in the actual CI audit', () => {
     const workflow = read('.github/workflows/ci.yml');
-    const audit = workflow.match(/          audit = r'''\n([\s\S]*?)          '''/)[1];
+    const audit = workflow.match(/ {10}audit = r'''\n([\s\S]*?) {10}'''/)[1];
     const temp = mkdtempSync(path.join(tmpdir(), 'cupmemo-runtime-audit-'));
     const app = path.join(temp, 'app');
     const baseModules = path.join(temp, 'base');
