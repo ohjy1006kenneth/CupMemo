@@ -5,6 +5,261 @@ import path from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
+import { chmodSync, lstatSync, readlinkSync, renameSync, symlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { Buffer } from 'node:buffer';
+
+// Independent owner-contract expectation, not derived from the implementation list.
+const approvedPayloads = [
+  ['@fastify+ajv-compiler@4.0.6', '@fastify/ajv-compiler', 'test'],
+  ['@fastify+error@4.2.0', '@fastify/error', 'test'],
+  ['@fastify+fast-json-stringify-compiler@5.1.0', '@fastify/fast-json-stringify-compiler', 'test'],
+  ['@fastify+merge-json-schemas@0.2.1', '@fastify/merge-json-schemas', 'test'],
+  ['@fastify+proxy-addr@5.1.1', '@fastify/proxy-addr', 'test'],
+  ['@pinojs+redact@0.4.0', '@pinojs/redact', 'test'],
+  ...[
+    'avvio@9.3.0',
+    'fast-json-stringify@6.4.0',
+    'fast-json-stringify@7.0.1',
+    'fast-uri@3.1.8',
+    'fast-uri@4.2.1',
+    'fastify@5.8.5',
+    'fastq@1.20.3',
+    'find-my-way@9.9.0',
+    'json-schema-ref-resolver@3.0.0',
+    'light-my-request@6.6.0',
+    'on-exit-leak-free@2.1.2',
+    'pg-types@2.2.0',
+    'pino-abstract-transport@3.0.0',
+    'pino-std-serializers@7.1.0',
+    'pino@10.4.0',
+    'process-warning@4.0.1',
+    'process-warning@5.1.0',
+    'quick-format-unescaped@4.0.4',
+    'rfdc@1.4.1',
+    'safe-regex2@5.1.1',
+    'secure-json-parse@4.1.0',
+    'thread-stream@4.2.0',
+  ].map((store) => [store, store.slice(0, store.lastIndexOf('@')), 'test']),
+  ['json-schema-traverse@1.0.0', 'json-schema-traverse', 'spec/fixtures'],
+  ...['fixtures', 'test', 'types/tests'].map((dir) => ['sonic-boom@4.2.1', 'sonic-boom', dir]),
+  ...['4.3.6', '4.6.5'].flatMap((version) =>
+    ['v3/tests', 'v4/classic/tests', 'v4/core/tests', 'v4/mini/tests'].map((dir) => [
+      `zod@${version}`,
+      'zod',
+      `src/${dir}`,
+    ]),
+  ),
+]
+  .map(([store, name, dir]) => `node_modules/.pnpm/${store}/node_modules/${name}/${dir}`)
+  .sort();
+
+function payloadFixture() {
+  const temp = mkdtempSync(path.join(tmpdir(), 'cupmemo-api-assembly-'));
+  const out = path.join(temp, 'out');
+  const evidence = path.join(temp, 'evidence');
+  const put = (name, bytes = 'runtime sentinel') => {
+    const p = path.join(out, name);
+    mkdirSync(path.dirname(p), { recursive: true });
+    writeFileSync(p, bytes);
+    return p;
+  };
+  put('package.json', '{"name":"fixture","version":"1.0.0","main":"dist/server.js"}');
+  put('dist/server.js');
+  for (const target of approvedPayloads) {
+    const [, store, name] = target.match(
+      /^node_modules\/\.pnpm\/([^/]+)\/node_modules\/((?:@[^/]+\/)?[^/]+)\//,
+    );
+    const packageRoot = `node_modules/.pnpm/${store}/node_modules/${name}`;
+    put(
+      `${packageRoot}/package.json`,
+      JSON.stringify({
+        name,
+        version: store.slice(store.lastIndexOf('@') + 1),
+        main: 'index.js',
+        exports: './index.js',
+      }),
+    );
+    put(`${packageRoot}/index.js`);
+    put(`${target}/nested/test.js`, 'unnecessary payload');
+  }
+  const run = (mutate = (script) => script) => {
+    const dockerfile = read('infrastructure/docker/api.Dockerfile');
+    const match = dockerfile.match(
+      /RUN node --input-type=module - \/out \/assembly-evidence <<'API_ASSEMBLY'\n([\s\S]*?)\nAPI_ASSEMBLY/,
+    );
+    expect(
+      match,
+      'Dockerfile must execute the testable inline assembly, not a test substitute',
+    ).not.toBeNull();
+    const result = spawnSync(process.execPath, ['--input-type=module', '-', out, evidence], {
+      input: mutate(match[1]),
+      encoding: 'utf8',
+      timeout: 10000,
+    });
+    return result;
+  };
+  return { temp, out, evidence, put, run };
+}
+
+describe('exact API test-payload assembly', () => {
+  for (const fault of ['evidence directory symlink', 'evidence file symlink']) {
+    it(`refuses ${fault} before deletion or external writes`, () => {
+      const f = payloadFixture();
+      try {
+        const external = path.join(f.temp, 'external');
+        mkdirSync(external);
+        const sentinel = path.join(external, 'assembly.json');
+        writeFileSync(sentinel, 'external sentinel');
+        if (fault === 'evidence directory symlink') symlinkSync(external, f.evidence);
+        else {
+          mkdirSync(f.evidence);
+          symlinkSync(sentinel, path.join(f.evidence, 'assembly.json'));
+        }
+        const run = f.run();
+        expect(run.status, run.stderr).not.toBe(0);
+        expect(readFileSync(sentinel, 'utf8')).toBe('external sentinel');
+        expect(existsSync(path.join(f.out, approvedPayloads[0]))).toBe(true);
+      } finally {
+        rmSync(f.temp, { recursive: true, force: true });
+      }
+    });
+  }
+  for (const fault of [
+    'missing late target',
+    'version drift',
+    'file target',
+    'removed main',
+    'missing export',
+    'removed wildcard export',
+    'retained link into deletion',
+    'path escape',
+  ]) {
+    it(`preflights ${fault} before deleting any approved payload`, () => {
+      const f = payloadFixture();
+      try {
+        const target = approvedPayloads.at(-1);
+        const pkg = target.slice(0, target.indexOf('/src/'));
+        let mutate = (script) => script;
+        if (fault === 'missing late target') rmSync(path.join(f.out, target), { recursive: true });
+        if (fault === 'version drift')
+          f.put(`${pkg}/package.json`, '{"name":"zod","version":"999.0.0","main":"index.js"}');
+        if (fault === 'file target') {
+          rmSync(path.join(f.out, target), { recursive: true });
+          f.put(target);
+        }
+        if (fault === 'removed main')
+          f.put(
+            `${pkg}/package.json`,
+            '{"name":"zod","version":"4.6.5","main":"src/v4/mini/tests/nested/test.js"}',
+          );
+        if (fault === 'missing export')
+          f.put(
+            `${pkg}/package.json`,
+            '{"name":"zod","version":"4.6.5","exports":{"import":"./absent.js"}}',
+          );
+        if (fault === 'removed wildcard export')
+          f.put(
+            `${pkg}/package.json`,
+            '{"name":"zod","version":"4.6.5","exports":{"./*":"./src/v4/mini/tests/nested/*.js"}}',
+          );
+        if (fault === 'retained link into deletion')
+          symlinkSync(`../${target}/nested/test.js`, path.join(f.out, 'dist/unsafe.js'));
+        if (fault === 'path escape')
+          mutate = (script) =>
+            script.replace("'src/v4/mini/tests'", "'../../../../../../../../escape'");
+        const run = f.run(mutate);
+        expect(run.status, run.stderr).not.toBe(0);
+        expect(run.stderr).toMatch(/preflight|target|symlink|version|export|entry|confinement/);
+        expect(existsSync(path.join(f.out, approvedPayloads[0], 'nested/test.js'))).toBe(true);
+      } finally {
+        rmSync(f.temp, { recursive: true, force: true });
+      }
+    });
+  }
+  // Each ancestor (including /out and the target itself) must be checked with lstat.
+  const symlinkTarget = approvedPayloads.at(-1);
+  const components = symlinkTarget.split('/');
+  for (let depth = 0; depth <= components.length; depth++) {
+    it(`refuses symlink traversal at target ancestor depth ${depth} without deleting inside or outside /out`, () => {
+      const f = payloadFixture();
+      try {
+        const victim = path.join(f.out, ...components.slice(0, depth));
+        const external = path.join(f.temp, 'external');
+        renameSync(victim, external);
+        symlinkSync(external, victim);
+        const run = f.run();
+        expect(run.status, run.stderr).not.toBe(0);
+        expect(run.stderr).toMatch(/symlink/);
+        expect(existsSync(path.join(external, ...components.slice(depth), 'nested/test.js'))).toBe(
+          true,
+        );
+      } finally {
+        rmSync(f.temp, { recursive: true, force: true });
+      }
+    });
+  }
+  it('detects retained byte changes rather than merely reporting a successful deletion', () => {
+    const f = payloadFixture();
+    try {
+      const run = f.run((script) =>
+        script.replace(
+          'const after=snapshot();',
+          "writeFileSync(join(out,'dist/server.js'),'corrupted');\nconst after=snapshot();",
+        ),
+      );
+      expect(run.status).not.toBe(0);
+      expect(run.stderr).toContain('retained payload changed');
+    } finally {
+      rmSync(f.temp, { recursive: true, force: true });
+    }
+  });
+  it('removes exactly the 40 approved roots while retaining adjacent runtime bytes, metadata and links', () => {
+    const f = payloadFixture();
+    try {
+      const unapproved = f.put('node_modules/adjacent-runtime/tests/unknown.js');
+      const adjacent = f.put(
+        'node_modules/.pnpm/thread-stream@4.2.0/node_modules/thread-stream/lib/worker.js',
+      );
+      chmodSync(adjacent, 0o751);
+      const link = path.join(f.out, 'dist/worker-link.js');
+      symlinkSync(
+        '../node_modules/.pnpm/thread-stream@4.2.0/node_modules/thread-stream/lib/worker.js',
+        link,
+      );
+      const before = {
+        stat: lstatSync(adjacent),
+        hash: createHash('sha256').update(readFileSync(adjacent)).digest('hex'),
+        link: readlinkSync(link),
+      };
+      const run = f.run();
+      expect(run.status, run.stderr).toBe(0);
+      for (const target of approvedPayloads)
+        expect(existsSync(path.join(f.out, target)), target).toBe(false);
+      expect(existsSync(unapproved)).toBe(true);
+      expect(readFileSync(adjacent, 'utf8')).toBe('runtime sentinel');
+      expect(lstatSync(adjacent).mode).toBe(before.stat.mode);
+      expect(lstatSync(adjacent).mtimeMs).toBe(before.stat.mtimeMs);
+      expect(readlinkSync(link)).toBe(before.link);
+      const manifest = JSON.parse(readFileSync(path.join(f.evidence, 'assembly.json'), 'utf8'));
+      expect(manifest.removed.map((p) => p.path).sort()).toEqual(approvedPayloads);
+      expect(
+        manifest.removed.every(
+          (p) => p.files === 1 && p.bytes === Buffer.byteLength('unnecessary payload'),
+        ),
+      ).toBe(true);
+      expect(manifest.retained_before).toEqual(manifest.retained_after);
+      expect(
+        manifest.retained_before[
+          'node_modules/.pnpm/thread-stream@4.2.0/node_modules/thread-stream/lib/worker.js'
+        ].sha256,
+      ).toBe(before.hash);
+      expect(existsSync(path.join(f.out, 'assembly.json'))).toBe(false);
+    } finally {
+      rmSync(f.temp, { recursive: true, force: true });
+    }
+  });
+});
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const read = (name) => readFileSync(path.join(root, name), 'utf8');
@@ -18,6 +273,34 @@ const base =
 const probe = process.env.CUPMEMO_CONTEXT_PROBE === '1' ? it : it.skip;
 
 describe('application image preparation', () => {
+  it('executes CI retained Fastify injection, Pino logging and Zod validation against real packages', () => {
+    const workflow = read('.github/workflows/ci.yml');
+    const body = workflow.match(
+      / {10}\/\/ BEGIN retained API behavior\n([\s\S]*?) {10}\/\/ END retained API behavior/,
+    );
+    expect(body, 'CI must execute retained behavior, not just imports').not.toBeNull();
+    const run = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        [
+          "import assert from 'node:assert/strict';",
+          "import {createRequire} from 'node:module';",
+          "import {realpathSync,existsSync} from 'node:fs';",
+          "import {dirname,join} from 'node:path';",
+          body[1],
+          'console.log(JSON.stringify({behavior,resources}));',
+        ].join('\n'),
+      ],
+      { cwd: path.join(root, 'apps/api'), encoding: 'utf8', timeout: 10000 },
+    );
+    expect(run.status, run.stderr).toBe(0);
+    expect(JSON.parse(run.stdout)).toEqual({
+      behavior: { valid: 200, invalid_schema: 400, invalid_zod: 422, pino_logged: true },
+      resources: expect.any(Array),
+    });
+  });
   it('traces the repository root from the ESM config and preserves API rewrites', async () => {
     const { default: config } = await import('../apps/web/next.config.ts');
     expect(config.output).toBe('standalone');
@@ -83,6 +366,7 @@ describe('application image preparation', () => {
       expect(clean.omitted_optional).toEqual([
         expect.objectContaining({ name: 'absent', resolved: false }),
       ]);
+      put('node_modules/unapproved/tests/probe.js');
       put('apps/web/src/probe.ts');
       put('apps/web/.next/cache/probe');
       put('packages/contracts/tsconfig.json');
@@ -90,6 +374,7 @@ describe('application image preparation', () => {
       put('apps/web/.env.production', 'non-secret sentinel');
       const dirty = runAudit();
       for (const name of [
+        'node_modules/unapproved/tests',
         'apps/web/src',
         'apps/web/.next/cache',
         'packages/contracts/tsconfig.json',
@@ -108,7 +393,14 @@ describe('application image preparation', () => {
       expect(existsSync(path.join(root, filename)), `missing ${filename}`).toBe(true);
       const dockerfile = read(filename);
       const from = [...dockerfile.matchAll(/^FROM (\S+) AS (\S+)$/gm)];
-      expect(from.map((entry) => entry[1])).toEqual([base, base]);
+      expect(from.map((entry) => entry[1])).toEqual(
+        service === 'api' ? [base, 'scratch', base] : [base, base],
+      );
+      if (service === 'api') {
+        expect(from.map((entry) => entry[2])).toEqual(['build', 'assembly-evidence', 'runtime']);
+        expect(dockerfile).toContain('COPY --from=build /assembly-evidence/ /');
+        expect(dockerfile.split(' AS runtime')[1]).not.toContain('assembly-evidence');
+      }
       expect(dockerfile).toContain('pnpm@10.34.6');
       expect(dockerfile).toContain('install --frozen-lockfile');
       if (service === 'api') {

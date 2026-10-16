@@ -285,11 +285,13 @@ jobs:
           '''
           imports = r'''
           import assert from 'node:assert/strict';
-          import {readFileSync,realpathSync} from 'node:fs';
+          import {readFileSync,realpathSync,existsSync} from 'node:fs';
+          import {dirname,join} from 'node:path';
           import {createRequire} from 'node:module';
           import {pathToFileURL} from 'node:url';
           assert.notEqual(process.getuid(),0);
           const loaded=[];
+          assert.ok(!existsSync('/app/assembly.json')&&!existsSync('/assembly-evidence'),'build-only evidence leaked into runtime');
           // API direct declarations resolve as ESM from the actual deployed app.
           const manifest=JSON.parse(readFileSync('package.json','utf8'));
           for(const name of Object.keys(manifest.dependencies ?? {})) { await import(name); loaded.push(name); }
@@ -307,7 +309,43 @@ jobs:
           await import(pathToFileURL(databaseRequire.resolve('pg')).href);
           await import('./dist/app.js'); await import('./dist/auth.js');
           await import('@cupmemo/database');
-          console.log(JSON.stringify({loaded,compiled:['app','auth','database'],database_connected:false}));
+          // BEGIN retained API behavior
+          const {default:Fastify}=await import('fastify');
+          const {z}=await import('zod');
+          const fastifyRequire=createRequire(realpathSync('node_modules/fastify/package.json'));
+          const pinoPath=fastifyRequire.resolve('pino');
+          const pinoRequire=createRequire(pinoPath);
+          const pino=pinoRequire(pinoPath);
+          const logs=[];
+          const logger=pino({level:'info'},{write:line=>logs.push(JSON.parse(line))});
+          const app=Fastify({loggerInstance:logger});
+          const input=z.object({count:z.number().int().positive(),label:z.string().min(1)});
+          app.post('/packaging-control',{
+            schema:{body:{type:'object',required:['count','label'],properties:{count:{type:'integer'},label:{type:'string'}}},
+              response:{200:{type:'object',required:['label','count'],properties:{label:{type:'string'},count:{type:'integer'}}}}},
+          },async(request,reply)=>{
+            const parsed=input.safeParse(request.body);
+            if(!parsed.success) return reply.code(422).send({message:'Invalid packaging control'});
+            request.log.info({control:'retained-runtime'},'packaging control');
+            return parsed.data;
+          });
+          let behavior;
+          try {
+            const valid=await app.inject({method:'POST',url:'/packaging-control',payload:{count:2,label:'retained'}});
+            assert.equal(valid.statusCode,200);
+            assert.deepEqual(valid.json(),{count:2,label:'retained'});
+            const invalidSchema=await app.inject({method:'POST',url:'/packaging-control',payload:{count:'invalid',label:'retained'}});
+            const invalidZod=await app.inject({method:'POST',url:'/packaging-control',payload:{count:2,label:''}});
+            assert.equal(invalidSchema.statusCode,400); assert.equal(invalidZod.statusCode,422);
+            assert.ok(logs.some(line=>line.control==='retained-runtime'&&typeof line.reqId==='string'&&line.level===30));
+            assert.ok(logs.some(line=>line.res?.statusCode===200));
+            behavior={valid:valid.statusCode,invalid_schema:invalidSchema.statusCode,invalid_zod:invalidZod.statusCode,pino_logged:true};
+          } finally { await app.close(); }
+          const resources=[join(dirname(pinoPath),'lib/worker.js'),join(dirname(pinoPath),'file.js'),
+            join(dirname(pinoRequire.resolve('thread-stream')),'lib/worker.js'),pinoRequire.resolve('sonic-boom')];
+          for(const file of resources) assert.ok(existsSync(file),'retained driver/worker resource missing: '+file);
+          // END retained API behavior
+          console.log(JSON.stringify({loaded,compiled:['app','auth','database'],database_connected:false,behavior,resources,pg_driver:databaseRequire.resolve('pg')}));
           await new Promise(resolve=>setTimeout(resolve,3000));
           '''
 
@@ -327,7 +365,7 @@ jobs:
               record('source-hashes', hashes)
               base_refs = set()
               for kind in ('web', 'api'):
-                  base_refs.update(re.findall(r'^FROM (\S+)', Path('infrastructure/docker/' + kind + '.Dockerfile').read_text(), re.M))
+                  base_refs.update(re.findall(r'^FROM (\S+) AS (?:build|runtime)$', Path('infrastructure/docker/' + kind + '.Dockerfile').read_text(), re.M))
               assert len(base_refs) == 1
               base = base_refs.pop()
               assert re.fullmatch(r'node:24-bookworm-slim@sha256:[0-9a-f]{64}', base)
@@ -352,6 +390,20 @@ jobs:
                   assert info['Config']['Entrypoint'] == base_info['Config']['Entrypoint']
                   assert info['Config']['Cmd'] == (['node','apps/web/server.js'] if kind == 'web' else ['node','dist/server.js'])
                   assert info['RootFS']['Layers'][:len(base_info['RootFS']['Layers'])] == base_info['RootFS']['Layers']
+                  if kind == 'api':
+                      # Cached build-only export: no container/host mount and no manifest in runtime.
+                      destination = evidence / 'api-assembly'
+                      run(['docker', 'buildx', 'build', '--progress=plain', '--platform=linux/arm64',
+                           '--target', 'assembly-evidence', '-f', 'infrastructure/docker/api.Dockerfile',
+                           '--output', 'type=local,dest=' + str(destination), '.'], timeout=900)
+                      assembly_path = destination / 'assembly.json'
+                      assembly = json.loads(assembly_path.read_text())
+                      assert assembly['verified'] is True and len(assembly['removed']) == 40
+                      assert assembly['retained_before'] == assembly['retained_after']
+                      assert all(p['path'].startswith('node_modules/.pnpm/') for p in assembly['removed'])
+                      record('api-assembly-identity', {'image': image, 'sha256': hashlib.sha256(assembly_path.read_bytes()).hexdigest(),
+                             'roots': len(assembly['removed']), 'removed_files': sum(p['files'] for p in assembly['removed']),
+                             'removed_bytes': sum(p['bytes'] for p in assembly['removed']), 'runtime_entries': len(assembly['entries'])})
                   run(['docker', 'history', '--no-trunc', '--format', '{{json .}}', image])
                   # Stream save: count original uncompressed layer tar bytes, never retain an archive or duplicate it on disk.
                   command = ['timeout', '180', 'docker', 'image', 'save', image]
@@ -453,6 +505,8 @@ jobs:
                       record('api-imports', resolved)
                       assert resolved['database_connected'] is False
                       assert resolved['compiled'] == ['app', 'auth', 'database']
+                      assert resolved['behavior'] == {'valid': 200, 'invalid_schema': 400, 'invalid_zod': 422, 'pino_logged': True}
+                      assert len(resolved['resources']) == 4
                       assert '@cupmemo/database:pg' in resolved['loaded']
               common = set(images['web']['RootFS']['Layers']) & set(images['api']['RootFS']['Layers'])
               record('combined-size', {'unique_uncompressed_layer_tar_bytes': sum(layers.values()),

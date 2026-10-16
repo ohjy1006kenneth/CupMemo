@@ -45,14 +45,39 @@ traced contracts/UI, compiled pages and all required assets resolve.
 API uses pinned pnpm10.34.6's supported `deploy --legacy --prod --no-optional`.
 This retains declared production dependencies and portable workspace links without
 lockfile or injection-setting changes. Compiled contracts/database dist and
-committed Drizzle resources are copied explicitly; no migrations execute. Only
-known first-party source/build-config payload is excluded. Library internals are
-not manually pruned. CI records retained packages and unresolved optional
-peer/dependency declarations of those packages (not a complete lockfile diff),
-requires API's declared dependency imports plus each workspace dependency including
-`pg`, and rejects retained Next/React closure. If supported selection still keeps
-forbidden dependencies, fails imports or misses size targets, retain the actual
-failure for owner disposition rather than deleting library internals.
+committed Drizzle resources are copied explicitly; no migrations execute. Known
+first-party source/build-config payload is excluded. The subsequent owner decision
+(issue comment6222233963; primary `hq/t_7077042b`, original3040/revision3195)
+authorizes **only 40 exact version-bound test/fixture directory roots** from the
+original API inventory, not general library pruning. The explicit list lives in
+`api.Dockerfile`; runtime `/app` maps to disposable builder `/out`. Nothing is
+removed from web, the base image/global npm, whole packages or the host. There is
+no new dependency, lockfile change, package metadata rewrite or audit exception.
+Missing targets, manifest name/version drift, path escape, symlink ancestors and
+runtime entry/export targets inside a deletion fail before any deletion. The
+builder verifies retained regular-file SHA-256, modes, ownership, sizes, timestamps,
+inodes/link counts and symlink targets before/after, including adjacent worker,
+driver, resource, license/notice and package metadata files. Directory modes and
+ownership are compared; directory timestamps/link counts necessarily change when
+children are removed, and access times are not invariants of reading files.
+Runtime main/exports (including wildcard targets, excluding type-only conditions)
+and retained symlinks must resolve to existing retained targets within `/out`.
+
+`assembly.json` records each removed relative root, file/link count and logical
+regular-file bytes, checked runtime entries and full retained before/after maps.
+It is stored outside `/out`. A separate **build-only scratch export stage** copies
+only this metadata to CI via the BuildKit local exporter, without starting a
+container, using a host mount or adding evidence to runtime. CI validates the
+manifest and records its SHA-256 with the actual API image ID. Partial build logs
+and any already-exported evidence remain uploaded on failure; a failed build may
+have no exportable manifest and is never acceptance. The strict recursive runtime
+audit still rejects any unexpected test/fixture payload: unapproved roots are
+neither removed nor exempted.
+
+CI records retained packages and unresolved optional peer/dependency declarations
+(not a complete lockfile diff), requires API/workspace dependency imports including
+`pg`, and rejects retained Next/React closure. Further drift or new forbidden
+payload requires a new owner disposition, not expansion of the deletion list.
 
 The upstream base retains Node/npm utilities. CI inventories retained packages,
 flags compiler/test tooling and forbidden files, and measures actual sizes before
@@ -97,6 +122,12 @@ Historical candidate `a6896684fbea4e2c7b71f12d8790c93279cf402d`, CI run
 `38845509487`, produced web711888204 and API708884389 uncompressed bytes:
 both failed the unchanged500/300MiB targets and retained unwanted closure.
 Those original results remain failures, not acceptance of this correction.
+Subsequent candidate `68fb6593f097af03f35487b55053c0c8de5a0fd2`, native CI
+`38947906803`, met both size caps and passed bounded smokes/imports, but its API
+inventory rejected48 test/fixture paths under the40 approved nonnested roots.
+Its quality PASS does not convert the container-images FAIL into acceptance.
+The exact assembly revision requires new final-head API evidence and both required
+CI jobs; valid unchanged web/app/context evidence is not an excuse to bypass CI.
 The owner correction explicitly authorizes a seventh file,
 `apps/web/next.config.ts`, alongside the existing image/context/test/doc/workflow
 scope. No dependency, lockfile, package metadata or quality-job change is authorized.
@@ -156,8 +187,14 @@ The inline workflow is the executable acceptance procedure. It:
    memory/no-swap, CPU1 and pids128; requires exit1 and the exact sanitized refusal.
    A separate container under the same limits imports actual compiled app/auth
    modules and contracts/database/Fastify/Better Auth/adapter/Drizzle/Zod without
-   starting a database. Fast refusal may end before useful memory samples exist;
-   it is not positive API/database load acceptance.
+   starting a database. It also runs real Fastify `inject` (no listen/socket), JSON
+   schema validation/serialization, Zod success/refusal and Pino structured request
+   logging against the retained packages. Valid/schema-invalid/Zod-invalid controls
+   must return200/400/422. It verifies retained Pino and thread-stream worker files,
+   sonic-boom and the workspace-resolved pg driver; the assembly hash comparison
+   protects all their adjacent files too. These packaging-only routes exist solely
+   in the CI in-process probe, never in product code. Fast refusal may end before
+   useful memory samples exist; neither probe is positive API/database load acceptance.
 8. Reconciles logs and state before removing **only exact task-owned containers**,
    including on assertion failure. Never prunes or deletes other images, caches,
    volumes, services or data. A step/job hard timeout or runner loss may interrupt
@@ -166,9 +203,9 @@ The inline workflow is the executable acceptance procedure. It:
 Local lightweight/context checks remain available, without a local image build:
 
 ```sh
-corepack pnpm exec vitest run tests/container-images.test.mjs
+corepack pnpm exec vitest run tests/container-images.test.mjs --maxWorkers=1 --no-file-parallelism
 # Explicit opt-in: scratch-only context exports; no application image build/run.
-CUPMEMO_CONTEXT_PROBE=1 corepack pnpm exec vitest run tests/container-images.test.mjs
+CUPMEMO_CONTEXT_PROBE=1 corepack pnpm exec vitest run tests/container-images.test.mjs --maxWorkers=1 --no-file-parallelism
 ```
 
 The opt-in test checks actual COPY input survival and sensitive/residue exclusion
