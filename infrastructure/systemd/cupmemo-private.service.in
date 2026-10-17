@@ -1,0 +1,15 @@
+# Dormant source template only: do not install/enable without separate review.
+# Trusted operator must substitute and systemd-escape all three placeholders.
+[Unit]
+Description=CupMemo guarded private stack (activation held)
+After=docker.service
+
+[Service]
+Type=simple
+User=@CUPMEMO_OPERATOR_USER@
+WorkingDirectory=@CUPMEMO_RELEASE_DIR@
+EnvironmentFile=@CUPMEMO_STARTUP_ENV_FILE@
+ExecStart=/usr/bin/node @CUPMEMO_RELEASE_DIR@/infrastructure/scripts/private-stack-start.mjs --start
+Restart=no
+KillMode=control-group
+TimeoutStopSec=15s
