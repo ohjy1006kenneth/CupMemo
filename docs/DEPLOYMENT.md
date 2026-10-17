@@ -72,9 +72,11 @@ Cloudflare Tunnel
    |
 Raspberry Pi 5
    |
-   +--> Next.js
-   |
-   +--> Fastify API
+   +--> Next.js (sole application origin)
+          |
+          | /api/v1/* internal rewrite
+          v
+       Fastify API (private service)
           |
           v
        PostgreSQL (HDD)
@@ -99,14 +101,18 @@ https://cupmemo.example/
 https://cupmemo.example/api/v1/...
 ```
 
-The public routing/proxy layer should send:
-
-- normal app traffic to Next.js
-- `/api/v1/*` to Fastify
+The selected public entry point targets Next.js only. Next's existing server-side
+rewrite sends `/api/v1/*` internally to Fastify; normal app traffic stays in Next.
+Do not add a separate public Fastify origin or duplicate proxy layer.
 
 Fastify remains a separate service even when routed under the same origin.
 
 PostgreSQL remains private.
+
+See [SAME_ORIGIN_ROUTING.md](SAME_ORIGIN_ROUTING.md) for the compiled-origin
+contract and executable isolated production transport verification (Refs #41).
+Those local controls do not authorize public routing or prove real production
+auth/database/HTTPS behavior. The dormant private stack has no ingress.
 
 ## Cloudflare Tunnel
 

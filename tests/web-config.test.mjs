@@ -7,8 +7,15 @@ describe('web API proxy configuration', () => {
     expect(parseApiOrigin('https://api.example.test/')).toBe('https://api.example.test');
   });
 
-  it.each(['ftp://example.test', 'http://user:pass@example.test', '/relative', 'not-a-url'])(
-    'rejects unsafe or invalid API origin %s',
-    (origin) => expect(() => parseApiOrigin(origin)).toThrow(),
+  it.each([
+    'ftp://example.test',
+    'http://user:pass@example.test',
+    '/relative',
+    'not-a-url',
+    'http://cupmemo-api:4101/private',
+    'http://cupmemo-api:4101?target=other',
+    'http://cupmemo-api:4101#fragment',
+  ])('rejects unsafe or invalid API origin %s', (origin) =>
+    expect(() => parseApiOrigin(origin)).toThrow(),
   );
 });
