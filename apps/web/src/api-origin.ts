@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 const originSchema = z
   .string()
+  // Validate raw spelling before Zod/URL can trim whitespace or normalize it.
+  .regex(/^https?:\/\/[^/?#\\\s]+\/?$/i, 'Expected an HTTP(S) origin only')
   .url()
   .refine((value) => {
     const url = new URL(value);
@@ -16,5 +18,5 @@ const originSchema = z
   }, 'Expected an HTTP(S) origin without credentials, path, query or fragment');
 
 export function parseApiOrigin(value: string | undefined): string {
-  return originSchema.parse(value ?? 'http://127.0.0.1:4101').replace(/\/$/, '');
+  return new URL(originSchema.parse(value ?? 'http://127.0.0.1:4101')).origin;
 }

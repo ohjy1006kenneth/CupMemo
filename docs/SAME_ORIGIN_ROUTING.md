@@ -11,7 +11,10 @@ Next is the sole eventual external application origin. Its existing
 server-only `CUPMEMO_API_ORIGIN`, preserving the versioned path. No new proxy,
 Next API handler, public API variable or direct browser Fastify origin is added.
 The origin validator rejects credentials, non-HTTP protocols and non-root
-paths/query/fragment components; invalid configuration fails at build/start.
+paths/query/fragment components, including empty `?`/`#` delimiters and path
+spellings that URL parsing would normalize away. The returned origin is
+canonicalized (including host case and default ports); invalid configuration
+fails at build/start before appending API paths.
 
 The production web image compiles `http://cupmemo-api:4101` into its rewrite.
 Changing a runtime variable does **not** retarget an already compiled rewrite:
