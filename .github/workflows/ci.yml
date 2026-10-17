@@ -44,3 +44,522 @@ jobs:
         run: corepack pnpm test
       - name: Build
         run: corepack pnpm build
+
+  container-images:
+    name: container-images
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out candidate without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Serial native builds, isolated smokes and efficiency evidence
+        timeout-minutes: 40
+        shell: bash
+        env:
+          EVIDENCE: ${{ runner.temp }}/issue32-evidence
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          python3 -u <<'PY' 2>&1 | tee "$EVIDENCE/orchestrator.log"
+          import gzip
+          import hashlib
+          import io
+          import json
+          import os
+          import platform
+          import re
+          import shlex
+          import shutil
+          import subprocess
+          import tarfile
+          import time
+          from pathlib import Path
+
+          evidence = Path(os.environ['EVIDENCE'])
+          prefix = 'cupmemo-issue32-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT']
+          owned = []
+          violations = []
+          layers = {}
+          images = {}
+          sequence = 0
+
+          def record(name, value):
+              (evidence / (name + '.json')).write_text(json.dumps(value, indent=2) + '\n')
+
+          def run(args, timeout=120, expected=0):
+              global sequence
+              sequence += 1
+              stem = f'{sequence:03d}'
+              print('+', shlex.join(args), flush=True)
+              started = time.monotonic()
+              with (evidence / (stem + '.log')).open('w') as log:
+                  try:
+                      result = subprocess.run(args, stdout=log, stderr=subprocess.STDOUT, text=True, timeout=timeout)
+                      code = result.returncode
+                  except subprocess.TimeoutExpired:
+                      code = 124
+              output = (evidence / (stem + '.log')).read_text()
+              print(output, end='', flush=True)
+              record(stem, {'argv': args, 'exit': code, 'elapsed_seconds': time.monotonic() - started})
+              assert code == expected, f'command {stem}: exit {code}, expected {expected}'
+              return output.strip()
+
+          def inspect_container(name):
+              return json.loads(run(['docker', 'inspect', name]))[0]
+
+          def stats(name):
+              sample = json.loads(run(['docker', 'stats', '--no-stream', '--format', '{{json .}}', name]))
+              assert sample['Name'] == name and re.search(r'[1-9]', sample['MemUsage'].split('/')[0])
+              assert re.fullmatch(r'\d+(\.\d+)?%', sample['CPUPerc'])
+              return sample
+
+          def wait_exit(name, expected):
+              # Only the explicitly TERM-signalled Next smoke supports both normal and signal exits.
+              assert isinstance(expected, int) or (name == prefix + '-web-smoke' and expected == (0, 143))
+              allowed = (expected,) if isinstance(expected, int) else expected
+              waited = None
+              try:
+                  waited = run(['docker', 'wait', name], timeout=35)
+              finally:
+                  # Preserve actual state/logs even if wait times out or the exit is unexpected.
+                  state = inspect_container(name)['State']
+                  record(name + '-exit', {'wait_output': waited, 'allowed_exits': allowed, 'state': state})
+                  logs = run(['docker', 'logs', name])
+              assert waited == str(state['ExitCode']) and state['ExitCode'] in allowed
+              assert not state['Running'] and not state['OOMKilled'] and not state['Error']
+              return {'logs': logs, 'state': state}
+
+          def create(kind, image, memory, script=None, user=None):
+              name = prefix + '-' + kind
+              args = ['docker', 'create', '--name', name, '--label', 'cupmemo.issue32=' + prefix,
+                      '--network', 'none', '--read-only', '--tmpfs', '/tmp:rw,noexec,nosuid,size=64m',
+                      '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--memory', memory,
+                      '--memory-swap', memory, '--cpus', '1', '--pids-limit', '128']
+              if script is not None:
+                  args += ['--entrypoint', 'node']
+              if user is not None:
+                  args += ['--user', user]
+              args += [image]
+              if script is not None:
+                  args += ['--input-type=module', '-e', script]
+              run(args)
+              owned.append(name)
+              config = inspect_container(name)
+              host = config['HostConfig']
+              assert host['NetworkMode'] == 'none' and host['ReadonlyRootfs'] and not host['Privileged']
+              assert host['CapDrop'] == ['ALL'] and not host['CapAdd']
+              assert any(option in ('no-new-privileges', 'no-new-privileges:true') for option in host['SecurityOpt'])
+              assert not host['Binds'] and not host['PortBindings']
+              assert all(m['Type'] == 'tmpfs' and m['Destination'] == '/tmp' for m in config['Mounts'])
+              assert not config['Config']['Volumes'] and config['Config']['User'] == 'node'
+              assert host['Memory'] == host['MemorySwap'] == int(memory[:-1]) * 1024**2
+              assert host['NanoCpus'] == 1000000000 and host['PidsLimit'] == 128
+              return name
+
+          def resources(kind):
+              run(['uname', '-a'])
+              run(['free', '-b'])
+              run(['df', '-B1', '.', '/var/lib/docker'])
+              run(['uptime'])
+              available = int(re.search(r'^MemAvailable:\s+(\d+)', Path('/proc/meminfo').read_text(), re.M)[1]) * 1024
+              disks = {p: shutil.disk_usage(p).free for p in ('.', '/var/lib/docker')}
+              record(kind + '-admission', {'available_memory_bytes': available, 'free_disk_bytes': disks})
+              assert available >= 4 * 1024**3 and min(disks.values()) >= 5 * 1024**3, 'capacity refusal; no cleanup/prune authorized'
+
+          # No source contents, environment dumps, credentials or filesystem archives are uploaded.
+          audit = r'''
+          import assert from 'node:assert/strict';
+          import {readdirSync,lstatSync,readFileSync,existsSync} from 'node:fs';
+          import {join,dirname} from 'node:path';
+          import {execFileSync} from 'node:child_process';
+          import {createHash} from 'node:crypto';
+          import {createRequire} from 'node:module';
+          assert.notEqual(process.getuid(),0);
+          const packages=[], directories=new Map(), forbidden=[], inherited_base_configs=[], optionalDeclarations=[];
+          const baseNpmConfig=__BASE_NPM_CONFIG__;
+          const bannedNames=new Set(['.git','.worktrees','.npmrc','.pnpmfile.cjs','.pnpm-store','.env','context-probe.txt','logs','test','tests','__tests__','fixtures','__fixtures__']);
+          function walk(path) {
+            let total=0;
+            for(const entry of readdirSync(path,{withFileTypes:true})) {
+              const p=join(path,entry.name), st=lstatSync(p);
+              // Only unchanged bytes at the exact trusted base path are inherited public npm config.
+              const inherited=p==='/usr/local/lib/node_modules/npm/.npmrc'&&p===baseNpmConfig.path&&st.isFile()&&!st.isSymbolicLink()&&createHash('sha256').update(readFileSync(p)).digest('hex')===baseNpmConfig.sha256;
+              if(inherited) inherited_base_configs.push({path:p,sha256:baseNpmConfig.sha256});
+              if(!inherited&&(bannedNames.has(entry.name)||entry.name.startsWith('.env.')||/\.(pem|key|log)$/.test(entry.name))) forbidden.push(p);
+              if(st.isSymbolicLink()) continue;
+              if(st.isDirectory()) total+=walk(p);
+              else if(st.isFile()) {
+                total+=st.size;
+                if(entry.name==='package.json') {
+                  const v=JSON.parse(readFileSync(p,'utf8'));
+                  if(v.name&&v.version) {
+                    packages.push({name:v.name,version:v.version,path:dirname(p)});
+                    const optional=new Set([...Object.keys(v.optionalDependencies??{}),...Object.entries(v.peerDependenciesMeta??{}).filter(([,meta])=>meta.optional).map(([name])=>name)]);
+                    const require=createRequire(p);
+                    for(const name of optional) {
+                      let resolved=false;
+                      try { require.resolve(name); resolved=true; } catch {}
+                      optionalDeclarations.push({owner:v.name,name,resolved,path:dirname(p)});
+                    }
+                  }
+                }
+              }
+            }
+            directories.set(path,total);
+            return total;
+          }
+          walk('/app'); walk('/usr/local/lib/node_modules');
+          for(const p of ['/app/src','/app/data','/app/backups','/app/uploads','/app/evidence','/app/PGDATA','/app/tsconfig.json','/app/next.config.ts','/app/.next/cache','/app/apps/web/.next/cache','/work','/out','/root/.local/share/pnpm/store'])
+            if(existsSync(p)) forbidden.push(p);
+          // Monorepo standalone legitimately contains apps/web and traced packages.
+          // Inspect first-party payload, never blanket-allow their source/config trees.
+          function workspace(path) {
+            if(!existsSync(path)) return;
+            for(const entry of readdirSync(path,{withFileTypes:true})) {
+              const p=join(path,entry.name);
+              if(['node_modules','.next','dist','public','drizzle'].includes(entry.name)) continue;
+              if(entry.name==='src'||/^(tsconfig.*\.json|next-env\.d\.ts|next\.config\.ts|postcss\.config\..*)$/.test(entry.name)) forbidden.push(p);
+              else if(entry.isDirectory()&&!entry.isSymbolicLink()) workspace(p);
+            }
+          }
+          workspace('/app/apps'); workspace('/app/packages');
+          const tooling=packages.filter(p=>['typescript','tsx','ts-node','vitest','eslint','@playwright/test','drizzle-kit','@cupmemo/config'].includes(p.name));
+          const os_packages=execFileSync('dpkg-query',['-W','-f=${Package}\t${Version}\n'],{encoding:'utf8'}).trim().split('\n');
+          console.log(JSON.stringify({uid:process.getuid(),node:process.version,packages,omitted_optional:optionalDeclarations.filter(p=>!p.resolved),os_packages,largest_directories:[...directories].sort((a,b)=>b[1]-a[1]).slice(0,40),forbidden,tooling,inherited_base_configs,units:'logical regular-file bytes; symlinks not followed; not image disk/RAM bytes'}));
+          '''
+          base_config_probe = r'''
+          import assert from 'node:assert/strict';
+          import {lstatSync,readFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const path='/usr/local/lib/node_modules/npm/.npmrc';
+          const st=lstatSync(path);
+          assert.ok(st.isFile()&&!st.isSymbolicLink());
+          console.log(JSON.stringify({path,sha256:createHash('sha256').update(readFileSync(path)).digest('hex')}));
+          '''
+          web_probe = r'''
+          import assert from 'node:assert/strict';
+          import {readFileSync} from 'node:fs';
+          assert.notEqual(process.getuid(),0);
+          const manifest=JSON.parse(readFileSync('apps/web/.next/routes-manifest.json','utf8'));
+          const rewrites=Array.isArray(manifest.rewrites)?manifest.rewrites:Object.values(manifest.rewrites).flat();
+          assert.ok(rewrites.some(r=>r.source==='/api/v1/:path*'&&r.destination==='http://cupmemo-api:4101/api/v1/:path*'));
+          const base='http://127.0.0.1:3101';
+          const response=await fetch(base+'/sign-in',{signal:AbortSignal.timeout(2000),redirect:'manual'});
+          assert.equal(response.status,200);
+          const html=await response.text();
+          assert.match(html,/<html/); assert.match(html,/<form/);
+          const assets=[...new Set([...html.matchAll(/(?:src|href)="([^" ]*\/_next\/static\/[^" ]+)"/g)].map(match=>match[1].replaceAll('&amp;','&')))];
+          assert.ok(assets.length>0);
+          const static_assets=[];
+          for(const asset of assets) {
+            const url=new URL(asset,base);
+            assert.equal(url.origin,base);
+            const r=await fetch(url,{signal:AbortSignal.timeout(2000)});
+            assert.equal(r.status,200);
+            const bytes=(await r.arrayBuffer()).byteLength;
+            assert.ok(bytes>0);
+            static_assets.push({path:url.pathname,bytes});
+          }
+          const pwaResponse=await fetch(base+'/manifest.webmanifest',{signal:AbortSignal.timeout(2000)});
+          assert.equal(pwaResponse.status,200);
+          const pwa=await pwaResponse.json();
+          assert.equal(pwa.name,'CupMemo'); assert.equal(pwa.display,'standalone');
+          const public_assets=[];
+          for(const asset of [...pwa.icons.map(icon=>icon.src),'/icons/apple-touch-icon.png','/icons/monogram.svg']) {
+            const url=new URL(asset,base); assert.equal(url.origin,base);
+            const r=await fetch(url,{signal:AbortSignal.timeout(2000)});
+            assert.equal(r.status,200);
+            const bytes=(await r.arrayBuffer()).byteLength; assert.ok(bytes>0);
+            public_assets.push({path:url.pathname,bytes});
+          }
+          // Real compiled app/layout + session + origin code, with no Cookie/DB or fake session.
+          assert.equal(process.env.CUPMEMO_API_ORIGIN,'http://cupmemo-api:4101');
+          const privatePage=await fetch(base+'/app', {redirect:'manual',signal:AbortSignal.timeout(2000)});
+          assert.ok([307,308].includes(privatePage.status));
+          assert.equal(new URL(privatePage.headers.get('location'),base).pathname,'/sign-in');
+          console.log(JSON.stringify({page_status:response.status,html_bytes:Buffer.byteLength(html),static_assets,public_assets,pwa_status:pwaResponse.status,compiled_internal_rewrite:true,compiled_session_origin_loading:'anonymous redirect only; authenticated DB flows UNVERIFIED'}));
+          '''
+          imports = r'''
+          import assert from 'node:assert/strict';
+          import {readFileSync,realpathSync,existsSync} from 'node:fs';
+          import {dirname,join} from 'node:path';
+          import {createRequire} from 'node:module';
+          import {pathToFileURL} from 'node:url';
+          assert.notEqual(process.getuid(),0);
+          const loaded=[];
+          // Supported packaging option prevents the workspace-hoisted builder self-link.
+          assert.ok(!existsSync('/work'),'builder work tree leaked into runtime');
+          assert.ok(!existsSync('/app/node_modules/.pnpm/node_modules/@cupmemo/api'),'unexpected workspace-hoisted self link');
+          assert.ok(!existsSync('/app/assembly.json')&&!existsSync('/assembly-evidence'),'build-only evidence leaked into runtime');
+          // API direct declarations resolve as ESM from the actual deployed app.
+          const manifest=JSON.parse(readFileSync('package.json','utf8'));
+          for(const name of Object.keys(manifest.dependencies ?? {})) { await import(name); loaded.push(name); }
+          // Resolve each workspace's own declared closure, not accidental root hoists.
+          for(const workspace of ['database','contracts']) {
+            const file=realpathSync(`node_modules/@cupmemo/${workspace}/package.json`);
+            const manifest=JSON.parse(readFileSync(file,'utf8'));
+            const require=createRequire(file);
+            for(const name of Object.keys(manifest.dependencies ?? {})) {
+              await import(pathToFileURL(require.resolve(name)).href);
+              loaded.push(`@cupmemo/${workspace}:${name}`);
+            }
+          }
+          const databaseRequire=createRequire(realpathSync('node_modules/@cupmemo/database/package.json'));
+          await import(pathToFileURL(databaseRequire.resolve('pg')).href);
+          await import('./dist/app.js'); await import('./dist/auth.js');
+          await import('@cupmemo/database');
+          // BEGIN retained API behavior
+          const {default:Fastify}=await import('fastify');
+          const {z}=await import('zod');
+          const fastifyRequire=createRequire(realpathSync('node_modules/fastify/package.json'));
+          const pinoPath=fastifyRequire.resolve('pino');
+          const pinoRequire=createRequire(pinoPath);
+          const pino=pinoRequire(pinoPath);
+          const logs=[];
+          const logger=pino({level:'info'},{write:line=>logs.push(JSON.parse(line))});
+          const app=Fastify({loggerInstance:logger});
+          const input=z.object({count:z.number().int().positive(),label:z.string().min(1)});
+          app.post('/packaging-control',{
+            schema:{body:{type:'object',required:['count','label'],properties:{count:{type:'integer'},label:{type:'string'}}},
+              response:{200:{type:'object',required:['label','count'],properties:{label:{type:'string'},count:{type:'integer'}}}}},
+          },async(request,reply)=>{
+            const parsed=input.safeParse(request.body);
+            if(!parsed.success) return reply.code(422).send({message:'Invalid packaging control'});
+            request.log.info({control:'retained-runtime'},'packaging control');
+            return parsed.data;
+          });
+          let behavior;
+          try {
+            const valid=await app.inject({method:'POST',url:'/packaging-control',payload:{count:2,label:'retained'}});
+            assert.equal(valid.statusCode,200);
+            assert.deepEqual(valid.json(),{count:2,label:'retained'});
+            const invalidSchema=await app.inject({method:'POST',url:'/packaging-control',payload:{count:'invalid',label:'retained'}});
+            const invalidZod=await app.inject({method:'POST',url:'/packaging-control',payload:{count:2,label:''}});
+            assert.equal(invalidSchema.statusCode,400); assert.equal(invalidZod.statusCode,422);
+            assert.ok(logs.some(line=>line.control==='retained-runtime'&&typeof line.reqId==='string'&&line.level===30));
+            assert.ok(logs.some(line=>line.res?.statusCode===200));
+            behavior={valid:valid.statusCode,invalid_schema:invalidSchema.statusCode,invalid_zod:invalidZod.statusCode,pino_logged:true};
+          } finally { await app.close(); }
+          const resources=[join(dirname(pinoPath),'lib/worker.js'),join(dirname(pinoPath),'file.js'),
+            join(dirname(pinoRequire.resolve('thread-stream')),'lib/worker.js'),pinoRequire.resolve('sonic-boom')];
+          for(const file of resources) assert.ok(existsSync(file),'retained driver/worker resource missing: '+file);
+          // END retained API behavior
+          console.log(JSON.stringify({loaded,compiled:['app','auth','database'],database_connected:false,behavior,resources,pg_driver:databaseRequire.resolve('pg')}));
+          await new Promise(resolve=>setTimeout(resolve,3000));
+          '''
+
+          try:
+              record('identity', {'sha': run(['git', 'rev-parse', 'HEAD']),
+                                  'tree': run(['git', 'rev-parse', 'HEAD^{tree}']),
+                                  'workflow_sha': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'],
+                                  'attempt': os.environ['GITHUB_RUN_ATTEMPT'], 'original_implementer_run': 3040,
+                                  'parent_run': 3048, 'card': 't_7077042b'})
+              assert not run(['git', 'status', '--porcelain']), 'candidate must be clean'
+              assert platform.machine() == 'aarch64'
+              assert run(['docker', 'info', '--format', '{{.OSType}}/{{.Architecture}}']) in ('linux/aarch64', 'linux/arm64')
+              run(['docker', 'version'])
+              hashes = {p: hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in
+                        ['.dockerignore', 'infrastructure/docker/web.Dockerfile', 'infrastructure/docker/api.Dockerfile',
+                         'apps/web/next.config.ts', 'tests/container-images.test.mjs', '.github/workflows/ci.yml', 'docs/CONTAINER_IMAGES.md', 'pnpm-lock.yaml']}
+              record('source-hashes', hashes)
+              base_refs = set()
+              for kind in ('web', 'api'):
+                  base_refs.update(re.findall(r'^FROM (\S+) AS (?:build|runtime)$', Path('infrastructure/docker/' + kind + '.Dockerfile').read_text(), re.M))
+              assert len(base_refs) == 1
+              base = base_refs.pop()
+              assert re.fullmatch(r'node:24-bookworm-slim@sha256:[0-9a-f]{64}', base)
+              run(['docker', 'pull', base], timeout=300)
+              base_info = json.loads(run(['docker', 'image', 'inspect', base]))[0]
+              record('base', base_info)
+              assert base_info['Os'] == 'linux' and base_info['Architecture'] == 'arm64'
+              name = create('base-npm-config', base_info['Id'], '256m', base_config_probe, user='node')
+              run(['docker', 'start', name])
+              base_npm_config = json.loads(wait_exit(name, 0)['logs'])
+              record('base-public-npm-config', {'image': base_info['Id'], 'reference': base, **base_npm_config})
+              for kind, budget, memory in [('web', 500, '512m'), ('api', 300, '256m')]:
+                  resources(kind)
+                  tag = prefix + '-' + kind
+                  run(['nice', '-n', '10', 'docker', 'build', '--progress=plain', '--platform=linux/arm64',
+                       '-f', 'infrastructure/docker/' + kind + '.Dockerfile', '-t', tag, '.'], timeout=900)
+                  info = json.loads(run(['docker', 'image', 'inspect', tag]))[0]
+                  images[kind] = info
+                  image = info['Id']
+                  assert info['Os'] == 'linux' and info['Architecture'] == 'arm64'
+                  assert info['Config']['User'] == 'node' and not info['Config']['Volumes']
+                  assert info['Config']['Entrypoint'] == base_info['Config']['Entrypoint']
+                  assert info['Config']['Cmd'] == (['node','apps/web/server.js'] if kind == 'web' else ['node','dist/server.js'])
+                  assert info['RootFS']['Layers'][:len(base_info['RootFS']['Layers'])] == base_info['RootFS']['Layers']
+                  if kind == 'api':
+                      # Cached build-only export: no container/host mount and no manifest in runtime.
+                      destination = evidence / 'api-assembly'
+                      run(['docker', 'buildx', 'build', '--progress=plain', '--platform=linux/arm64',
+                           '--target', 'assembly-evidence', '-f', 'infrastructure/docker/api.Dockerfile',
+                           '--output', 'type=local,dest=' + str(destination), '.'], timeout=900)
+                      assembly_path = destination / 'assembly.json'
+                      assembly = json.loads(assembly_path.read_text())
+                      assert assembly['verified'] is True and len(assembly['removed']) == 40
+                      assert assembly['retained_before'] == assembly['retained_after']
+                      raw_path = destination / 'raw.json'
+                      raw = json.loads(raw_path.read_text())
+                      assert raw['raw_snapshot'] == assembly['raw_snapshot']
+                      assert raw['link_inventory'] == assembly['link_inventory']
+                      removed_roots = [p['path'] for p in assembly['removed']]
+                      retained_raw = {p: m for p, m in raw['raw_snapshot'].items()
+                                      if not any(p == r or p.startswith(r + '/') for r in removed_roots)}
+                      assert retained_raw == assembly['retained_before']
+                      for link in raw['link_inventory']:
+                          if link['path'] not in retained_raw:
+                              continue
+                          assert link['exists'] and not link['readlink'].startswith('/')
+                          assert link['resolved'].startswith('/out/')
+                      assert 'node_modules/.pnpm/node_modules/@cupmemo/api' not in raw['raw_snapshot']
+                      assert all(p['path'].startswith('node_modules/.pnpm/') for p in assembly['removed'])
+                      record('api-raw-identity', {'sha256': hashlib.sha256(raw_path.read_bytes()).hexdigest(),
+                             'links': len(raw['link_inventory']), 'normalizations': 0})
+                      record('api-assembly-identity', {'image': image, 'sha256': hashlib.sha256(assembly_path.read_bytes()).hexdigest(),
+                             'roots': len(assembly['removed']), 'removed_files': sum(p['files'] for p in assembly['removed']),
+                             'removed_bytes': sum(p['bytes'] for p in assembly['removed']), 'runtime_entries': len(assembly['entries'])})
+                  run(['docker', 'history', '--no-trunc', '--format', '{{json .}}', image])
+                  # Stream save: count original uncompressed layer tar bytes, never retain an archive or duplicate it on disk.
+                  command = ['timeout', '180', 'docker', 'image', 'save', image]
+                  print('+', shlex.join(command), flush=True)
+                  with (evidence / (kind + '-save-stderr.log')).open('w') as err:
+                      process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=err)
+                      exported_layers = {}
+                      manifest = None
+                      with tarfile.open(fileobj=process.stdout, mode='r|') as archive:
+                          for member in archive:
+                              if not member.isfile():
+                                  continue
+                              stream = archive.extractfile(member)
+                              if member.name == 'manifest.json':
+                                  manifest = json.load(stream)
+                              else:
+                                  # Docker stores may export plain or gzip layer blobs. Verify each uncompressed diffID.
+                                  buffered = io.BufferedReader(stream)
+                                  payload = gzip.GzipFile(fileobj=buffered) if buffered.peek(2)[:2] == b'\x1f\x8b' else buffered
+                                  digest, size = hashlib.sha256(), 0
+                                  while chunk := payload.read(1024 * 1024):
+                                      digest.update(chunk)
+                                      size += len(chunk)
+                                  exported_layers['sha256:' + digest.hexdigest()] = size
+                      code = process.wait(timeout=10)
+                  record(kind + '-save', {'argv': command, 'exit': code})
+                  assert code == 0 and manifest and len(manifest) == 1
+                  assert len(manifest[0]['Layers']) == len(info['RootFS']['Layers'])
+                  measured = {digest: exported_layers[digest] for digest in info['RootFS']['Layers']}
+                  for digest, size in measured.items():
+                      assert digest not in layers or layers[digest] == size
+                      layers[digest] = size
+                  record(kind + '-sizes', {'image_uncompressed_bytes': info['Size'], 'target_bytes': budget * 1024**2,
+                         'target_met': info['Size'] <= budget * 1024**2, 'layers_uncompressed_tar_bytes': measured,
+                         'compressed_transfer_bytes': None, 'disposition': 'pending owner exception or packaging correction if target exceeded'})
+                  if info['Size'] > budget * 1024**2:
+                      violations.append(kind + ': size target exceeded; evidence-backed owner disposition required')
+                  name = create(kind + '-audit', image, memory, audit.replace('__BASE_NPM_CONFIG__', json.dumps(base_npm_config)))
+                  run(['docker', 'start', name])
+                  inventory = json.loads(wait_exit(name, 0)['logs'])
+                  record(kind + '-inventory', inventory)
+                  if kind == 'api':
+                      unwanted = [p for p in inventory['packages'] if p['name'] in ('next','react','react-dom')]
+                      record('api-dependency-selection', {'method': 'pnpm10.34.6 portable production selection with --legacy --prod --no-optional; see API Dockerfile',
+                             'omitted_optional_declarations': inventory['omitted_optional'], 'unexpected_web_closure': unwanted,
+                             'note': 'omissions are unresolved optional declarations in retained packages, not a full lockfile diff'})
+                      if unwanted:
+                          violations.append('api: optional web peer closure retained; no manual library pruning authorized')
+                  if inventory['forbidden'] or inventory['tooling']:
+                      violations.append(kind + ': runtime exclusions failed; inspect inventory before scoped correction')
+                  if kind == 'web':
+                      name = create('web-smoke', image, memory)
+                      started = time.monotonic()
+                      run(['docker', 'start', name])
+                      # Finite readiness without masking page/static assertions or extending the resource budget.
+                      ready = "await fetch('http://127.0.0.1:3101/sign-in',{signal:AbortSignal.timeout(1000)}).then(r=>{if(r.status!==200)process.exit(1)}).catch(()=>process.exit(1))"
+                      for attempt in range(30):
+                          try:
+                              run(['docker', 'exec', name, 'node', '--input-type=module', '-e', ready], timeout=5)
+                              break
+                          except AssertionError:
+                              assert inspect_container(name)['State']['Running'], 'web exited before ready'
+                              time.sleep(0.5)
+                      else:
+                          raise AssertionError('web readiness deadline exceeded')
+                      record('web-startup', {'startup_to_ready_seconds': time.monotonic() - started, 'kind': 'short no-DB smoke, not sustained production load'})
+                      run(['docker', 'exec', name, 'node', '--input-type=module', '-e', web_probe])
+                      time.sleep(2)
+                      record('web-idle-sample', {'kind': 'idle short no-DB smoke', 'monotonic_seconds': time.monotonic()})
+                      record('web-idle-stats', stats(name))
+                      load = "for(let i=0;i<40;i++){const r=await fetch('http://127.0.0.1:3101/sign-in',{signal:AbortSignal.timeout(1000)});if(r.status!==200)throw Error('page status');await r.arrayBuffer();await new Promise(r=>setTimeout(r,200));}"
+                      # Keep requests active across actual stats samples; wait and assert the exec's exit.
+                      load_command = ['timeout', '50', 'docker', 'exec', name, 'node', '--input-type=module', '-e', load]
+                      print('+', shlex.join(load_command), flush=True)
+                      with (evidence / 'web-load.log').open('w') as log:
+                          client = subprocess.Popen(load_command, stdout=log, stderr=subprocess.STDOUT)
+                          for sample in range(3):
+                              assert client.poll() is None, 'load client ended before stats samples'
+                              record('web-load-sample-' + str(sample), {'kind': 'short repeated local requests, no DB', 'monotonic_seconds': time.monotonic()})
+                              record('web-load-stats-' + str(sample), stats(name))
+                          load_code = client.wait(timeout=55)
+                      record('web-load', {'argv': load_command, 'exit': load_code, 'requests': 40, 'samples': 3})
+                      assert load_code == 0
+                      stopped = time.monotonic()
+                      run(['docker', 'kill', '--signal=TERM', name], timeout=10)
+                      result = wait_exit(name, (0, 143))
+                      record('web-termination', {'signal': 'SIGTERM', 'actual_exit': result['state']['ExitCode'],
+                             'elapsed_seconds': time.monotonic() - stopped})
+                  else:
+                      name = create('api-refusal', image, memory)
+                      run(['docker', 'start', name])
+                      message = wait_exit(name, 1)['logs']
+                      assert message == 'API startup failed. Check non-secret configuration and port availability.'
+                      record('api-refusal', {'expected_exit': 1, 'positive_DB_API_memory_load': 'UNVERIFIED; negative startup control only'})
+                      name = create('api-imports', image, memory, imports)
+                      run(['docker', 'start', name])
+                      record('api-import-stats', stats(name))
+                      resolved = json.loads(wait_exit(name, 0)['logs'])
+                      record('api-imports', resolved)
+                      assert resolved['database_connected'] is False
+                      assert resolved['compiled'] == ['app', 'auth', 'database']
+                      assert resolved['behavior'] == {'valid': 200, 'invalid_schema': 400, 'invalid_zod': 422, 'pino_logged': True}
+                      assert len(resolved['resources']) == 4
+                      assert '@cupmemo/database:pg' in resolved['loaded']
+              common = set(images['web']['RootFS']['Layers']) & set(images['api']['RootFS']['Layers'])
+              record('combined-size', {'unique_uncompressed_layer_tar_bytes': sum(layers.values()),
+                     'shared_uncompressed_layer_tar_bytes': sum(layers[d] for d in common),
+                     'shared_layer_digests': sorted(common), 'image_uncompressed_bytes': {k: v['Size'] for k,v in images.items()},
+                     'note': 'unique layer archive bytes exclude image metadata; not registry transfer bytes or RAM'})
+              record('disposition', {'violations': violations, 'positive_API_DB_and_full_Pi_coexistence': 'UNVERIFIED'})
+              assert not violations, '; '.join(violations)
+          finally:
+              # Reconcile exact owned containers even on assertion failure; never prune caches/images/volumes.
+              cleanup_errors = []
+              for name in owned:
+                  try:
+                      run(['docker', 'logs', name])
+                      inspect_container(name)
+                  except Exception as error:
+                      cleanup_errors.append(name + ': ' + str(error))
+                  finally:
+                      try:
+                          run(['docker', 'rm', '-f', name])
+                      except Exception as error:
+                          cleanup_errors.append(name + ': ' + str(error))
+              record('cleanup', {'errors': cleanup_errors, 'exact_owned_containers': owned})
+              assert not cleanup_errors, 'owned container cleanup incomplete'
+          PY
+      - name: Upload original sanitized image evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: issue32-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/issue32-evidence/
+          retention-days: 14
+          if-no-files-found: error
+          include-hidden-files: false
+          overwrite: false
+          compression-level: 6
+          archive: true
