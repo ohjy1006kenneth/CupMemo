@@ -304,6 +304,13 @@ not public-production clearance.
 
 ## Backups
 
+See [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) for the documentation-only
+verification/recovery checklist, required private rebuild inventory and five
+incident scenarios. Issue #47 automated dumps/retention and Issue #48 actual safe
+non-production restore remain incomplete; off-site backups are future follow-up.
+The requirements below are targets, not a running backup service or activation
+authority. Dormant Compose/startup templates do not establish recovery readiness.
+
 Implement automated PostgreSQL dumps.
 
 Initial retention:
