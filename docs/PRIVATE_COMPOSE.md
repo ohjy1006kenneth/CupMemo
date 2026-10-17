@@ -23,6 +23,13 @@ host autostart or startup migrations exist. The compiled web rewrite remains
 `http://cupmemo-api:4101`; web browser requests remain same-origin. This dormant
 stack deliberately provides no user-accessible entry point.
 
+Issue #44 now supplies a separate optional dormant
+[Cloudflare overlay](CLOUDFLARE_COMPOSE.md), opt-in profile `tunnel`. This does not
+change the three-service base or the private wrapper/systemd template below.
+Only that overlay's connector joins a new project-local egress network; the base
+web/API/PG network memberships remain unchanged. It is source preparation, not
+an installed connector, public ingress, restart supervisor or activation authority.
+
 All services have `restart: 'no'`: this is **not restart protection delivered**.
 Automatic Docker restarts could bypass the existing Issue11 host guard. The
 prepared wrapper below runs a fresh guard on each service start, but does not

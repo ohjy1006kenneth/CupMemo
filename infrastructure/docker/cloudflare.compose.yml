@@ -1,0 +1,38 @@
+# OPTIONAL dormant overlay, never added to the private startup wrapper.
+# Source/config tests only; docs/CLOUDFLARE_COMPOSE.md defines the held gates.
+services:
+  cloudflared:
+    profiles: [tunnel]
+    image: ${CUPMEMO_CLOUDFLARED_IMAGE:?CUPMEMO_CLOUDFLARED_IMAGE must select an official immutable ARM64 image with token-file support}
+    platform: linux/arm64
+    pull_policy: never
+    restart: 'no'
+    user: '${CUPMEMO_CLOUDFLARED_UID:?CUPMEMO_CLOUDFLARED_UID must select a verified positive numeric UID}:${CUPMEMO_CLOUDFLARED_UID:?CUPMEMO_CLOUDFLARED_UID must select a verified positive numeric UID}'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    cpus: 0.25
+    mem_limit: 64m
+    memswap_limit: 64m
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    # Retain official ENTRYPOINT ["cloudflared", "--no-autoupdate"].
+    command: [tunnel, run]
+    environment:
+      TUNNEL_TOKEN_FILE: /run/secrets/cloudflare_tunnel_token
+    secrets:
+      - source: cloudflare_tunnel_token
+        target: /run/secrets/cloudflare_tunnel_token
+    networks: [frontend, tunnel-egress]
+
+networks:
+  tunnel-egress:
+    internal: false
+
+secrets:
+  cloudflare_tunnel_token:
+    file: ${CLOUDFLARE_TUNNEL_TOKEN_FILE:?CLOUDFLARE_TUNNEL_TOKEN_FILE must name a private external token file, not its value}
