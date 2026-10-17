@@ -296,8 +296,10 @@ Administration from the developer machine should normally happen through Tailsca
 
 See [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) for backup-failure verification,
 private rebuild inputs, isolated-restore order and incident checklists. This is
-documentation only: Issue #47 scheduled dumps/retention remain unimplemented and
-Issue #48 safe non-production restore remains unperformed. Production storage,
+documentation plus the [Issue #47 backup runner](POSTGRES_BACKUPS.md) and dormant
+schedule templates: source/fixture verification is not an installed job or actual
+scheduled production-dump acceptance. Issue #48 safe non-production restore
+remains unperformed. Production storage,
 startup, migration/restore and deployment authority are not granted by this guide.
 
 Initial retention target:

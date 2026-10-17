@@ -32,3 +32,10 @@ uploads/
 .vscode/
 # Task-owned sanitized implementation evidence (not application source).
 .task-evidence/
+
+# Accidental private backup copies (the real destination must remain external).
+cupmemo-backups-v1/
+.cupmemo-backup.lock
+*.dump
+*.sql.gz
+*.backup

@@ -1,0 +1,12 @@
+# DORMANT TEMPLATE. Daily future schedule; no automatic boot/catch-up run.
+[Unit]
+Description=CupMemo daily private backup schedule
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+RandomizedDelaySec=10m
+Persistent=false
+Unit=cupmemo-backup.service
+
+[Install]
+WantedBy=timers.target
