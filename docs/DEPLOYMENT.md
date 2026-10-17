@@ -146,17 +146,22 @@ If Cloudflare requires an interactive account/domain authorization step, automat
 
 ### Operations status and authority (Refs #46)
 
-This is **documentation preparation only**, primary `hq/t_8e64e3a6`, original
+The Issue #46 runbook below is **documentation preparation only**, primary `hq/t_8e64e3a6`, original
 implementer `code-monkey-cupmemo`, native run3325. No account, domain, hostname,
 tunnel UUID, connector, token, installed CLI or running service is selected or
-verified here. Issue #43 setup, #44 connector/service wiring and #45 real public
-HTTPS/web/API/auth acceptance remain outstanding. Issue #46 and its primary card
+verified here. Issue #43 setup, #44 live connector/service acceptance and #45 real
+public HTTPS/web/API/auth acceptance remain outstanding. Issue #46 and its primary card
 must remain unfinished after partial documentation integration: recovery after a
 normal service restart is **UNPERFORMED**, not proven by fixtures or hosted CI.
 
 The current [private Compose](PRIVATE_COMPOSE.md) source defines only web, API and
 PostgreSQL, with no ingress, no published ports and `restart: 'no'`. Its two
 internal networks do not establish connector egress or origin reachability.
+Issue #44 adds a **separate optional dormant** [Cloudflare overlay](CLOUDFLARE_COMPOSE.md)
+with profile `tunnel`, connector-only project-local egress and native token-file
+mapping. The base remains unchanged. No image/account/tunnel/UID is selected;
+source/config/test preparation is not live setup, actual reachability or restart
+acceptance. No runnable connector start/restart interface is delivered.
 `infrastructure/scripts/private-stack-start.mjs` accepts only `--start`; it has
 no stop/restart interface and does not include cloudflared. The uninstalled
 `infrastructure/systemd/cupmemo-private.service.in` template has `Restart=no`,
@@ -202,8 +207,10 @@ Fastify uses private PostgreSQL17. Preserve [compiled routing](SAME_ORIGIN_ROUTI
 and [image inputs](CONTAINER_IMAGES.md#network-and-configuration-boundary): a
 runtime variable change cannot retarget the compiled rewrite. Do not add a second
 public API hostname, a Fastify path route, a new proxy, router port forwarding or
-public SSH/DB/API ports. Connector network/egress design and immutable image,
-version and restart policy are deferred to reviewed Issue #44, not chosen here.
+public SSH/DB/API ports. The dormant [Issue #44 source contract](CLOUDFLARE_COMPOSE.md)
+defines frontend plus connector-only egress, required official immutable ARM64
+image/version inputs and `restart: 'no'`; actual image/identity selection and
+runtime connectivity/restart acceptance remain held.
 
 Official [DNS guidance][cf-dns] describes a CNAME pointing the approved hostname
 to the tunnel's generated `<UUID>.cfargotunnel.com` target (a format placeholder,
@@ -310,9 +317,13 @@ only under approved private custody; if exposure occurred, treat it as compromis
 `CLOUDFLARE_TUNNEL_TOKEN` is the repository's expected **SECRET PLACEHOLDER**,
 not a working token or implemented Compose input. Cloudflare's [official run
 parameters][cf-run] use `TUNNEL_TOKEN`, or `TUNNEL_TOKEN_FILE` / `--token-file`
-(remote tunnels, version2025.4.0+). Issue #44 must review the actual delivery/mapping
-and supported version; no adapter, secret file path or service configuration is
-implemented here. Avoid token literals in argv, shell history and logs. Store any
+(remote tunnels, version2025.4.0+). The optional [Issue #44 overlay](CLOUDFLARE_COMPOSE.md)
+requires external **path** `CLOUDFLARE_TUNNEL_TOKEN_FILE`, mounts Compose secret
+`cloudflare_tunnel_token` read-only at `/run/secrets/cloudflare_tunnel_token`, and
+sets native `TUNNEL_TOKEN_FILE` to that internal path. It does not implement a
+raw-value `CLOUDFLARE_TUNNEL_TOKEN` adapter or select/create/read a credential file.
+Selected image/version and nonroot owner/readability need future independent
+verification. Avoid token literals in argv, shell history and logs. Store any
 future real secret outside Git under approved least-privilege custody, with
 restricted ownership/readability and a separately recoverable private inventory.
 Anyone possessing a remote tunnel token can run a connector for that tunnel.
