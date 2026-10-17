@@ -24,7 +24,7 @@ let temp;
 let settings;
 let model;
 
-function config(overrides = {}, args = ['--format', 'json']) {
+function config(overrides = {}, args = ['--format', 'json'], composePath = compose) {
   // No inherited production variables, implicit .env, or reachable Docker daemon.
   const env = {
     PATH: process.env.PATH,
@@ -43,7 +43,7 @@ function config(overrides = {}, args = ['--format', 'json']) {
       '-p',
       'cupmemo-offline-test',
       '-f',
-      compose,
+      composePath,
       'config',
       ...args,
     ],
@@ -202,7 +202,15 @@ describe('dormant private production Compose (actual offline CLI)', () => {
   it('uses an explicit numeric PG owner, non-auto-created bind and external password file', () => {
     const pg = model.services['cupmemo-postgres'];
     expect(pg.user).toBe(settings.POSTGRES_DATA_UID);
-    expect(pg.volumes).toEqual([
+    // Compose versions differ in which bind flag value JSON omits. Verify
+    // explicit false source intent, reject true, and compare the unsafe control.
+    expect(readFileSync(compose, 'utf8')).toMatch(/bind:\n\s+create_host_path: false\n/);
+    expect(
+      pg.volumes.map((volume) => ({
+        ...volume,
+        bind: { ...volume.bind, create_host_path: volume.bind?.create_host_path ?? false },
+      })),
+    ).toEqual([
       {
         type: 'bind',
         source: settings.POSTGRES_DATA_DIR,
@@ -225,6 +233,21 @@ describe('dormant private production Compose (actual offline CLI)', () => {
         file: settings.POSTGRES_PASSWORD_FILE,
       },
     });
+    expect(existsSync(settings.POSTGRES_DATA_DIR)).toBe(false);
+  });
+
+  it('distinguishes unsafe auto-create from the dormant false bind without accessing data', () => {
+    const unsafe = path.join(temp, 'unsafe.compose.yml');
+    writeFileSync(
+      unsafe,
+      readFileSync(compose, 'utf8').replace('create_host_path: false', 'create_host_path: true'),
+    );
+    const result = config({}, ['--format', 'json'], unsafe);
+    expect(result.status, result.stderr).toBe(0);
+    const unsafeModel = JSON.parse(result.stdout);
+    expect(unsafeModel.services['cupmemo-postgres'].volumes[0].bind).not.toEqual(
+      model.services['cupmemo-postgres'].volumes[0].bind,
+    );
     expect(existsSync(settings.POSTGRES_DATA_DIR)).toBe(false);
   });
 

@@ -136,8 +136,11 @@ It explicitly passes an empty `--env-file`, isolates inherited variables and
 places a hostile `.env` in the disposable cwd to prove no implicit fallback.
 It checks the effective model, every required omission and empty value, absent
 external API file refusal, non-creation of data paths, resource/security/network
-controls, health ordering and byte-identical development configuration. It does
-not pull images or inspect real HDD/device/permission state. The rendered dummy
+controls, health ordering and byte-identical development configuration. An unsafe
+dummy variant proves `create_host_path: true` is distinguishable in the effective
+model; Compose versions differ in which flag value JSON omits, so the test also checks
+the candidate's explicit false source setting. Neither variant creates the path.
+It does not pull images or inspect real HDD/device/permission state. The rendered dummy
 model stays in memory; only assertion summaries are retained. Tests fail rather
 than skip if the Compose CLI is absent/incompatible.
 
