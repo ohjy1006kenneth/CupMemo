@@ -1,0 +1,22 @@
+# DORMANT TEMPLATE. Render/review under separate activation authority; not installed.
+[Unit]
+Description=CupMemo private PostgreSQL backup
+
+[Service]
+Type=oneshot
+User=@CUPMEMO_OPERATOR_USER@
+WorkingDirectory=@CUPMEMO_RELEASE_DIR@
+EnvironmentFile=@CUPMEMO_BACKUP_ENV_FILE@
+ExecStart=@CUPMEMO_NODE_BIN@ @CUPMEMO_RELEASE_DIR@/infrastructure/scripts/postgres-backup.mjs --run
+UMask=0077
+Restart=no
+TimeoutStartSec=32min
+TimeoutStopSec=15s
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=@CUPMEMO_BACKUP_DIR@
+StandardOutput=journal
+StandardError=journal

@@ -181,6 +181,9 @@ See [PRIVATE_COMPOSE.md](PRIVATE_COMPOSE.md#still-held--unverified-before-any-ac
 and [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) for unresolved private storage,
 backup and recovery gates. Issue #47 dumps/retention, #48 actual restore and
 off-site recovery are not delivered by this guide; no new alert policy is assumed.
+The separate [backup engine](POSTGRES_BACKUPS.md) now supplies executable source,
+retention and dormant daily UTC templates, not installed/scheduled production
+dump acceptance or permission to activate them.
 
 ### Future hostname, DNS and private origin mapping
 

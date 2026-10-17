@@ -3,8 +3,9 @@
 ## Status and authority
 
 This is the Issue #49 **documentation checklist**, not evidence of working
-backups or recovery. Scheduled dumps and the 7 daily / 4 weekly / 3 monthly
-retention target (Issue #47) remain **unimplemented**. An actual safe isolated
+backups or recovery. The [Issue #47 runner, retention engine and dormant schedule
+templates](POSTGRES_BACKUPS.md) now exist in source; actual scheduled production
+dumps and operational acceptance remain **unperformed**. An actual safe isolated
 non-production restore (Issue #48) remains **unperformed**. Writing a dump,
 checking its size or obtaining a successful job exit does not prove recovery.
 Off-site copies are future work, not an available recovery source.
@@ -45,9 +46,10 @@ IDs do not establish local availability or authorize an image transfer/pull.
 ## 2. Detect and qualify backup failures
 
 This is a future operator verification checklist, not an installed job/monitor.
-No repository backup/restore command or scheduler is supplied by Issue #49.
+Issue #49 supplies no command or scheduler. The separate Issue #47 source runner
+does not install a schedule or prove any real PostgreSQL dump/restore acceptance.
 
-- [ ] Once Issue #47 exists, compare expected runs with actual completion times,
+- [ ] After separately authorized Issue #47 activation, compare expected runs with actual completion times,
       exit status and private destination availability/capacity/permissions. Missing,
       late, empty/truncated, unreadable or failed copies are failures. Preserve the
       last known-good copy; do not rotate it away on the strength of a failed run.
@@ -79,17 +81,17 @@ outside Git, outside public logs and separate from the failed host. Do not read 
 copy credential files as part of this documentation task. No actual operator
 values, endpoints, UID or storage destination are selected here.
 
-| Required inventory        | Existing contract to preserve                                                                                                                                                                                                                                                                                                                       |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Release and tools         | Exact source commit/tree, lockfile, committed Drizzle SQL and `meta/_journal.json`; Node24, pnpm10.34.6, trusted Linux ARM64 Docker/Compose (raw env-file support 2.30+) when separately authorized.                                                                                                                                                |
-| Immutable images          | `CUPMEMO_WEB_IMAGE`, `CUPMEMO_API_IMAGE`, `CUPMEMO_POSTGRES_IMAGE`; verify provenance, ARM64, local availability and official PostgreSQL17 compatibility, not mutable tags or merely ID syntax.                                                                                                                                                     |
-| HDD and owner             | `POSTGRES_HDD_MOUNT`, `POSTGRES_HDD_UUID`, `POSTGRES_DATA_DIR`, `POSTGRES_DATA_UID`; independently verify device/UUID/ext4/fsroot, safe ancestry, positive numeric UID and exact0700/0750 data permissions. Never assume UID999 or root.                                                                                                            |
-| Database identity         | `POSTGRES_DB`, `POSTGRES_USER`, required private role/ownership/grant definitions and password custody. The production URL must identify the same private database/role/password.                                                                                                                                                                   |
-| External files            | `CUPMEMO_API_ENV_FILE`, `POSTGRES_PASSWORD_FILE`, `CUPMEMO_DOCKER_CONFIG_DIR`; preserve trusted external paths, ownership, access and recoverable private contents. Docker client config/plugins/helpers are executable trust.                                                                                                                      |
-| API runtime               | `NODE_ENV=production`, `CUPMEMO_DB_ENV=production`, `CUPMEMO_DATABASE_URL_PRODUCTION`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`; API internal `CUPMEMO_API_HOST`/`CUPMEMO_API_PORT` are pinned by Compose. Restore the original auth secret through private custody, not Git. Any compromise/rotation requires a separate session/security decision. |
-| Web routing               | `CUPMEMO_API_ORIGIN` must agree with the compiled private rewrite; `HOSTNAME`/`PORT` configure the standalone server. Current private contract is Next3101 -> separate Fastify4101 -> private PG5432, not published host ports. A runtime env edit does not retarget a compiled rewrite.                                                            |
-| Future service            | If separately installed later, preserve exact reviewed rendered unit and `@CUPMEMO_RELEASE_DIR@`, `@CUPMEMO_STARTUP_ENV_FILE@`, `@CUPMEMO_OPERATOR_USER@` substitutions; current `.service.in` is uninstalled/disabled, not an enabled boot service.                                                                                                |
-| Backup and future ingress | Private backup location/access, metadata, retention receipts and restore evidence when implemented. `BACKUP_DIR`, `UPLOAD_DATA_DIR`, `CLOUDFLARE_TUNNEL_TOKEN` in deployment expectations are not implemented backup/upload/tunnel services; preserve any later approved external config/credentials only when actually provisioned.                |
+| Required inventory        | Existing contract to preserve                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Release and tools         | Exact source commit/tree, lockfile, committed Drizzle SQL and `meta/_journal.json`; Node24, pnpm10.34.6, trusted Linux ARM64 Docker/Compose (raw env-file support 2.30+) when separately authorized.                                                                                                                                                                                                           |
+| Immutable images          | `CUPMEMO_WEB_IMAGE`, `CUPMEMO_API_IMAGE`, `CUPMEMO_POSTGRES_IMAGE`; verify provenance, ARM64, local availability and official PostgreSQL17 compatibility, not mutable tags or merely ID syntax.                                                                                                                                                                                                                |
+| HDD and owner             | `POSTGRES_HDD_MOUNT`, `POSTGRES_HDD_UUID`, `POSTGRES_DATA_DIR`, `POSTGRES_DATA_UID`; independently verify device/UUID/ext4/fsroot, safe ancestry, positive numeric UID and exact0700/0750 data permissions. Never assume UID999 or root.                                                                                                                                                                       |
+| Database identity         | `POSTGRES_DB`, `POSTGRES_USER`, required private role/ownership/grant definitions and password custody. The production URL must identify the same private database/role/password.                                                                                                                                                                                                                              |
+| External files            | `CUPMEMO_API_ENV_FILE`, `POSTGRES_PASSWORD_FILE`, `CUPMEMO_DOCKER_CONFIG_DIR`; preserve trusted external paths, ownership, access and recoverable private contents. Docker client config/plugins/helpers are executable trust.                                                                                                                                                                                 |
+| API runtime               | `NODE_ENV=production`, `CUPMEMO_DB_ENV=production`, `CUPMEMO_DATABASE_URL_PRODUCTION`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`; API internal `CUPMEMO_API_HOST`/`CUPMEMO_API_PORT` are pinned by Compose. Restore the original auth secret through private custody, not Git. Any compromise/rotation requires a separate session/security decision.                                                            |
+| Web routing               | `CUPMEMO_API_ORIGIN` must agree with the compiled private rewrite; `HOSTNAME`/`PORT` configure the standalone server. Current private contract is Next3101 -> separate Fastify4101 -> private PG5432, not published host ports. A runtime env edit does not retarget a compiled rewrite.                                                                                                                       |
+| Future service            | If separately installed later, preserve exact reviewed rendered unit and `@CUPMEMO_RELEASE_DIR@`, `@CUPMEMO_STARTUP_ENV_FILE@`, `@CUPMEMO_OPERATOR_USER@` substitutions; current `.service.in` is uninstalled/disabled, not an enabled boot service.                                                                                                                                                           |
+| Backup and future ingress | Private backup location/access, metadata, retention receipts and restore evidence when operationally accepted. `BACKUP_DIR` is now an explicit input to the dormant Issue #47 runner, not an installed backup service. `UPLOAD_DATA_DIR` and `CLOUDFLARE_TUNNEL_TOKEN` remain deployment expectations, not implemented services; preserve approved external config/credentials only when actually provisioned. |
 
 Production commands do not implicitly load `.env`, select a default database or
 fall back to legacy `DATABASE_URL`. Nonempty legacy `DATABASE_URL` is refused.
@@ -181,8 +183,9 @@ never a new public Fastify or PostgreSQL endpoint.
 
 ## 6. Explicit future follow-up
 
-- Issue #47: implement scheduled dumps, private destination, failure reporting and
-  the 7 daily / 4 weekly / 3 monthly retention target. No schedule is running here.
+- Issue #47: separately activate and accept actual scheduled dumps, private
+  destination, failure visibility and the source engine's 7 daily / 4 weekly / 3
+  monthly retention. No schedule is installed or running by this source change.
 - Issue #48: perform and retain a separately authorized safe non-production restore
   with the actual copy, migration/data/auth validation and observed duration. No
   restore success is claimed by this documentation or by merely writing a dump.
