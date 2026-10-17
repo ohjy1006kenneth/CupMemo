@@ -171,6 +171,7 @@ from passing these checks.
 ## Constraints
 
 Use appropriate:
+
 - primary keys
 - foreign keys
 - not-null constraints
@@ -292,6 +293,12 @@ Do not publicly expose port 5432.
 Administration from the developer machine should normally happen through Tailscale/SSH.
 
 ## Backups
+
+See [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) for backup-failure verification,
+private rebuild inputs, isolated-restore order and incident checklists. This is
+documentation only: Issue #47 scheduled dumps/retention remain unimplemented and
+Issue #48 safe non-production restore remains unperformed. Production storage,
+startup, migration/restore and deployment authority are not granted by this guide.
 
 Initial retention target:
 
