@@ -144,6 +144,278 @@ Use environment/secrets configuration and appropriate `.gitignore` rules.
 
 If Cloudflare requires an interactive account/domain authorization step, automate everything else possible and document the exact manual step.
 
+### Operations status and authority (Refs #46)
+
+This is **documentation preparation only**, primary `hq/t_8e64e3a6`, original
+implementer `code-monkey-cupmemo`, native run3325. No account, domain, hostname,
+tunnel UUID, connector, token, installed CLI or running service is selected or
+verified here. Issue #43 setup, #44 connector/service wiring and #45 real public
+HTTPS/web/API/auth acceptance remain outstanding. Issue #46 and its primary card
+must remain unfinished after partial documentation integration: recovery after a
+normal service restart is **UNPERFORMED**, not proven by fixtures or hosted CI.
+
+The current [private Compose](PRIVATE_COMPOSE.md) source defines only web, API and
+PostgreSQL, with no ingress, no published ports and `restart: 'no'`. Its two
+internal networks do not establish connector egress or origin reachability.
+`infrastructure/scripts/private-stack-start.mjs` accepts only `--start`; it has
+no stop/restart interface and does not include cloudflared. The uninstalled
+`infrastructure/systemd/cupmemo-private.service.in` template has `Restart=no`,
+no enablement and no deployed service identity. It is not a supervisor. Do not
+invent a `cloudflared.service`, change restart policy or use a blanket stack
+start/restart as an operational shortcut.
+
+Every operational action below is a **future conditional checklist**, not a
+command to run now or authority to deploy. Obtain explicit exact-resource owner
+authorization first. Preserve Issue #11/#32/#42 HDD/privacy/startup gates: fresh
+device/UUID/ext4/ancestry/UID/permission verification, no SSD fallback, no bind
+auto-creation, and separate PGDATA/database/migration authority. Guard-before-launch
+has check-to-launch/hot-unmount limits; direct Docker/manual/daemon restarts can
+bypass it, and killing a wrapper does not prove daemon-side containers stopped.
+Do not restart shared Docker, the Pi, Hermes or unrelated services to fix a tunnel.
+See [PRIVATE_COMPOSE.md](PRIVATE_COMPOSE.md#still-held--unverified-before-any-activation)
+and [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) for unresolved private storage,
+backup and recovery gates. Issue #47 dumps/retention, #48 actual restore and
+off-site recovery are not delivered by this guide; no new alert policy is assumed.
+
+### Future hostname, DNS and private origin mapping
+
+Under separately authorized Issue #43/#45 work, the account/domain owner must
+manually sign in to the correct Cloudflare account, confirm their permissions,
+add/verify the selected domain and complete any required registrar/nameserver
+authorization. No account login, domain transfer or DNS mutation is authorized
+by this pass. Follow the current official [dashboard setup][cf-setup] and
+[permissions][cf-permissions] documentation rather than guessing dashboard labels.
+Record actual identities privately, never fabricate them from examples.
+
+For a remotely managed tunnel, the future owner selects the tunnel under
+**Networking > Tunnels**, then **Routes > Add route > Published application**,
+selects the authorized hostname/domain and service URL, and reviews the change
+before publishing. This exposes an application to the Internet; it is not an
+innocuous DNS-only change. The intended single hostname maps **all application
+paths to Next**, conceptually `http://cupmemo-web:3101` from a future connector
+with reviewed private reachability. This is an existing service address, not a
+currently reachable tunnel endpoint. Inside a separate connector container,
+`localhost` refers to that container, not Next or the Pi.
+
+Next's compiled `/api/v1/:path*` rewrite targets `http://cupmemo-api:4101`, then
+Fastify uses private PostgreSQL17. Preserve [compiled routing](SAME_ORIGIN_ROUTING.md)
+and [image inputs](CONTAINER_IMAGES.md#network-and-configuration-boundary): a
+runtime variable change cannot retarget the compiled rewrite. Do not add a second
+public API hostname, a Fastify path route, a new proxy, router port forwarding or
+public SSH/DB/API ports. Connector network/egress design and immutable image,
+version and restart policy are deferred to reviewed Issue #44, not chosen here.
+
+Official [DNS guidance][cf-dns] describes a CNAME pointing the approved hostname
+to the tunnel's generated `<UUID>.cfargotunnel.com` target (a format placeholder,
+not an actual UUID). Verify the actual account environment's target, hostname,
+proxy state, existing record conflicts and certificate coverage before change;
+multi-level subdomains may require additional certificate coverage. A DNS record
+can outlive a stopped tunnel, and correct DNS does not prove a connector or app
+is healthy. Dashboard-published routing and DNS must refer to the same approved
+tunnel. The locally managed `cloudflared tunnel route dns` interface requires
+account certificate authority and mutates DNS; it is **not** a token-only remote
+tunnel diagnostic or a command to use here.
+
+### Future approved start, stop and restart checklist
+
+1. Record the maintenance owner, authorization/window, actual tunnel/connector
+   identities, hostname, release commit/tree, immutable image identities and exact
+   owned service/container resources privately. Establish the Issue #43/#44 setup
+   receipts and Issue #45 public/auth baseline. Identify surviving resources before
+   retrying interrupted actions. Unknown ownership or state means STOP.
+2. Agree the operation: connector-only start/stop/restart, or a separately approved
+   wider app operation. A connector restart must not implicitly start/recreate the
+   DB or rest of the stack. For wider work, re-establish all HDD/privacy/backup and
+   database authority gates above, including data-persistence and rollback checks.
+   A prior successful guard or config render is not reusable launch clearance.
+3. Have Issue #44 supply the reviewed exact command for the selected supervisor,
+   explicit project/file/context and single owned connector service or container,
+   trusted external secret delivery and bounded graceful-stop timeout. **No such
+   operational command is implemented in this repository yet.** Do not substitute
+   generic `docker compose up`, `restart`, `down`, `docker restart` or host service
+   commands; they may bypass guards or affect unrelated resources. Do not install
+   the official system service example in parallel with the preferred future
+   Compose connector. Preserve the current `restart: 'no'` source limits.
+4. Before start, verify authorized local artifacts/config custody and reachable
+   private Next plus approved outbound Cloudflare connectivity. Before stop,
+   record baseline health/auth and expected outage. Stop only the identified
+   connector, allow approved graceful draining and confirm its actual exit and
+   remaining connectors. A replica may keep traffic up; do not assert an outage
+   merely because one connector stopped. Never delete the tunnel or DNS to stop it.
+5. Start only through the approved future interface. For restart, perform the
+   selected supervisor's normal service restart, not a substitute process kill,
+   and capture actual stop/start results. Cloudflare's [run parameters][cf-run]
+   describe SIGINT/SIGTERM draining with `grace-period`; reconcile the chosen
+   supervisor timeout with it before execution, without changing policy here.
+6. Verify new connector connections, unchanged route/DNS, Next and API behavior,
+   HTTPS and auth using the drill below. A running container or Healthy tunnel is
+   not application recovery. On failure, preserve evidence and use the approved
+   exact-resource rollback; never prune/delete volumes, reinitialize PGDATA,
+   change the bind, auto-migrate or restart other workloads. Reconcile daemon-side
+   resources before retry. No rollback to compromised credentials is allowed.
+
+### Layered health and bounded private log inspection
+
+After separate inspection/probe authority, diagnose from the outside inward using
+the actual approved hostname and private resource inventory. No real hostname
+probe or local service/DB inspection is performed by this documentation task.
+
+| Layer                   | Evidence and limit                                                                                                                                                                                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DNS and HTTPS           | Verify approved DNS route/target and public certificate/hostname/expiry. Public HTTPS terminates at Cloudflare; a private HTTP Next service URL is not a reason to disable public TLS validation. DNS/TLS failure precedes app diagnosis.                      |
+| Cloudflare connector    | Check the selected tunnel and each connector in the dashboard. Healthy concerns connector-to-edge connections, not Next, DB or auth. Inactive means never connected; Down means disconnected; investigate Degraded connections.                                |
+| Next origin             | From the approved connector network, verify service name, port3101, protocol and `/sign-in` response/static assets. No current host port is published. A tunnel502 can mean the connector cannot reach this origin even when it is connected to Cloudflare.    |
+| Next-to-Fastify         | Through the same hostname, `/api/v1/health` exercises routing to API liveness. Fastify's private `/health` is also liveness only. Public `/health` or `/ready` is not a Next rewrite to Fastify; only `/api/v1/*` is rewritten.                                |
+| DB readiness and schema | Private API4101 `/ready` runs `SELECT 1`, returning200/503, not schema/migration/auth proof. PG `pg_isready` is server availability, not password validation. Use separately authorized status/schema/data checks; never run migrations to make a probe green. |
+| Auth and private data   | Test actual public origin, sign-in/session, Secure/HttpOnly/Lax cookies, no-store, sign-out and owner-only access. Liveness and anonymous HTML do not prove authenticated flows or persisted data. Never weaken CSRF/origin/cookie checks to bypass failure.   |
+
+Use [Cloudflare common errors][cf-errors] and [tunnel logs][cf-logs] alongside
+this layering. Once a future service exists and private inspection is authorized,
+the operator may select bounded logs for **one verified owned container** using
+the official [Docker logs](https://docs.docker.com/reference/cli/docker/container/logs/)
+interface shape `docker logs --since 10m --tail 100
+<owned-container-id>`; the ID is an unselected placeholder, not runnable here.
+Use the approved explicit Docker endpoint/context; do not inspect all workloads.
+For an explicitly approved host-service alternative, journal filtering must name
+that exact installed unit and bound time/lines; no unit name is supplied here.
+Cloudflare dashboard log streams also require access and an active tunnel; an
+unavailable remote stream does not prove absence of local failure.
+
+Review logs only in private, bounded storage with restricted access. Capture
+timestamps/timezone, exit codes and sanitized phase/error category, not raw request
+or config dumps. Never retain expanded Compose JSON, `docker inspect` environment,
+`printenv`, credential files, token-revealing installation commands/process argv,
+auth headers, cookies, query bodies, personal data or raw diagnostic bundles in
+Git/issues/PRs. Even ordinary status output can include argv or recent logs.
+Cloudflare debug logging can expose full request/response headers; do not enable
+it casually. `--logfile` does not rotate by itself. Existing app Compose log
+rotation is not proof of secret-safe logs or a selected connector logging policy.
+Before sharing, manually redact secrets/private identities and retain originals
+only under approved private custody; if exposure occurred, treat it as compromise.
+
+### Common failures and safe next steps
+
+| Symptom                                             | Distinguish before an authorized fix                                                                                                                                                                                                                                                                             |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DNS conflict, resolution error or TLS mismatch      | Confirm the approved zone/account/hostname, existing records, generated tunnel target and certificate coverage. Do not replace DNS, disable TLS or open router ports as a diagnostic shortcut.                                                                                                                   |
+| Tunnel1033, Inactive, Down or Degraded              | Inspect exact connector state and bounded logs, approved outbound DNS/network connectivity (official setup calls out port7844), token validity and process exit. No connector-to-edge connection is distinct from a live connector with a bad origin. Do not change shared firewall rules here.                  |
+| Cloudflare502 / origin connection refused           | Verify Next is actually listening on private3101, reachable from connector networking, and service URL protocol/port/name match. A separate container's loopback is not Next. Do not expose Fastify or disable origin TLS verification as a workaround.                                                          |
+| Next page works, API500/503 or saves fail           | Check compiled rewrite/private Fastify4101, API readiness, DB connectivity and schema status separately. Preserve HDD refusal and investigate unavailable DB/storage without starting a replacement or SSD fallback.                                                                                             |
+| Sign-in loop, missing session or forbidden mutation | Check exact approved `BETTER_AUTH_URL` HTTPS origin, browser cookie attributes, same-origin request path, cache behavior and trusted Origin. Never publish cookies or rotate auth secrets merely to fix a tunnel.                                                                                                |
+| Connector authentication failure                    | Distinguish remote tunnel token from local certificate/JSON credentials and Cloudflare management API token. A refreshed/revoked old token cannot establish new connections; an old existing connector may still be active. Follow the rotation procedure, not repeated blind starts.                            |
+| Restart exits, refuses or fails to recover          | Record actual exit/refusal, source/image/config identity and surviving connectors/containers. Missing storage or unknown authority stays STOP; `restart: 'no'` intentionally supplies no automatic recovery. Preserve failed receipts and escalate scope rather than bypassing the wrapper or restarting Docker. |
+
+### Credential custody, rotation and compromise
+
+`CLOUDFLARE_TUNNEL_TOKEN` is the repository's expected **SECRET PLACEHOLDER**,
+not a working token or implemented Compose input. Cloudflare's [official run
+parameters][cf-run] use `TUNNEL_TOKEN`, or `TUNNEL_TOKEN_FILE` / `--token-file`
+(remote tunnels, version2025.4.0+). Issue #44 must review the actual delivery/mapping
+and supported version; no adapter, secret file path or service configuration is
+implemented here. Avoid token literals in argv, shell history and logs. Store any
+future real secret outside Git under approved least-privilege custody, with
+restricted ownership/readability and a separately recoverable private inventory.
+Anyone possessing a remote tunnel token can run a connector for that tunnel.
+
+Do not conflate a remote tunnel token with a Cloudflare API management token,
+locally managed per-tunnel credentials JSON or the broader account `cert.pem`.
+Do not run local `login`, create, route or certificate-renewal commands to repair a
+remote token. Management credentials need their own scoped permissions/custody;
+no API token is provisioned here. Follow the official [token rotation and
+compromise guidance][cf-permissions] under explicit owner authorization:
+
+1. Inventory every authorized connector and its exact tunnel, secret location and
+   maintenance/rollback owner privately; assess suspected exposure and affected
+   access. Preserve sanitized incident evidence without copying the secret into
+   tickets. Obtain authority for credential update, connector restarts and outage.
+2. In the correct tunnel's dashboard **Overview > Refresh token**, the authorized
+   account owner refreshes the token and transfers the new value directly into
+   approved private secret custody. Do not execute/copy the token-bearing installer
+   into shell history or publish its output. Refresh invalidates the old token for
+   **new connections**, but existing connectors remain active; refresh alone is
+   not eviction or full compromise containment.
+3. For routine rotation, update each exact owned connector's approved external
+   secret and apply the separately reviewed service update/recreation procedure.
+   A plain restart may not reread changed environment configuration. Cloudflare's
+   minimal-disruption procedure assumes at least two replicas, updates half,
+   verifies connections, waits 10 minutes for traffic routing, then repeats for the
+   rest. This Pi has no selected replica topology; do not claim zero downtime or
+   create replicas. With a future single connector, plan an approved outage.
+4. For compromise, Cloudflare recommends refreshing the token, **deleting all
+   connections for that exact tunnel** through its documented management API,
+   then updating all authorized replicas to the new token. This is a disruptive
+   privileged action requiring explicit exact-tunnel authority; do not delete the
+   tunnel/DNS or affect another tunnel. Old unauthorized active connections must
+   be removed, not left serving merely because the new token works.
+5. Verify each intended new connector and absence of old/unauthorized connections,
+   then the actual hostname/HTTPS/web/API/auth baseline. Confirm old-token
+   invalidation through trusted management state without printing or launching an
+   old credential as a test here. Remove superseded copies from approved secret
+   delivery/custody after owner verification and record nonsecret completion
+   receipts. API/certificate compromise requires its own scoped revocation plan.
+
+Tunnel-token rotation does **not** rotate `BETTER_AUTH_SECRET`, database passwords
+or user sessions. Preserve the auth secret for session continuity unless a separate
+security decision authorizes rotation and its session impact. Never silently
+restore an exposed token as rollback; use a new approved credential and retain the
+incident until containment and application verification are actually complete.
+
+### Real restart drill and required receipts — UNPERFORMED
+
+No tunnel/service restart, DNS/account change, real public request, DB start or
+data mutation has been performed for this documentation. Hosted CI and any
+synthetic/local routing controls cannot satisfy this live acceptance criterion.
+After explicit authority and actual Issue #43/#44 setup plus #45 availability/auth
+tests, use this same Issue #46/card for the real normal-service-restart drill:
+
+- **Before:** retain authorization, maintenance window/timezone, actual approved
+  hostname/tunnel/connector/service identity, exact release commit/tree, immutable
+  artifacts and reviewed operation/rollback command identities in private receipts.
+  Verify storage/privacy/backup/data-persistence gates and known owned resources;
+  no #47/#48/off-site success may be assumed. Establish real HTTPS certificate,
+  Next page/assets, `/api/v1/health`, separately approved private readiness/schema,
+  sign-in/session and known owner-only saved brew read baseline outside Tailscale.
+  Any write fixture requires explicit authority and private test-data custody.
+- **During:** record the actual normal restart invocation, start/end timestamps,
+  supervisor exit/result and old/new connector identities/connections; observe
+  bounded requests through the actual hostname. Record actual outage or continuity
+  (including other replicas), not a promised duration. Preserve sanitized failures.
+  Do not reboot the host, restart DB or alter DNS/credentials as part of a
+  connector-only restart drill.
+- **After:** verify reconnection and stable repeated HTTPS/web/API responses at
+  the same hostname, auth session continuity and fresh sign-in/sign-out, owner-only
+  saved data and persistence. If separately approved wider services restarted,
+  also verify fresh HDD guard and actual data persistence across those restarts;
+  connector-only recovery proves neither DB-restart nor Pi-reboot safety. Check
+  bounded private logs and unchanged routes/artifacts/resources. Missing evidence,
+  bypassed gates or any failure means FAIL/UNVERIFIED, never documentation PASS.
+- **Receipt/decision:** retain original private logs and redacted checks with
+  exact actions/resources/artifacts, before/during/after outcomes, observed recovery
+  duration, rollback result if used, residual failures and independent review/owner
+  acceptance. If recovery fails, reconcile partial effects and use only approved
+  exact-resource rollback preserving data and unrelated workloads. Only the owner
+  may accept the whole outcome or close Issue #46/card after real evidence.
+
+### Official operational references
+
+These public Cloudflare sources were consulted for this documentation; recheck
+them and the selected installed version during future authorized implementation.
+Their installer/sudo/token examples are **not CupMemo activation instructions**.
+
+- [Dashboard setup, domain prerequisite and published application route][cf-setup]
+- [DNS records, tunnel target and local-management distinction][cf-dns]
+- [Run parameters, token-file, graceful shutdown and sensitive logging][cf-run]
+- [Tunnel states and common origin/connection failures][cf-errors]
+- [Local and remote tunnel log streams][cf-logs]
+- [Token permissions, routine rotation and compromised-token containment][cf-permissions]
+
+[cf-setup]: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/
+[cf-dns]: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/dns/
+[cf-run]: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/run-parameters/
+[cf-errors]: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/troubleshoot-tunnels/common-errors/
+[cf-logs]: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/monitor-tunnels/logs/
+[cf-permissions]: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/remote-tunnel-permissions/
+
 ## Environment variables
 
 Expected examples:
