@@ -45,9 +45,11 @@ See [private Compose / stock app preparation](PRIVATE_COMPOSE.md) and
 their source bundles and dedicated build/test lane are retired; no host rollback,
 restart or CasaOS private database repair is required or authorized. The retained
 host launcher/unit are an uninstalled alternative, not a second app supervisor.
-Do not install both. The stock import path has a documented raw-env compatibility
-gap; import/start/reboot/absent-HDD behavior is **UNVERIFIED**, and live launch is
-disabled pending owner adjudication. Source cleanup is not an installed app.
+Do not install both. The stock app variant has a small offline private-JSON to
+Compose preparation helper and pinned installed-version import/marshal/reload
+checks; the modern production reference retains raw env_file unchanged. Actual
+install/start/reboot/absent-HDD behavior is **UNVERIFIED**, and live launch stays
+disabled. Importable offline configuration is not an installed or usable app.
 
 Target Docker Compose services:
 

@@ -55,11 +55,10 @@ services:
     image: ${CUPMEMO_API_IMAGE:?CUPMEMO_API_IMAGE must select an immutable ARM64 image}
     mem_limit: 256m
     memswap_limit: 256m
-    env_file:
-      - path: ${CUPMEMO_API_ENV_FILE:?CUPMEMO_API_ENV_FILE must name a private external runtime env file}
-        required: true
-        format: raw
     environment:
+      CUPMEMO_DATABASE_URL_PRODUCTION: ${CUPMEMO_DATABASE_URL_PRODUCTION:?CUPMEMO_DATABASE_URL_PRODUCTION must be explicitly configured}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be explicitly configured}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL must be explicitly configured}
       NODE_ENV: production
       CUPMEMO_DB_ENV: production
       CUPMEMO_API_HOST: 0.0.0.0
