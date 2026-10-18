@@ -302,6 +302,11 @@ scheduled production-dump acceptance. Issue #48 safe non-production restore
 remains unperformed. Production storage,
 startup, migration/restore and deployment authority are not granted by this guide.
 
+The [guarded restore source tool](POSTGRES_RESTORE.md) accepts only explicitly
+confirmed isolated test targets and performs historical schema/history/count
+checks without applying current migrations. Synthetic process/query tests and
+`structural_checks_passed` receipts are not actual recovery/application acceptance.
+
 Initial retention target:
 
 - 7 daily
