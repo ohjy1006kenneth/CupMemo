@@ -211,6 +211,10 @@ try:
         run(['sudo', 'chmod', '0777', str(source / 'pgdata')])
         refusal('unsafe-child', source)
         run(['sudo', 'rmdir', str(source / 'pgdata')])
+        alias = volume / 'symlink-data'
+        run(['sudo', 'ln', '-s', str(source), str(alias)])
+        refusal('symlink-source-root-mismatch', alias)
+        run(['sudo', 'rm', str(alias)])
         # The exact missing bind fails in Docker before any gate/official process.
         missing = volume / 'absent'
         result = subprocess.run(['docker', 'run', '--rm', '--network', 'none', '--mount',
@@ -224,6 +228,18 @@ try:
             run(['docker', 'start', name])
             assert run(['docker', 'wait', name]) == '0'
             assert state() == before
+        # Retained container starts must recheck, not reuse its earlier success.
+        run(['sudo', 'chmod', '0777', str(source)])
+        refused_state = state()
+        run(['docker', 'start', name])
+        assert run(['docker', 'wait', name]) == '1'
+        assert state() == refused_state
+        logs = subprocess.run(['docker', 'logs', name], capture_output=True, text=True, check=True)
+        assert logs.stdout == '' and logs.stderr == 'CupMemo PostgreSQL: storage admission refused\n'
+        run(['sudo', 'chmod', '00700', str(source)])
+        run(['docker', 'start', name])
+        assert run(['docker', 'wait', name]) == '0'
+        checks.append('retained-container-fresh-admission')
         refusal('fresh-check-after-success', source, changes={'POSTGRES_HDD_UUID': str(uuid.uuid4())})
         # A marker at the FIXED official path proves only admitted execution reaches it.
         name = create('fixed-exec', source, marker=True)
