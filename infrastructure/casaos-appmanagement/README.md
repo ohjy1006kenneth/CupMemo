@@ -5,7 +5,7 @@ manager or permission to launch PostgreSQL. It extends the accepted source-only
 checkpoint (coder3361 / independent3362 / owner3363) on primary hq/t_9cbb487a,
 [Issue11](https://github.com/ohjy1006kenneth/CupMemo/issues/11). Original implementer
 is `code-monkey-cupmemo`, integer original implementation run **2817**; current
-publication revision **3364**. `source-lock.json` binds original inputs, modules,
+publication revision **3369**, owner scope **3368**. `source-lock.json` binds original inputs, modules,
 cumulative patch, authoritative helper and service tests. It does not assert a
 compiled or live PASS. Actual build identities/results reside in the exact-head
 Actions artifact and same-card native evidence, not guessed binary hashes.
@@ -14,7 +14,7 @@ Actions artifact and same-card native evidence, not guessed binary hashes.
 
 - Full upstream revision `cc80b3313113d946f7216ff4b95c3c4b83381149`, fetched only
   by the bounded hosted reproduction script and verified against locked bytes/hash.
-- Three minimal ORIGINAL affected Go files plus upstream LICENSE, solely for offline
+- Four minimal ORIGINAL affected Go files plus upstream LICENSE, solely for offline
   patch regression. They are not a runnable manager. No applicable upstream NOTICE
   was present in the pinned source.
 - A cumulative patch modifying those real service/routes and adding
@@ -23,7 +23,7 @@ Actions artifact and same-card native evidence, not guessed binary hashes.
 - Read-only `materialize.py` source acquisition checks (writes only its explicit
   new fixture directory); `hosted-build.py` runs only on GitHub-hosted ARM64.
 
-The accepted Node helper is unchanged. CURRENT comes from the resolved model,
+The single Node helper adds only four legacy operation names. CURRENT comes from the resolved model,
 not the request id. Protected name `local-syncthing`, canonical component-below
 working/compose path, or service `big-bear-syncthing` in CURRENT or effective
 CANDIDATE refuses synchronously. Prefix siblings remain ordinary. Existing
@@ -71,12 +71,16 @@ compilation are acquired with network; actual focused service tests run in a
 separate **network=none** container. Synthetic root custody fixtures install only
 inside that disposable root. Official Node lives at `/usr/local/bin/node`; a
 container-only symlink provides the production adapter's fixed `/usr/bin/node`.
-Only `^TestSyncthingPolicy` runs, no broad upstream network/Docker tests. Tests
+Only `^TestSyncthingPolicy` and `^TestSyncthingLegacy` in service and the latter
+in route/v1 run, no broad upstream network/Docker tests. Tests
 exercise actual public refused methods and real Node transport, private injected
 parser/destination ordering, fake ordinary Docker-writer success/failure,
 strict transport/caps/cancellation/expiry and real synthetic helper custody.
-HTTP response paths are compiled but not exercised by httptest; no listener is
-started. Synthetic success is not a deployed mutation.
+The four legacy HTTP handlers are exercised through actual shared handler
+implementations with httptest Recorder, no listener. Explicit private fake Docker
+writers/scheduling/events and terminal continuation establish denial ordering and
+resolved-ID targeting, not a real interactive WebSocket session. Synthetic success
+is not a deployed mutation.
 
 Full root manager build uses `go build -mod=readonly -p=1 -trimpath
 -buildvcs=false`. ELF AArch64, SHA256/bytes, gzip and `go version -m` are recorded
@@ -89,10 +93,25 @@ no blind retries, at most two full build attempts for a concrete changed cause.
 
 ## Explicit remaining gates
 
-Registered authenticated legacy v1 container PUT UpdateSetting and DELETE
-UninstallApp bypass these ComposeApp guards and remain **LIVE-readiness
-Blocking**. No total-manager/private-storage guarantee is made. Samba rollout,
-aliases/mounts/custody, ordinary-project impact, root-RC coverage and exact
+Registered legacy v1 PUT `/:id` UpdateSetting, DELETE `/:id` UninstallApp,
+PUT `/archive/:id` ArchiveContainer and GET `/:id/terminal` DockerTerminal
+now use `CheckLegacyContainerMutation` before writes, async scheduling, HTTP101
+or exec. Inspection uses request cancellation and a finite3s context. CURRENT
+comes from actual Docker inspection, never a request selector; admitted effects
+target its stable64-hex ID. Update checks CURRENT before binding, then the
+effective candidate inheriting compose labels and replacing container/legacy name.
+All available container/project/service/legacy-name/working-dir/config-file
+markers are retained through multiple complete four-field policy identities.
+Malformed/ambiguous projections and inspect/helper failures receive fixed403.
+Ordinary well-formed no-compose legacy containers and prefix siblings remain
+admitted; malformed legacy display names outside the policy's strict name grammar
+fail closed. This does not change read/list/SetStatus or enable commented-out
+InstallApp/ChangAppState routes. No total-manager/private-storage guarantee is made.
+The separately registered v2 PATCH `/container/{id}` (`recreateContainerByID`)
+still reaches `RecreateContainerByID` -> `Docker().RecreateContainer` without
+these admissions, before asynchronous200/pull/clone/remove. It remains an explicit
+**LIVE-readiness Blocking** trigger outside this four-legacy-handler scope.
+Samba rollout, aliases/mounts/custody, ordinary-project impact, root-RC coverage and exact
 rollback remain separate owner decisions. Do not install/execute either manager,
 write live policy/config/DB/declarations, reload/restart services or mutate the
 NAS from these scripts. PGDATA provisioning, database startup and public

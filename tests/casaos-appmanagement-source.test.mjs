@@ -116,6 +116,7 @@ test('real materializer refuses adversarial archives without execution', () => {
 test('offline original fixtures are minimal, exact and not a runnable manager', () => {
   expect(lock.upstream_files.map((r) => r.path).sort()).toEqual([
     'LICENSE',
+    'route/v1/docker.go',
     'route/v2/compose_app.go',
     'service/compose_app.go',
     'service/compose_service.go',
@@ -170,3 +171,33 @@ test('invalid CLI is sanitized and shell arguments never execute', () => {
   refusal(cli(request(), ['--check', ';touch SECRET-SENTINEL']), 2);
   expect(fs.existsSync(path.join(root, 'SECRET-SENTINEL'))).toBe(false);
 });
+
+for (const operation of [
+  'legacy-update',
+  'legacy-uninstall',
+  'legacy-archive',
+  'legacy-terminal',
+]) {
+  test(`${operation} uses the real shared policy for current and candidate`, () => {
+    const input = { ...request(), operation };
+    expect(cli(input).status).toBe(0);
+    for (const side of ['current', 'candidate']) {
+      for (const marker of ['name', 'workingDir', 'composeFiles', 'serviceNames']) {
+        input[side] = ordinary();
+        if (marker === 'name') input[side].name = 'LOCAL-SYNCTHING';
+        if (marker === 'workingDir')
+          input[side].workingDir = '/var/lib/casaos/apps/local-syncthing/nested';
+        if (marker === 'composeFiles')
+          input[side].composeFiles = ['/var/lib/casaos/apps/local-syncthing/docker-compose.yml'];
+        if (marker === 'serviceNames') input[side].serviceNames = ['BIG-BEAR-SYNCTHING'];
+        refusal(cli(input));
+      }
+      input[side] = side === 'current' ? ordinary() : null;
+    }
+    input.current.name = 'local-syncthing-extra';
+    input.current.workingDir = '/var/lib/casaos/apps/local-syncthing-extra';
+    expect(cli(input).status).toBe(0);
+    input.current.serviceNames = ['SECRET-SENTINEL/invalid'];
+    refusal(cli(input));
+  });
+}
