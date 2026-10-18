@@ -118,8 +118,10 @@ test('offline original fixtures are minimal, exact and not a runnable manager', 
     'LICENSE',
     'route/v1/docker.go',
     'route/v2/compose_app.go',
+    'route/v2/docker.go',
     'service/compose_app.go',
     'service/compose_service.go',
+    'service/container.go',
   ]);
   expect(fs.existsSync(path.join(bundle, 'upstream/go.mod'))).toBe(false);
   expect(lock.module_files.map((r) => r.path)).toEqual(['go.mod', 'go.sum']);
@@ -177,6 +179,7 @@ for (const operation of [
   'legacy-uninstall',
   'legacy-archive',
   'legacy-terminal',
+  'container-recreate',
 ]) {
   test(`${operation} uses the real shared policy for current and candidate`, () => {
     const input = { ...request(), operation };

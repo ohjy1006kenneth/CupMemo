@@ -164,6 +164,8 @@ def main():
     record("codegen", {"generator": LOCK["generator"], "message_bus": LOCK["message_bus"], "files": [{"path": p, **identity(WORK / "source" / p)} for p in generated]})
     command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/service.test", "./service"])
     command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/route-v1.test", "./route/v1"])
+    command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/route-v2.test", "./route/v2"])
+    command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/pkg-docker.test", "./pkg/docker"])
     # Serial, one actual manager build; no retries or manager invocation.
     command(builder, ["go", "build", "-mod=readonly", "-p=1", "-trimpath", "-buildvcs=false", "-o", "/work/artifact/casaos-app-management-linux-arm64", "."])
     # Preserve genuine build output even if a later test fixture fails. Neither
@@ -190,6 +192,11 @@ def main():
         tests = command(tester, ["go", "test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", package, "-run", "^TestSyncthingLegacy", "-v"], timeout=180)
         assert "--- PASS: TestSyncthingLegacy" in tests and "no tests to run" not in tests and "FAIL" not in tests
         record(key + "-test-summary", {"top_level_passes": len(re.findall(r"^--- PASS: TestSyncthingLegacy", tests, re.M)), "subtest_passes": len(re.findall(r"^\s+--- PASS:", tests, re.M)), "network": "none", "scope": "actual shared service/handler implementation, real helper; injected Docker writers and terminal continuation, no live session"})
+    resources(tester)
+    for package, key in [("./service", "recreate-service"), ("./route/v2", "recreate-route-v2"), ("./pkg/docker", "recreate-pkg-docker")]:
+        tests = command(tester, ["go", "test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", package, "-run", "^TestSyncthingRecreate", "-v"], timeout=180)
+        assert "--- PASS: TestSyncthingRecreate" in tests and "no tests to run" not in tests and "FAIL" not in tests
+        record(key + "-test-summary", {"top_level_passes": len(re.findall(r"^--- PASS: TestSyncthingRecreate", tests, re.M)), "subtest_passes": len(re.findall(r"^\s+--- PASS:", tests, re.M)), "network": "none", "scope": "real orchestration/handler/clone plan, real helper, explicit injected Docker dependencies; not live daemon proof"})
     resources(tester)
     for rec in LOCK["module_files"] + LOCK["patched_files"]:
         checked(WORK / "source" / rec["path"], rec)

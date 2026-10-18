@@ -5,7 +5,8 @@ manager or permission to launch PostgreSQL. It extends the accepted source-only
 checkpoint (coder3361 / independent3362 / owner3363) on primary hq/t_9cbb487a,
 [Issue11](https://github.com/ohjy1006kenneth/CupMemo/issues/11). Original implementer
 is `code-monkey-cupmemo`, integer original implementation run **2817**; current
-publication revision **3369**, owner scope **3368**. `source-lock.json` binds original inputs, modules,
+publication revision **3375**, owner scope **3371**, superseding effective-image
+amendment and authentic operational adjudication **3374**. `source-lock.json` binds original inputs, modules,
 cumulative patch, authoritative helper and service tests. It does not assert a
 compiled or live PASS. Actual build identities/results reside in the exact-head
 Actions artifact and same-card native evidence, not guessed binary hashes.
@@ -14,7 +15,7 @@ Actions artifact and same-card native evidence, not guessed binary hashes.
 
 - Full upstream revision `cc80b3313113d946f7216ff4b95c3c4b83381149`, fetched only
   by the bounded hosted reproduction script and verified against locked bytes/hash.
-- Four minimal ORIGINAL affected Go files plus upstream LICENSE, solely for offline
+- Six minimal ORIGINAL affected Go files plus upstream LICENSE, solely for offline
   patch regression. They are not a runnable manager. No applicable upstream NOTICE
   was present in the pinned source.
 - A cumulative patch modifying those real service/routes and adding
@@ -23,10 +24,12 @@ Actions artifact and same-card native evidence, not guessed binary hashes.
 - Read-only `materialize.py` source acquisition checks (writes only its explicit
   new fixture directory); `hosted-build.py` runs only on GitHub-hosted ARM64.
 
-The single Node helper adds only four legacy operation names. CURRENT comes from the resolved model,
+The single Node helper includes the four legacy operations and `container-recreate`. CURRENT comes from the resolved model,
 not the request id. Protected name `local-syncthing`, canonical component-below
 working/compose path, or service `big-bear-syncthing` in CURRENT or effective
-CANDIDATE refuses synchronously. Prefix siblings remain ordinary. Existing
+CANDIDATE refuses before container effects. Legacy and recreation CURRENT refusals
+are synchronous; recreation image-candidate refusal is asynchronous after permitted
+image staging. Prefix siblings remain ordinary. Existing
 SetStatus/read/list bodies are not rewritten or declared approved. Private Go
 injection seams bind real production dependencies in public methods; they add no
 exported unsafe constructor, mutable global hook or environment/CLI bypass.
@@ -71,8 +74,9 @@ compilation are acquired with network; actual focused service tests run in a
 separate **network=none** container. Synthetic root custody fixtures install only
 inside that disposable root. Official Node lives at `/usr/local/bin/node`; a
 container-only symlink provides the production adapter's fixed `/usr/bin/node`.
-Only `^TestSyncthingPolicy` and `^TestSyncthingLegacy` in service and the latter
-in route/v1 run, no broad upstream network/Docker tests. Tests
+Only `^TestSyncthingPolicy`, `^TestSyncthingLegacy` in service and the latter
+in route/v1, plus `^TestSyncthingRecreate` in service, route/v2 and pkg/docker
+run, no broad upstream network/Docker tests. Tests
 exercise actual public refused methods and real Node transport, private injected
 parser/destination ordering, fake ordinary Docker-writer success/failure,
 strict transport/caps/cancellation/expiry and real synthetic helper custody.
@@ -107,10 +111,28 @@ Ordinary well-formed no-compose legacy containers and prefix siblings remain
 admitted; malformed legacy display names outside the policy's strict name grammar
 fail closed. This does not change read/list/SetStatus or enable commented-out
 InstallApp/ChangAppState routes. No total-manager/private-storage guarantee is made.
-The separately registered v2 PATCH `/container/{id}` (`recreateContainerByID`)
-still reaches `RecreateContainerByID` -> `Docker().RecreateContainer` without
-these admissions, before asynchronous200/pull/clone/remove. It remains an explicit
-**LIVE-readiness Blocking** trigger outside this four-legacy-handler scope.
+The registered v2 PATCH `/container/{id}` (`recreateContainerByID`) now performs
+request-cancelled, bounded3s actual inspection and shared CURRENT admission before
+scheduling/events/HTTP200, passing the resolved64-hex ID downstream. The service
+rechecks CURRENT before optional pull/cache staging. HTTP200 means **scheduled
+only**, not final admission or success: a newly protected target image yields a
+sanitized async error before any clone/create/stop/start/remove/rename/network
+effect. Ordinary no-op and pull/force defaults remain; failed pull never falls
+through into forced cloning. Whole background work is bounded10minutes, reads3s.
+
+For non-no-op work, the target reference is inspected once after optional pull,
+and the old image by immutable ID. `PrepareContainerClone` deep-copies snapshots,
+applies the existing old-image/runtime override transform, fills absent labels
+from target defaults, and freezes target immutable image ID plus effective create
+configuration. Runtime labels win. The private effective check uses the same
+complete `legacyIdentities` and fixed policy, with final current name, not temporary
+clone name. CURRENT protection cannot be erased by old-default removal. The
+identity-only projection is defensive; `CloneContainerFromPlan` consumes the
+private plan without another tag resolution or transform. Unrelated CloneContainer
+callers are unchanged. Tests use actual orchestration/httptest and clone creation
+seams with fake Docker dependencies and real helper, not live daemon proof.
+External root/daemon races, nonidentity image effects and exact rollback/rename
+behavior on a live daemon remain owner live-readiness gates, not a root sandbox.
 Samba rollout, aliases/mounts/custody, ordinary-project impact, root-RC coverage and exact
 rollback remain separate owner decisions. Do not install/execute either manager,
 write live policy/config/DB/declarations, reload/restart services or mutate the

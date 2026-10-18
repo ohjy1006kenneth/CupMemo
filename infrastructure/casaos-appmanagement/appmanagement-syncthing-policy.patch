@@ -1,3 +1,174 @@
+--- /dev/null
++++ b/pkg/docker/container_clone_plan.go
+@@ -0,0 +1,105 @@
++package docker
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"regexp"
++	"strings"
++
++	"github.com/docker/docker/api/types"
++	"github.com/docker/docker/api/types/container"
++	"github.com/docker/docker/api/types/network"
++	"github.com/docker/docker/client"
++	"github.com/docker/go-connections/nat"
++)
++
++var errClonePlan = errors.New("container clone preparation refused")
++var cloneImageID = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
++var cloneContainerID = regexp.MustCompile(`^[a-f0-9]{64}$`)
++var cloneName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,254}$`)
++
++// ContainerClonePlan owns its inspected snapshots. No mutable config is exported.
++type ContainerClonePlan struct {
++	id string
++	name string
++	config *container.Config
++	host *container.HostConfig
++	network *network.NetworkingConfig
++}
++
++func cloneSnapshot(input, output interface{}) error {
++	data,err:=json.Marshal(input)
++	if err!=nil || len(data)>4*1024*1024 {return errClonePlan}
++	if json.Unmarshal(data,output)!=nil {return errClonePlan}
++	return nil
++}
++
++func validCloneLabels(labels map[string]string) bool {
++	if len(labels)>1024 {return false}
++	for key,value:=range labels {
++		if key=="" || len(key)>4096 || len(value)>16384 || strings.ContainsAny(key+value,"\x00\r\n") {return false}
++	}
++	return true
++}
++
++// PrepareContainerClone performs no Docker effects and freezes the target image.
++func PrepareContainerClone(current *types.ContainerJSON, oldImage *types.ImageInspect, targetImage *types.ImageInspect) (*ContainerClonePlan,error) {
++	if current==nil || current.ContainerJSONBase==nil || current.Config==nil || current.HostConfig==nil || current.NetworkSettings==nil || oldImage==nil || targetImage==nil || oldImage.Config==nil || targetImage.Config==nil {return nil,errClonePlan}
++	if !cloneContainerID.MatchString(current.ID) || !strings.HasPrefix(current.Name,"/") || !cloneName.MatchString(strings.TrimPrefix(current.Name,"/")) || !cloneImageID.MatchString(current.Image) || current.Image!=oldImage.ID || !cloneImageID.MatchString(targetImage.ID) || current.Config.Image=="" {return nil,errClonePlan}
++	for _,labels:=range []map[string]string{current.Config.Labels,oldImage.Config.Labels,targetImage.Config.Labels} {if !validCloneLabels(labels){return nil,errClonePlan}}
++	for _,link:=range current.HostConfig.Links {colon:=strings.Index(link,":");slash:=strings.LastIndex(link,"/");if colon<=0 || slash<=colon || slash==len(link)-1 {return nil,errClonePlan}}
++	for key,endpoint:=range current.NetworkSettings.Networks {if key=="" || endpoint==nil {return nil,errClonePlan}}
++	var c types.ContainerJSON
++	var old types.ImageInspect
++	var target types.ImageInspect
++	if cloneSnapshot(current,&c)!=nil || cloneSnapshot(oldImage,&old)!=nil || cloneSnapshot(targetImage,&target)!=nil {return nil,errClonePlan}
++	if c.Config.ExposedPorts==nil {c.Config.ExposedPorts=nat.PortSet{}}
++	config:=runtimeConfig(&c,&old)
++	if config.Labels==nil {config.Labels=map[string]string{}}
++	for key,value:=range target.Config.Labels {if _,present:=config.Labels[key];!present {config.Labels[key]=value}}
++	config.Image=target.ID
++	return &ContainerClonePlan{id:c.ID,name:c.Name,config:config,host:hostConfig(&c),network:&network.NetworkingConfig{EndpointsConfig:c.NetworkSettings.Networks}},nil
++}
++
++// EffectiveContainer returns only resolved identity, never Env or internal handles.
++func (p *ContainerClonePlan) EffectiveContainer() *types.ContainerJSON {
++	if p==nil || p.config==nil {return nil}
++	labels:=map[string]string{}
++	for k,v:=range p.config.Labels {labels[k]=v}
++	return &types.ContainerJSON{ContainerJSONBase:&types.ContainerJSONBase{ID:p.id,Name:p.name},Config:&container.Config{Labels:labels}}
++}
++
++type clonePlanDeps struct {
++	create func(context.Context,*container.Config,*container.HostConfig,*network.NetworkingConfig,string)(string,error)
++	disconnect func(context.Context,string,string)error
++	connect func(context.Context,string,string,*network.EndpointSettings)error
++}
++
++func cloneContainerFromPlan(ctx context.Context, plan *ContainerClonePlan, newName string, deps clonePlanDeps)(string,error) {
++	if ctx.Err()!=nil || plan==nil || plan.config==nil || plan.host==nil || plan.network==nil || !cloneContainerID.MatchString(plan.id) || !cloneImageID.MatchString(plan.config.Image) || !cloneName.MatchString(newName) || deps.create==nil {return "",errClonePlan}
++	var config container.Config
++	var host container.HostConfig
++	var net network.NetworkingConfig
++	if cloneSnapshot(plan.config,&config)!=nil || cloneSnapshot(plan.host,&host)!=nil || cloneSnapshot(plan.network,&net)!=nil {return "",errClonePlan}
++	simple:=simpleNetworkConfig(&net)
++	id,err:=deps.create(ctx,&config,&host,simple,newName)
++	if err!=nil {return id,err}
++	if !host.NetworkMode.IsHost() {
++		for key:=range simple.EndpointsConfig {if err:=deps.disconnect(ctx,key,id);err!=nil{return id,err}}
++		for key,endpoint:=range net.EndpointsConfig {if err:=deps.connect(ctx,key,id,endpoint);err!=nil{return id,err}}
++	}
++	return id,nil
++}
++
++// CloneContainerFromPlan never looks up a tag or recomputes runtimeConfig.
++func CloneContainerFromPlan(ctx context.Context, plan *ContainerClonePlan, newName string)(string,error) {
++	if ctx.Err()!=nil || plan==nil || plan.config==nil || plan.host==nil || plan.network==nil {return "",errClonePlan}
++	cli,err:=client.NewClientWithOpts(client.FromEnv,client.WithAPIVersionNegotiation())
++	if err!=nil{return "",err};defer cli.Close()
++	return cloneContainerFromPlan(ctx,plan,newName,clonePlanDeps{
++		create:func(ctx context.Context,c *container.Config,h *container.HostConfig,n *network.NetworkingConfig,name string)(string,error){r,err:=cli.ContainerCreate(ctx,c,h,n,nil,name);return r.ID,err},
++		disconnect:func(ctx context.Context,net,id string)error{return cli.NetworkDisconnect(ctx,net,id,true)},
++		connect:func(ctx context.Context,net,id string,e *network.EndpointSettings)error{return cli.NetworkConnect(ctx,net,id,e)},
++	})
++}
+--- /dev/null
++++ b/pkg/docker/container_clone_plan_test.go
+@@ -0,0 +1,60 @@
++package docker
++
++import (
++	"context"
++	"errors"
++	"reflect"
++	"strings"
++	"testing"
++
++	"github.com/docker/docker/api/types"
++	"github.com/docker/docker/api/types/container"
++	"github.com/docker/docker/api/types/network"
++)
++
++func cloneFixture() (*types.ContainerJSON, *types.ImageInspect, *types.ImageInspect) {
++	oldID := "sha256:" + strings.Repeat("b",64)
++	current := &types.ContainerJSON{ContainerJSONBase: &types.ContainerJSONBase{ID:strings.Repeat("a",64), Name:"/ordinary", Image:oldID, HostConfig:&container.HostConfig{}}, Config:&container.Config{Image:"ordinary:latest", Labels:map[string]string{"inherited":"old", "override":"runtime"}, Env:[]string{"SECRET-SENTINEL"}}, NetworkSettings:&types.NetworkSettings{Networks:map[string]*network.EndpointSettings{}}}
++	old := &types.ImageInspect{ID:oldID,Config:&container.Config{Labels:map[string]string{"inherited":"old"}}}
++	target := &types.ImageInspect{ID:"sha256:"+strings.Repeat("c",64),Config:&container.Config{Labels:map[string]string{"inherited":"target","override":"default","com.docker.compose.project":"local-syncthing"}}}
++	return current,old,target
++}
++
++func TestSyncthingRecreateClonePlan(t *testing.T) {
++	c,old,target:=cloneFixture()
++	before:=c.Config.Labels["inherited"]
++	plan,err:=PrepareContainerClone(c,old,target);if err!=nil {t.Fatal(err)}
++	want:=map[string]string{"inherited":"target","override":"runtime","com.docker.compose.project":"local-syncthing"}
++	identity:=plan.EffectiveContainer()
++	if identity.ID!=c.ID || identity.Name!=c.Name || !reflect.DeepEqual(identity.Config.Labels,want) || identity.Config.Env!=nil || identity.HostConfig!=nil {t.Fatal("incorrect identity-only projection")}
++	identity.Config.Labels["inherited"]="mutated";identity.Name="/changed"
++	c.Config.Labels["override"]="mutated";target.ID="sha256:"+strings.Repeat("d",64);target.Config.Labels["inherited"]="mutated"
++	deps:=clonePlanDeps{create:func(ctx context.Context, config *container.Config, host *container.HostConfig, net *network.NetworkingConfig, name string)(string,error){
++		if config.Image!="sha256:"+strings.Repeat("c",64) || !reflect.DeepEqual(config.Labels,want) || name!="temporary" {t.Fatal("plan retargeted after admission")};config.Labels["inherited"]="writer mutation";return "clone",nil
++	}, disconnect:func(context.Context,string,string)error{return nil},connect:func(context.Context,string,string,*network.EndpointSettings)error{return nil}}
++	if id,err:=cloneContainerFromPlan(context.Background(),plan,"temporary",deps);err!=nil||id!="clone" {t.Fatal(id,err)}
++	if plan.EffectiveContainer().Config.Labels["inherited"]!="target" || old.Config.Labels["inherited"]!=before {t.Fatal("input/plan mutated")}
++}
++
++func TestSyncthingRecreateCloneInvalid(t *testing.T) {
++	for _,alter:=range []func(*types.ContainerJSON,*types.ImageInspect,*types.ImageInspect){
++		func(c *types.ContainerJSON,o,n *types.ImageInspect){c.Config=nil},
++		func(c *types.ContainerJSON,o,n *types.ImageInspect){c.HostConfig=nil},
++		func(c *types.ContainerJSON,o,n *types.ImageInspect){c.NetworkSettings=nil},
++		func(c *types.ContainerJSON,o,n *types.ImageInspect){c.ID="alias"},
++		func(c *types.ContainerJSON,o,n *types.ImageInspect){c.Name="//ordinary"},
++		func(c *types.ContainerJSON,o,n *types.ImageInspect){n.ID="mutable:tag"},
++		func(c *types.ContainerJSON,o,n *types.ImageInspect){o.ID="sha256:"+strings.Repeat("d",64)},
++		func(c *types.ContainerJSON,o,n *types.ImageInspect){n.Config=nil},
++		func(c *types.ContainerJSON,o,n *types.ImageInspect){n.Config.Labels=map[string]string{"bad":"nul\x00"}},
++		func(c *types.ContainerJSON,o,n *types.ImageInspect){c.HostConfig.Links=[]string{"invalid"}},
++	} {c,o,n:=cloneFixture();alter(c,o,n);if _,err:=PrepareContainerClone(c,o,n);err==nil {t.Fatal("invalid plan admitted")}}
++	c,o,n:=cloneFixture()
++	for _,args:=range [][3]interface{}{{nil,o,n},{c,nil,n},{c,o,nil}} {var cc *types.ContainerJSON;var oo,nn *types.ImageInspect;if args[0]!=nil{cc=args[0].(*types.ContainerJSON)};if args[1]!=nil{oo=args[1].(*types.ImageInspect)};if args[2]!=nil{nn=args[2].(*types.ImageInspect)};if _,err:=PrepareContainerClone(cc,oo,nn);err==nil{t.Fatal("nil admitted")}}
++	plan,_:=PrepareContainerClone(c,o,n)
++	ctx,cancel:=context.WithCancel(context.Background());cancel()
++	called:=false
++	deps:=clonePlanDeps{create:func(context.Context,*container.Config,*container.HostConfig,*network.NetworkingConfig,string)(string,error){called=true;return "",errors.New("failure")}}
++	for _,p:=range []*ContainerClonePlan{nil,{},plan} {if _,err:=cloneContainerFromPlan(ctx,p,"temporary",deps);err==nil{t.Fatal("cancelled/invalid admitted")}}
++	if called {t.Fatal("create after cancellation")}
++}
 --- a/route/v1/docker.go
 +++ b/route/v1/docker.go
 @@ -22,7 +22,7 @@
@@ -578,6 +749,190 @@
  	if params.Force != nil && !*params.Force {
  		// check if updateAvailable
  		if !service.MyService.AppStoreManagement().IsUpdateAvailable(composeApp) {
+--- a/route/v2/docker.go
++++ b/route/v2/docker.go
+@@ -3,16 +3,16 @@
+ import (
+ 	"context"
+ 	"net/http"
++	"time"
+ 
+ 	"github.com/IceWhaleTech/CasaOS-AppManagement/codegen"
++	"github.com/IceWhaleTech/CasaOS-AppManagement/codegen/message_bus"
+ 	"github.com/IceWhaleTech/CasaOS-AppManagement/common"
+ 	"github.com/IceWhaleTech/CasaOS-AppManagement/service"
+ 	v1 "github.com/IceWhaleTech/CasaOS-AppManagement/service/v1"
+ 	"github.com/IceWhaleTech/CasaOS-Common/utils"
+-	"github.com/IceWhaleTech/CasaOS-Common/utils/logger"
+-	"github.com/docker/docker/errdefs"
++	"github.com/docker/docker/api/types"
+ 	"github.com/labstack/echo/v4"
+-	"go.uber.org/zap"
+ )
+ 
+ func (a *AppManagement) CheckContainerHealthByID(ctx echo.Context, id codegen.ContainerID) error {
+@@ -30,19 +30,32 @@
+ }
+ 
+ func (a *AppManagement) RecreateContainerByID(ctx echo.Context, id codegen.ContainerID, params codegen.RecreateContainerByIDParams) error {
+-	// attach context key/value pairs from upstream
+-	backgroundCtx := common.WithProperties(context.Background(), PropertiesFromQueryParams(ctx))
++	return recreateContainerByID(ctx,id,params,recreateRouteDeps{
++		inspect:service.MyService.Docker().DescribeContainer,
++		check:service.CheckContainerRecreation,
++		schedule:func(f func()){go f()},
++		event:service.PublishEventWrapper,
++		recreate:service.MyService.Docker().RecreateContainer,
++	})
++}
+ 
+-	container, err := service.MyService.Docker().DescribeContainer(backgroundCtx, id)
+-	if err != nil {
++type recreateRouteDeps struct {
++	inspect func(context.Context,string)(*types.ContainerJSON,error)
++	check func(context.Context,*types.ContainerJSON)error
++	schedule func(func())
++	event func(context.Context,message_bus.EventType,map[string]string)
++	recreate func(context.Context,string,bool,bool)error
++}
+ 
+-		message := err.Error()
+-		if _, ok := err.(errdefs.ErrNotFound); ok {
+-			return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
+-		}
+-
+-		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseNotFound{Message: &message})
++func recreateContainerByID(ctx echo.Context,id string,params codegen.RecreateContainerByIDParams,deps recreateRouteDeps)error {
++	admission,cancel:=context.WithTimeout(ctx.Request().Context(),3*time.Second)
++	defer cancel()
++	container,err:=deps.inspect(admission,id)
++	if err!=nil || admission.Err()!=nil || deps.check(admission,container)!=nil || admission.Err()!=nil {
++		message:="Syncthing manager policy refused"
++		return ctx.JSON(http.StatusForbidden,codegen.ResponseNotFound{Message:&message})
+ 	}
++	backgroundCtx:=common.WithProperties(context.Background(),PropertiesFromQueryParams(ctx))
+ 
+ 	pullLatestImage := false
+ 	if params.Pull != nil {
+@@ -58,20 +71,19 @@
+ 	eventProperties[common.PropertyTypeAppName.Name] = v1.AppName(container)
+ 	eventProperties[common.PropertyTypeAppIcon.Name] = v1.AppIcon(container)
+ 
+-	go func() {
+-		go service.PublishEventWrapper(backgroundCtx, common.EventTypeAppUpdateBegin, nil)
++	deps.schedule(func() {
++		deps.event(backgroundCtx, common.EventTypeAppUpdateBegin, nil)
+ 
+-		defer service.PublishEventWrapper(backgroundCtx, common.EventTypeAppUpdateEnd, nil)
++		defer deps.event(backgroundCtx, common.EventTypeAppUpdateEnd, nil)
+ 
+-		if err := service.MyService.Docker().RecreateContainer(backgroundCtx, id, pullLatestImage, force); err != nil {
+-			go service.PublishEventWrapper(backgroundCtx, common.EventTypeAppUpdateError, map[string]string{
+-				common.PropertyTypeMessage.Name: err.Error(),
++		if err := deps.recreate(backgroundCtx, container.ID, pullLatestImage, force); err != nil {
++			deps.event(backgroundCtx, common.EventTypeAppUpdateError, map[string]string{
++				common.PropertyTypeMessage.Name: "Container recreation failed",
+ 			})
+-			logger.Error("error when trying to recreate container", zap.Error(err), zap.String("containerID", string(id)), zap.Bool("pull", pullLatestImage))
+ 		}
+-	}()
++	})
+ 
+ 	return ctx.JSON(http.StatusOK, codegen.ContainerRecreateOK{
+-		Message: utils.Ptr("Container is being recreated asynchronously"),
++		Message: utils.Ptr("Container recreation scheduled asynchronously; image candidate admission is pending"),
+ 	})
+ }
+--- /dev/null
++++ b/route/v2/syncthing_recreate_test.go
+@@ -0,0 +1,87 @@
++package v2
++
++import (
++	"context"
++	"errors"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"reflect"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/IceWhaleTech/CasaOS-AppManagement/codegen"
++	"github.com/IceWhaleTech/CasaOS-AppManagement/codegen/message_bus"
++	"github.com/IceWhaleTech/CasaOS-AppManagement/service"
++	"github.com/docker/docker/api/types"
++	"github.com/docker/docker/api/types/container"
++	"github.com/labstack/echo/v4"
++)
++
++func recreateRouteFixture(t *testing.T) {
++	t.Helper();if os.Geteuid()!=0{t.Fatal("disposable root required")};if _,err:=os.Stat("/.dockerenv");err!=nil{t.Fatal("disposable container required")}
++	name:="/usr/local/lib/cupmemo/syncthing-manager-policy.mjs";data,err:=os.ReadFile("../../service/testdata/syncthing-manager-policy.mjs");if err!=nil{t.Fatal(err)}
++	if err:=os.MkdirAll(filepath.Dir(name),0755);err!=nil{t.Fatal(err)};if err:=os.WriteFile(name,data,0644);err!=nil{t.Fatal(err)};t.Cleanup(func(){os.Remove(name)})
++}
++
++func recreateRouteContainer()*types.ContainerJSON{return &types.ContainerJSON{ContainerJSONBase:&types.ContainerJSONBase{ID:strings.Repeat("a",64),Name:"/ordinary"},Config:&container.Config{Env:[]string{"SECRET-SENTINEL"},Labels:map[string]string{}}}}
++
++func recreateRouteDependencies(t *testing.T,c *types.ContainerJSON,calls *[]string)recreateRouteDeps {
++	add:=func(s string){*calls=append(*calls,s)}
++	return recreateRouteDeps{
++		inspect:func(ctx context.Context,selector string)(*types.ContainerJSON,error){deadline,ok:=ctx.Deadline();if selector!="request-alias"||!ok||time.Until(deadline)>3*time.Second{t.Fatal("selector/deadline")};add("inspect");return c,nil},
++		check:func(ctx context.Context,c *types.ContainerJSON)error{add("check");return service.CheckContainerRecreation(ctx,c)},
++		schedule:func(f func()){add("schedule");f()},
++		event:func(ctx context.Context,event message_bus.EventType,props map[string]string){add("event");for _,v:=range props{if strings.Contains(v,"SECRET-SENTINEL"){t.Fatal("raw error leaked")}}},
++		recreate:func(ctx context.Context,id string,pull,force bool)error{if id!=strings.Repeat("a",64){t.Fatal("alias re-resolved")};add("recreate");return nil},
++	}
++}
++
++func callRecreateRoute(t *testing.T,d recreateRouteDeps,params codegen.RecreateContainerByIDParams,cancelled bool)*httptest.ResponseRecorder {
++	t.Helper();req:=httptest.NewRequest(http.MethodPatch,"/container/request-alias",nil)
++	if cancelled{ctx,cancel:=context.WithCancel(req.Context());cancel();req=req.WithContext(ctx)}
++	rec:=httptest.NewRecorder();ctx:=echo.New().NewContext(req,rec)
++	if err:=recreateContainerByID(ctx,"request-alias",params,d);err!=nil{t.Fatal(err)}
++	if strings.Contains(rec.Body.String(),"SECRET-SENTINEL"){t.Fatal("secret leaked")};return rec
++}
++
++func TestSyncthingRecreateRouteDenial(t *testing.T) {
++	recreateRouteFixture(t)
++	for _,kind:=range []string{"name","service-name","project","service","working","files","multiple","nil","nil-base","nil-config","id","name-path","labels","inspect","cancel","helper"}{t.Run(kind,func(t *testing.T){
++		c:=recreateRouteContainer();calls:=[]string{};d:=recreateRouteDependencies(t,c,&calls)
++		switch kind {
++		case "name":c.Name="/LOCAL-SYNCTHING"
++		case "service-name":c.Name="/big-bear-syncthing"
++		case "project":c.Config.Labels["com.docker.compose.project"]="local-syncthing"
++		case "service":c.Config.Labels=map[string]string{"com.docker.compose.project":"ordinary","com.docker.compose.service":"BIG-BEAR-SYNCTHING"}
++		case "working":c.Config.Labels=map[string]string{"com.docker.compose.project":"ordinary","com.docker.compose.project.working_dir":"/var/lib/casaos/apps/LOCAL-SYNCTHING/sub"}
++		case "files":c.Config.Labels=map[string]string{"com.docker.compose.project":"ordinary","com.docker.compose.project.config_files":"/ordinary.yml,/var/lib/casaos/apps/local-syncthing/docker-compose.yml"}
++		case "multiple":c.Config.Labels=map[string]string{"name":"local-syncthing","com.docker.compose.project":"ordinary","com.docker.compose.service":"big-bear-syncthing"}
++		case "nil":d.inspect=func(context.Context,string)(*types.ContainerJSON,error){calls=append(calls,"inspect");return nil,nil}
++		case "nil-base":c.ContainerJSONBase=nil
++		case "nil-config":c.Config=nil
++		case "id":c.ID="alias"
++		case "name-path":c.Name="//ordinary"
++		case "labels":c.Config.Labels["com.docker.compose.project.config_files"]="/ordinary.yml,"
++		case "inspect":d.inspect=func(context.Context,string)(*types.ContainerJSON,error){calls=append(calls,"inspect");return nil,errors.New("SECRET-SENTINEL")}
++		case "helper":d.check=func(context.Context,*types.ContainerJSON)error{calls=append(calls,"check");return errors.New("SECRET-SENTINEL")}
++		}
++		for _,pull:=range []bool{false,true}{for _,force:=range []bool{false,true}{calls=nil;rec:=callRecreateRoute(t,d,codegen.RecreateContainerByIDParams{Pull:&pull,Force:&force},kind=="cancel");if rec.Code!=403{t.Fatal(rec.Code,rec.Body.String())};for _,call:=range calls{if call!="inspect"&&call!="check"{t.Fatal("effect before denial",calls)}}}}
++	})}
++}
++
++func TestSyncthingRecreateRouteScheduled(t *testing.T) {
++	recreateRouteFixture(t)
++	for _,kind:=range []string{"defaults","flags","prefix","async-failure"}{t.Run(kind,func(t *testing.T){
++		c:=recreateRouteContainer();if kind=="prefix"{c.Name="/local-syncthing-extra"}
++		calls:=[]string{};d:=recreateRouteDependencies(t,c,&calls)
++		params:=codegen.RecreateContainerByIDParams{}
++		if kind=="flags"{yes:=true;params.Pull=&yes;params.Force=&yes}
++		d.recreate=func(ctx context.Context,id string,pull,force bool)error{if id!=c.ID||pull!=(kind=="flags")||force!=(kind=="flags"){t.Fatal("ordinary targeting/booleans changed")};calls=append(calls,"recreate");if kind=="async-failure"{return errors.New("SECRET-SENTINEL prospective policy denial")};return nil}
++		rec:=callRecreateRoute(t,d,params,false)
++		want:=[]string{"inspect","check","schedule","event","recreate","event"};if kind=="async-failure"{want=append(want,"event")}
++		if rec.Code!=200||!strings.Contains(rec.Body.String(),"pending")||!reflect.DeepEqual(calls,want){t.Fatal(rec.Code,calls,rec.Body.String())}
++	})}
++}
 --- a/service/compose_app.go
 +++ b/service/compose_app.go
 @@ -169,6 +169,9 @@
@@ -714,6 +1069,55 @@
  	// prepare for message bus events
  	eventProperties := common.PropertiesFromContext(ctx)
  	eventProperties[common.PropertyTypeAppName.Name] = composeApp.Name
+--- a/service/container.go
++++ b/service/container.go
+@@ -561,31 +561,16 @@
+ }
+ 
+ func (ds *dockerService) RecreateContainer(ctx context.Context, id string, pull bool, force bool) error {
+-	containerInfo, err := docker.Container(ctx, id)
+-	if err != nil {
+-		return err
+-	}
+-
+-	isImageUpdated := false
+-	if pull {
+-		imageName := docker.ImageName(containerInfo)
+-		if imageName != "" {
+-			_isImageUpdated, err := ds.PullLatestImage(ctx, imageName) // image update result will be included in ctx properties
+-			if err != nil {
+-				logger.Error("pull new image failed", zap.Error(err), zap.String("image", imageName))
+-			}
+-			isImageUpdated = _isImageUpdated
+-		}
+-	}
+-
+-	if !force && !isImageUpdated {
+-		return nil
+-	}
++	return recreateContainer(ctx,id,pull,force,recreateDeps{inspect:docker.Container,image:docker.Image,pull:ds.PullLatestImage,current:CheckContainerRecreation,effective:checkRecreationCandidate,finish:ds.finishRecreation})
++}
++
++func (ds *dockerService) finishRecreation(ctx context.Context, containerInfo *types.ContainerJSON, plan *docker.ContainerClonePlan) error {
++	id:=containerInfo.ID
+ 
+ 	// Clone the old container
+ 	var newID string
+ 	if err := func() error {
+-		tempName := fmt.Sprintf("%s-%s", containerInfo.Name, random.RandomString(4, false))
++		tempName := fmt.Sprintf("%s-%s", strings.TrimPrefix(containerInfo.Name,"/"), random.RandomString(4, false))
+ 
+ 		go PublishEventWrapper(ctx, common.EventTypeContainerCreateBegin, map[string]string{
+ 			common.PropertyTypeContainerName.Name: tempName,
+@@ -596,7 +581,7 @@
+ 			common.PropertyTypeContainerName.Name: tempName,
+ 		})
+ 
+-		_newID, err := docker.CloneContainer(ctx, id, tempName)
++		_newID, err := docker.CloneContainerFromPlan(ctx, plan, tempName)
+ 		if err != nil {
+ 			go PublishEventWrapper(ctx, common.EventTypeContainerCreateError, map[string]string{
+ 				common.PropertyTypeContainerName.Name: tempName,
 --- /dev/null
 +++ b/service/syncthing_legacy.go
 @@ -0,0 +1,153 @@
@@ -1676,8 +2080,182 @@
 +	}
 +}
 --- /dev/null
++++ b/service/syncthing_recreate.go
+@@ -0,0 +1,65 @@
++package service
++
++import (
++	"context"
++	"time"
++
++	"github.com/IceWhaleTech/CasaOS-AppManagement/pkg/docker"
++	"github.com/docker/docker/api/types"
++)
++
++// CheckContainerRecreation checks CURRENT only; effective admission is private.
++func CheckContainerRecreation(ctx context.Context, inspected *types.ContainerJSON) error {
++	return checkRecreationIdentity(ctx,inspected,checkSyncthingPolicy)
++}
++
++func checkRecreationIdentity(ctx context.Context, inspected *types.ContainerJSON, check func(context.Context,string,*syncthingIdentity,*syncthingIdentity)error) error {
++	if ctx.Err()!=nil {return errSyncthingPolicy}
++	identities,err:=legacyIdentities(inspected)
++	if err!=nil{return errSyncthingPolicy}
++	for _,identity:=range identities {if check(ctx,"container-recreate",identity,nil)!=nil {return errSyncthingPolicy}}
++	return nil
++}
++
++func checkRecreationCandidate(ctx context.Context, candidate *types.ContainerJSON)error {
++	return checkRecreationIdentity(ctx,candidate,checkSyncthingPolicy)
++}
++
++type recreateDeps struct {
++	inspect func(context.Context,string)(*types.ContainerJSON,error)
++	image func(context.Context,string)(*types.ImageInspect,error)
++	pull func(context.Context,string)(bool,error)
++	current func(context.Context,*types.ContainerJSON)error
++	effective func(context.Context,*types.ContainerJSON)error
++	finish func(context.Context,*types.ContainerJSON,*docker.ContainerClonePlan)error
++}
++
++func recreateContainer(ctx context.Context,id string,pull,force bool,deps recreateDeps)error {
++	ctx,cancel:=context.WithTimeout(ctx,10*time.Minute);defer cancel()
++	readCtx,readCancel:=context.WithTimeout(ctx,3*time.Second)
++	current,err:=deps.inspect(readCtx,id)
++	readFailed:=readCtx.Err()!=nil
++	readCancel()
++	if err!=nil || readFailed || current==nil || current.ContainerJSONBase==nil || current.ID!=id || deps.current(ctx,current)!=nil {return errSyncthingPolicy}
++	updated:=false
++	if pull {
++		if current.Config==nil || current.Config.Image=="" {return errSyncthingPolicy}
++		updated,err=deps.pull(ctx,docker.ImageName(current))
++		if err!=nil{return err}
++	}
++	if ctx.Err()!=nil{return errSyncthingPolicy}
++	if !force && !updated{return nil}
++	if current.State==nil{return errSyncthingPolicy}
++	readImage:=func(ref string)(*types.ImageInspect,error){
++		readCtx,cancel:=context.WithTimeout(ctx,3*time.Second);defer cancel()
++		image,err:=deps.image(readCtx,ref)
++		if err!=nil || readCtx.Err()!=nil{return nil,errSyncthingPolicy}
++		return image,nil
++	}
++	// Exactly one target-reference lookup after optional image staging.
++	target,err:=readImage(docker.ImageName(current));if err!=nil{return errSyncthingPolicy}
++	old,err:=readImage(current.Image);if err!=nil{return errSyncthingPolicy}
++	plan,err:=docker.PrepareContainerClone(current,old,target)
++	if err!=nil || deps.effective(ctx,plan.EffectiveContainer())!=nil || ctx.Err()!=nil{return errSyncthingPolicy}
++	return deps.finish(ctx,current,plan)
++}
+--- /dev/null
++++ b/service/syncthing_recreate_test.go
+@@ -0,0 +1,103 @@
++package service
++
++import (
++	"context"
++	"errors"
++	"reflect"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/IceWhaleTech/CasaOS-AppManagement/pkg/docker"
++	"github.com/docker/docker/api/types"
++	"github.com/docker/docker/api/types/container"
++	"github.com/docker/docker/api/types/network"
++)
++
++func recreateFixture() (*types.ContainerJSON,*types.ImageInspect,*types.ImageInspect) {
++	c:=legacyFixture();c.Image="sha256:"+strings.Repeat("b",64);c.Config.Image="ordinary:latest";c.HostConfig=&container.HostConfig{};c.State=&types.ContainerState{};c.NetworkSettings=&types.NetworkSettings{Networks:map[string]*network.EndpointSettings{}}
++	return c,&types.ImageInspect{ID:c.Image,Config:&container.Config{Labels:map[string]string{}}},&types.ImageInspect{ID:"sha256:"+strings.Repeat("c",64),Config:&container.Config{Labels:map[string]string{}}}
++}
++
++func recreateDependencies(t *testing.T,c *types.ContainerJSON,old,target *types.ImageInspect,calls *[]string)recreateDeps {
++	add:=func(s string){*calls=append(*calls,s)}
++	return recreateDeps{
++		inspect:func(ctx context.Context,id string)(*types.ContainerJSON,error){deadline,ok:=ctx.Deadline();if id!=c.ID||!ok||time.Until(deadline)>3*time.Second{t.Fatal("unbounded/retargeted inspect")};add("inspect");return c,nil},
++		image:func(ctx context.Context,ref string)(*types.ImageInspect,error){deadline,ok:=ctx.Deadline();if !ok||time.Until(deadline)>3*time.Second{t.Fatal("unbounded image inspect")};if ref=="ordinary:latest"{add("target");return target,nil};if ref==c.Image{add("old");return old,nil};t.Fatal("unexpected image lookup");return nil,nil},
++		pull:func(ctx context.Context,ref string)(bool,error){deadline,ok:=ctx.Deadline();if !ok||time.Until(deadline)>10*time.Minute{t.Fatal("unbounded background")};add("pull");return true,nil},
++		current:func(ctx context.Context,c *types.ContainerJSON)error{add("current");return CheckContainerRecreation(ctx,c)},
++		effective:func(ctx context.Context,c *types.ContainerJSON)error{add("effective");return checkRecreationCandidate(ctx,c)},
++		finish:func(ctx context.Context,c *types.ContainerJSON,p *docker.ContainerClonePlan)error{add("finish");if c.ID!=p.EffectiveContainer().ID{t.Fatal("lost stable target")};return nil},
++	}
++}
++
++func recreateMarkers()map[string]map[string]string {
++	return map[string]map[string]string{
++		"project":{"com.docker.compose.project":"local-syncthing"},
++		"case-project":{"com.docker.compose.project":"LOCAL-SYNCTHING"},
++		"legacy":{"name":"LOCAL-SYNCTHING"},
++		"service":{"com.docker.compose.project":"ordinary","com.docker.compose.service":"big-bear-syncthing"},
++		"case-service":{"com.docker.compose.project":"ordinary","com.docker.compose.service":"BIG-BEAR-SYNCTHING"},
++		"working":{"com.docker.compose.project":"ordinary","com.docker.compose.project.working_dir":"/var/lib/casaos/apps/local-syncthing/sub"},
++		"case-working":{"com.docker.compose.project":"ordinary","com.docker.compose.project.working_dir":"/var/lib/casaos/apps/LOCAL-SYNCTHING"},
++		"files":{"com.docker.compose.project":"ordinary","com.docker.compose.project.config_files":"/ordinary.yml,/var/lib/casaos/apps/local-syncthing/docker-compose.yml"},
++		"case-files":{"com.docker.compose.project":"ordinary","com.docker.compose.project.config_files":"/var/lib/casaos/apps/LOCAL-SYNCTHING/compose.yaml"},
++		"all":{"com.docker.compose.project":"local-syncthing","com.docker.compose.service":"big-bear-syncthing","com.docker.compose.project.working_dir":"/var/lib/casaos/apps/local-syncthing","com.docker.compose.project.config_files":"/var/lib/casaos/apps/local-syncthing/compose.yml"},
++	}
++}
++
++func TestSyncthingRecreateAdmission(t *testing.T) {
++	policyFixture(t);t.Setenv("NODE_OPTIONS","--import=/SECRET-SENTINEL")
++	for name,labels:=range recreateMarkers(){t.Run(name,func(t *testing.T){
++		for _,side:=range []string{"current","target","old-default-removed"}{t.Run(side,func(t *testing.T){
++			c,old,target:=recreateFixture()
++			if side=="current"{c.Config.Labels=labels}else{target.Config.Labels=labels}
++			if side=="old-default-removed" {c.Config.Labels=map[string]string{"com.docker.compose.project":"ordinary"};old.Config.Labels=map[string]string{"com.docker.compose.project":"ordinary"}}
++			calls:=[]string{};d:=recreateDependencies(t,c,old,target,&calls)
++			requirePolicyRefusal(t,recreateContainer(context.Background(),c.ID,true,true,d))
++			want:=[]string{"inspect","current"};if side!="current"{want=append(want,"pull","target","old","effective")}
++			if !reflect.DeepEqual(calls,want){t.Fatal(calls,want)}
++		})}
++	})}
++	for _,name:=range []string{"/local-syncthing","/LOCAL-SYNCTHING","/big-bear-syncthing"}{c,old,target:=recreateFixture();c.Name=name;calls:=[]string{};d:=recreateDependencies(t,c,old,target,&calls);for _,pull:=range []bool{false,true}{for _,force:=range []bool{false,true}{calls=nil;requirePolicyRefusal(t,recreateContainer(context.Background(),c.ID,pull,force,d));if !reflect.DeepEqual(calls,[]string{"inspect","current"}){t.Fatal(calls)}}}}
++}
++
++func TestSyncthingRecreateOrdinaryAndNoop(t *testing.T) {
++	policyFixture(t)
++	for _,pull:=range []bool{false,true}{for _,force:=range []bool{false,true}{for _,updated:=range []bool{false,true}{
++		c,old,target:=recreateFixture();calls:=[]string{};d:=recreateDependencies(t,c,old,target,&calls)
++		d.pull=func(context.Context,string)(bool,error){calls=append(calls,"pull");return updated,nil}
++		if err:=recreateContainer(context.Background(),c.ID,pull,force,d);err!=nil{t.Fatal(err)}
++		want:=[]string{"inspect","current"};if pull{want=append(want,"pull")};if force||(pull&&updated){want=append(want,"target","old","effective","finish")}
++		if !reflect.DeepEqual(calls,want){t.Fatal(calls,want)}
++	}}}
++	c,old,target:=recreateFixture();c.Name="/local-syncthing-extra";c.Config.Labels=map[string]string{"com.docker.compose.project":"local-syncthing-extra","com.docker.compose.service":"big-bear-syncthing-extra","com.docker.compose.project.working_dir":"/var/lib/casaos/apps/local-syncthing-extra","com.docker.compose.project.config_files":"/var/lib/casaos/apps/local-syncthing-extra/compose.yml"};calls:=[]string{};d:=recreateDependencies(t,c,old,target,&calls)
++	target.Config.Labels=map[string]string{"com.docker.compose.project":"local-syncthing"}
++	if err:=recreateContainer(context.Background(),c.ID,false,true,d);err!=nil{t.Fatal("runtime override must win",err)}
++}
++
++func TestSyncthingRecreateFailures(t *testing.T) {
++	policyFixture(t)
++	for _,stage:=range []string{"inspect","nil","cancel-inspect","current","pull","target","old","effective","finish","invalid-target","missing-config","invalid-current","missing-host"}{t.Run(stage,func(t *testing.T){
++		c,old,target:=recreateFixture();calls:=[]string{};d:=recreateDependencies(t,c,old,target,&calls)
++		ctx,cancel:=context.WithCancel(context.Background());defer cancel();failure:=errors.New("SECRET-SENTINEL")
++		switch stage {
++		case "inspect":d.inspect=func(context.Context,string)(*types.ContainerJSON,error){return nil,failure}
++		case "nil":d.inspect=func(context.Context,string)(*types.ContainerJSON,error){return nil,nil}
++		case "cancel-inspect":d.inspect=func(context.Context,string)(*types.ContainerJSON,error){cancel();return c,nil}
++		case "current":d.current=func(context.Context,*types.ContainerJSON)error{return failure}
++		case "pull":d.pull=func(context.Context,string)(bool,error){return false,failure}
++		case "target","old":original:=d.image;d.image=func(ctx context.Context,ref string)(*types.ImageInspect,error){if (stage=="target"&&ref=="ordinary:latest")||(stage=="old"&&ref==c.Image){return nil,failure};return original(ctx,ref)}
++		case "effective":d.effective=func(context.Context,*types.ContainerJSON)error{return failure}
++		case "finish":d.finish=func(context.Context,*types.ContainerJSON,*docker.ContainerClonePlan)error{return failure}
++		case "invalid-target":target.ID="ordinary:latest"
++		case "missing-config":c.Config=nil
++		case "invalid-current":c.Config.Labels["com.docker.compose.project.config_files"]="/ordinary.yml,"
++		case "missing-host":c.HostConfig=nil
++		}
++		if err:=recreateContainer(ctx,c.ID,true,true,d);err==nil{t.Fatal("failure admitted")}
++		for _,call:=range calls{if call=="finish"{t.Fatal("effect after denial",calls)}}
++	})}
++	c,_,_:=recreateFixture();requirePolicyRefusal(t,checkRecreationIdentity(context.Background(),c,func(context.Context,string,*syncthingIdentity,*syncthingIdentity)error{return errors.New("SECRET-SENTINEL")}))
++	if err:=CheckLegacyContainerMutation(context.Background(),"container-recreate",c,nil);err!=errSyncthingPolicy{t.Fatal("legacy API widened")}
++}
+--- /dev/null
 +++ b/service/testdata/syncthing-manager-policy.mjs
-@@ -0,0 +1,206 @@
+@@ -0,0 +1,207 @@
 +import { posix } from 'node:path';
 +import { pathToFileURL } from 'node:url';
 +
@@ -1696,6 +2274,7 @@
 +  'legacy-uninstall',
 +  'legacy-archive',
 +  'legacy-terminal',
++  'container-recreate',
 +]);
 +const root = '/var/lib/casaos/apps/local-syncthing';
 +const limit = 65536;

@@ -626,9 +626,18 @@ update CANDIDATE before writers, async success or WebSocket upgrade/exec. Actual
 service and shared-handler httptest controls use injected writers/terminal
 continuation, not a live Docker mutation or interactive session. Neither manager is installed or executed by this
 source publication. Live rollout/rollback, aliases/custody, ordinary-project impact
-and root-RC coverage remain unverified. The separately reachable v2
-`recreateContainerByID` async pull/clone/remove path remains LIVE-readiness Blocking,
-outside the four-legacy-trigger pass. PGDATA provisioning, database startup and
+and root-RC coverage remain unverified. The reachable v2
+`recreateContainerByID` path now synchronously admits inspected CURRENT before
+scheduling/HTTP200 and rechecks it at service entrance before optional image
+staging. HTTP200 means scheduled only: a protected effective image candidate
+produces sanitized asynchronous failure before container effects, not retroactive403.
+An immutable deep-copied clone plan binds old-default removal/runtime overrides
+plus target-image default labels and the inspected target image ID; actual creation
+never resolves the tag again. Real helper/orchestration/clone/httptest controls use
+injected Docker dependencies, not deployed daemon evidence. Background work is
+bounded10minutes with reads3s. External daemon/root races, nonidentity image effects
+and ordinary-project/live rollback behavior remain separate gates.
+PGDATA provisioning, database startup and
 public deployment remain held; primary outcome and privacy readiness remain false.
 
 ## Backups
