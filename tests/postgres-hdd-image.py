@@ -30,7 +30,11 @@ assert image['Config']['Env'] == original['Config']['Env']
 config_delta = {k: [original['Config'].get(k), image['Config'].get(k)]
                 for k in set(original['Config']) | set(image['Config'])
                 if original['Config'].get(k) != image['Config'].get(k)}
-assert set(config_delta) <= {'Entrypoint'}, config_delta
+# BuildKit emits ArgsEscaped=true for CMD, unlike the pinned upstream config.
+# Docker uses this legacy field only on Windows, never this asserted Linux image;
+# require the exact observed serialization delta, not arbitrary config changes.
+assert config_delta.get('ArgsEscaped') == [None, True], config_delta
+assert set(config_delta) == {'Entrypoint', 'ArgsEscaped'}, config_delta
 packages = []
 for ref in (base, image['Id']):
     # No entrypoint/DB/data mount; packages only, bounded and network-isolated.
@@ -96,4 +100,5 @@ print(json.dumps({'base_reference': base, 'base_id': original['Id'], 'image_id':
                   'only_added_file': gate, 'gate_sha256': hashlib.sha256(executable).hexdigest(),
                   'image_parent_before': baseline_metadata[parent],
                   'image_parent_after': final_metadata[parent],
+                  'linux_ignored_argsescaped_delta': config_delta['ArgsEscaped'],
                   'runtime_packages_unchanged': True, 'image_bytes': image['Size']}))
