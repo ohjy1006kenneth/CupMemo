@@ -16,7 +16,7 @@
  
  	"github.com/docker/distribution/reference"
  )
-@@ -21,6 +23,64 @@
+@@ -21,6 +23,106 @@
  
  // ChallengeHeader is the HTTP Header containing challenge instructions
  const ChallengeHeader = "WWW-Authenticate"
@@ -26,20 +26,34 @@
 +func registryRequest(ctx context.Context, client *http.Client, method, address, token string) (*http.Response, context.CancelFunc, error) {
 +	readCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 +	req, err := http.NewRequestWithContext(readCtx, method, address, nil)
-+	if err != nil { cancel(); return nil, nil, err }
++	if err != nil {
++		cancel()
++		return nil, nil, err
++	}
 +	req.Header.Set("User-Agent", "CasaOS")
-+	if token != "" { addDefaultHeaders(&req.Header, token) }
++	if token != "" {
++		addDefaultHeaders(&req.Header, token)
++	}
 +	res, err := client.Do(req)
-+	if err != nil { cancel(); return nil, nil, err }
++	if err != nil {
++		cancel()
++		return nil, nil, err
++	}
 +	return res, cancel, nil
 +}
 +
 +func getChallengeContext(ctx context.Context, client *http.Client, imageName string) (string, error) {
-+	if _, err := reference.ParseNormalizedNamed(imageName); err != nil { return "", err }
++	if _, err := reference.ParseNormalizedNamed(imageName); err != nil {
++		return "", err
++	}
 +	address, err := GetChallengeURL(imageName)
-+	if err != nil { return "", err }
++	if err != nil {
++		return "", err
++	}
 +	res, cancel, err := registryRequest(ctx, client, http.MethodGet, address.String(), "")
-+	if err != nil { return "", err }
++	if err != nil {
++		return "", err
++	}
 +	defer cancel()
 +	defer res.Body.Close()
 +	return strings.ToLower(res.Header.Get(ChallengeHeader)), nil
@@ -47,35 +61,63 @@
 +
 +func getTokenContext(ctx context.Context, client *http.Client, challenge, registryAuth, imageName string) (string, error) {
 +	if strings.HasPrefix(challenge, "basic") {
-+		if registryAuth == "" { return "", errors.New("missing registry credentials") }
++		if registryAuth == "" {
++			return "", errors.New("missing registry credentials")
++		}
 +		return "Basic " + registryAuth, nil
 +	}
-+	if !strings.HasPrefix(challenge, "bearer") { return "", errors.New("unsupported registry challenge") }
++	if !strings.HasPrefix(challenge, "bearer") {
++		return "", errors.New("unsupported registry challenge")
++	}
 +	// Validate before the legacy parser, which assumes every pair contains '='.
 +	for _, pair := range strings.Split(strings.TrimPrefix(challenge, "bearer"), ",") {
-+		if len(strings.Split(pair, "=")) != 2 { return "", errors.New("invalid registry challenge") }
++		if len(strings.Split(pair, "=")) != 2 {
++			return "", errors.New("invalid registry challenge")
++		}
 +		parts := strings.Split(pair, "=")
 +		if strings.TrimSpace(parts[0]) == "realm" {
-+			if _, err := url.Parse(strings.Trim(parts[1], "\"")); err != nil { return "", err }
++			if _, err := url.Parse(strings.Trim(parts[1], "\"")); err != nil {
++				return "", err
++			}
 +		}
 +	}
-+	if strings.Contains(imageName, ":") { imageName = strings.Split(imageName, ":")[0] }
++	if strings.Contains(imageName, ":") {
++		imageName = strings.Split(imageName, ":")[0]
++	}
 +	address, err := GetAuthURL(challenge, imageName)
-+	if err != nil { return "", err }
-+	if address.Scheme != "https" || address.Host == "" { return "", errors.New("invalid registry token URL") }
++	if err != nil {
++		return "", err
++	}
++	if address.Scheme != "https" || address.Host == "" {
++		return "", errors.New("invalid registry token URL")
++	}
 +	token := ""
-+	if registryAuth != "" { token = "Basic " + registryAuth }
++	if registryAuth != "" {
++		token = "Basic " + registryAuth
++	}
 +	res, cancel, err := registryRequest(ctx, client, http.MethodGet, address.String(), token)
-+	if err != nil { return "", err }
++	if err != nil {
++		return "", err
++	}
 +	defer cancel()
 +	defer res.Body.Close()
-+	if res.StatusCode != http.StatusOK { return "", errors.New("registry token refused") }
++	if res.StatusCode != http.StatusOK {
++		return "", errors.New("registry token refused")
++	}
 +	body, err := io.ReadAll(io.LimitReader(res.Body, 1024*1024+1))
-+	if err != nil { return "", err }
-+	if len(body) > 1024*1024 { return "", errors.New("registry token response too large") }
++	if err != nil {
++		return "", err
++	}
++	if len(body) > 1024*1024 {
++		return "", errors.New("registry token response too large")
++	}
 +	var response TokenResponse
-+	if err := json.Unmarshal(body, &response); err != nil { return "", err }
-+	if response.Token == "" { return "", errors.New("missing registry token") }
++	if err := json.Unmarshal(body, &response); err != nil {
++		return "", err
++	}
++	if response.Token == "" {
++		return "", errors.New("missing registry token")
++	}
 +	return "Bearer " + response.Token, nil
 +}
  
@@ -384,7 +426,7 @@
  	v1 "github.com/opencontainers/image-spec/specs-go/v1"
  )
  
-@@ -31,6 +32,42 @@
+@@ -31,6 +32,62 @@
  
  // ContentDigestHeader is the key for the key-value pair containing the digest header
  const ContentDigestHeader = "Docker-Content-Digest"
@@ -394,33 +436,53 @@
 +func CompareDigestContext(ctx context.Context, imageName string, repoDigests []string) (bool, error) {
 +	transport := http.DefaultTransport.(*http.Transport).Clone()
 +	transport.DisableKeepAlives = true
-+	transport.ResponseHeaderTimeout = 3*time.Second
++	transport.ResponseHeaderTimeout = 3 * time.Second
 +	defer transport.CloseIdleConnections()
-+	client := &http.Client{Transport: transport, Timeout: 3*time.Second}
++	client := &http.Client{Transport: transport, Timeout: 3 * time.Second}
 +	return compareDigestContext(ctx, imageName, repoDigests, client, GetPullOptions)
 +}
 +
 +func compareDigestContext(ctx context.Context, imageName string, repoDigests []string, client *http.Client, options func(string) (types.ImagePullOptions, error)) (bool, error) {
-+	if err := ctx.Err(); err != nil { return false, err }
++	if err := ctx.Err(); err != nil {
++		return false, err
++	}
 +	opts, err := options(imageName)
-+	if err != nil { return false, err }
++	if err != nil {
++		return false, err
++	}
 +	challenge, err := getChallengeContext(ctx, client, imageName)
-+	if err != nil { return false, err }
++	if err != nil {
++		return false, err
++	}
 +	token, err := getTokenContext(ctx, client, challenge, TransformAuth(opts.RegistryAuth), imageName)
-+	if err != nil { return false, err }
++	if err != nil {
++		return false, err
++	}
 +	address, err := BuildManifestURL(imageName)
-+	if err != nil { return false, err }
++	if err != nil {
++		return false, err
++	}
 +	res, cancel, err := registryRequest(ctx, client, http.MethodHead, address, token)
-+	if err != nil { return false, err }
++	if err != nil {
++		return false, err
++	}
 +	defer cancel()
 +	defer res.Body.Close()
-+	if err := ctx.Err(); err != nil { return false, err }
-+	if res.StatusCode != http.StatusOK { return false, errors.New("registry digest refused") }
++	if err := ctx.Err(); err != nil {
++		return false, err
++	}
++	if res.StatusCode != http.StatusOK {
++		return false, errors.New("registry digest refused")
++	}
 +	digest := res.Header.Get(ContentDigestHeader)
-+	if digest == "" { return false, errors.New("missing registry digest") }
++	if digest == "" {
++		return false, errors.New("missing registry digest")
++	}
 +	for _, local := range repoDigests {
 +		parts := strings.SplitN(local, "@", 2)
-+		if len(parts) == 2 && parts[1] == digest { return true, nil }
++		if len(parts) == 2 && parts[1] == digest {
++			return true, nil
++		}
 +	}
 +	return false, ctx.Err()
 +}
@@ -429,7 +491,7 @@
  func CompareDigest(imageName string, repoDigests []string) (bool, error) {
 --- /dev/null
 +++ b/pkg/docker/registry_context_test.go
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,145 @@
 +package docker
 +
 +import (
@@ -449,9 +511,9 @@
 +func (f recreateTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 +
 +type recreateBody struct {
-+	ctx context.Context
++	ctx    context.Context
 +	closed bool
-+	read bool
++	read   bool
 +}
 +
 +func (b *recreateBody) Read([]byte) (int, error) {
@@ -471,10 +533,14 @@
 +				calls := 0
 +				client := &http.Client{Transport: recreateTransport(func(r *http.Request) (*http.Response, error) {
 +					calls++
-+					if _, ok := r.Context().Deadline(); !ok { t.Fatal("unbounded request") }
++					if _, ok := r.Context().Deadline(); !ok {
++						t.Fatal("unbounded request")
++					}
 +					which := map[int]string{1: "challenge-header", 2: "token-header", 3: "digest-header"}[calls]
 +					if stage == which {
-+						if parentCancel { cancel() }
++						if parentCancel {
++							cancel()
++						}
 +						<-r.Context().Done()
 +						return nil, r.Context().Err()
 +					}
@@ -484,16 +550,26 @@
 +						if stage == "token-body" {
 +							body = &recreateBody{ctx: r.Context()}
 +							res.Body = body
-+							if parentCancel { cancel() }
-+						} else { res.Body = io.NopCloser(strings.NewReader(`{"token":"ordinary"}`)) }
++							if parentCancel {
++								cancel()
++							}
++						} else {
++							res.Body = io.NopCloser(strings.NewReader(`{"token":"ordinary"}`))
++						}
 +					}
 +					return res, nil
 +				})}
 +				started := time.Now()
 +				_, err := compareDigestContext(ctx, "registry.test/ordinary:latest", nil, client, func(string) (types.ImagePullOptions, error) { return types.ImagePullOptions{}, nil })
-+				if err == nil || time.Since(started) > time.Second { t.Fatal("unbounded or successful cancellation", err) }
-+				if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) { t.Fatal(err) }
-+				if body != nil && (!body.closed || !body.read || body.ctx.Err() == nil) { t.Fatal("body not canceled and closed") }
++				if err == nil || time.Since(started) > time.Second {
++					t.Fatal("unbounded or successful cancellation", err)
++				}
++				if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
++					t.Fatal(err)
++				}
++				if body != nil && (!body.closed || !body.read || body.ctx.Err() == nil) {
++					t.Fatal("body not canceled and closed")
++				}
 +			})
 +		}
 +	}
@@ -506,19 +582,33 @@
 +		client := &http.Client{Transport: recreateTransport(func(r *http.Request) (*http.Response, error) {
 +			calls++
 +			res := &http.Response{StatusCode: 200, Header: make(http.Header), Body: &recreateTrackedBody{Reader: strings.NewReader(`{"token":"ordinary"}`), closed: &closed}}
-+			if basic { res.Header.Set(ChallengeHeader, "Basic realm=registry") } else { res.Header.Set(ChallengeHeader, `Bearer realm="https://registry.test/token",service="registry.test"`) }
++			if basic {
++				res.Header.Set(ChallengeHeader, "Basic realm=registry")
++			} else {
++				res.Header.Set(ChallengeHeader, `Bearer realm="https://registry.test/token",service="registry.test"`)
++			}
 +			if r.Method == http.MethodHead {
-+				if r.Header.Get("Authorization") == "" { t.Fatal("missing token") }
++				if r.Header.Get("Authorization") == "" {
++					t.Fatal("missing token")
++				}
 +				res.Header.Set(ContentDigestHeader, "sha256:ordinary")
 +			}
 +			return res, nil
 +		})}
-+		match, err := compareDigestContext(context.Background(), "registry.test/ordinary:latest", []string{"registry.test/ordinary@sha256:ordinary"}, client, func(string) (types.ImagePullOptions, error) { return types.ImagePullOptions{RegistryAuth: "ordinary"}, nil })
-+		if err != nil || !match || closed != calls || calls != map[bool]int{false: 3, true: 2}[basic] { t.Fatal(match, err, calls, closed) }
++		match, err := compareDigestContext(context.Background(), "registry.test/ordinary:latest", []string{"registry.test/ordinary@sha256:ordinary"}, client, func(string) (types.ImagePullOptions, error) {
++			return types.ImagePullOptions{RegistryAuth: "ordinary"}, nil
++		})
++		if err != nil || !match || closed != calls || calls != map[bool]int{false: 3, true: 2}[basic] {
++			t.Fatal(match, err, calls, closed)
++		}
 +	}
 +}
 +
-+type recreateTrackedBody struct { *strings.Reader; closed *int }
++type recreateTrackedBody struct {
++	*strings.Reader
++	closed *int
++}
++
 +func (b *recreateTrackedBody) Close() error { *b.closed++; return nil }
 +
 +func TestSyncthingRecreateRegistryReadBound(t *testing.T) {
@@ -528,15 +618,24 @@
 +	})}
 +	started := time.Now()
 +	_, err := compareDigestContext(context.Background(), "registry.test/ordinary:latest", nil, client, func(string) (types.ImagePullOptions, error) { return types.ImagePullOptions{}, nil })
-+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) > 4*time.Second { t.Fatal("missing actual 3s registry bound", err) }
++	if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) > 4*time.Second {
++		t.Fatal("missing actual 3s registry bound", err)
++	}
 +}
 +
 +func TestSyncthingRecreateRegistryInvalidAndCompatibility(t *testing.T) {
 +	for _, challenge := range []string{"bearer invalid", `bearer realm="%",service="registry.test"`, `bearer realm="http://registry.test/token",service="registry.test"`, "unknown", "basic"} {
-+		client := &http.Client{Transport: recreateTransport(func(*http.Request) (*http.Response, error) { t.Fatal("invalid challenge issued request"); return nil, nil })}
-+		if _, err := getTokenContext(context.Background(), client, challenge, "", "ordinary:latest"); err == nil { t.Fatal("invalid challenge admitted") }
++		client := &http.Client{Transport: recreateTransport(func(*http.Request) (*http.Response, error) {
++			t.Fatal("invalid challenge issued request")
++			return nil, nil
++		})}
++		if _, err := getTokenContext(context.Background(), client, challenge, "", "ordinary:latest"); err == nil {
++			t.Fatal("invalid challenge admitted")
++		}
 +	}
-+	if got, err := GetToken("basic", "ordinary", "ordinary"); err != nil || got != "Basic ordinary" { t.Fatal("unrelated wrapper behavior changed") }
++	if got, err := GetToken("basic", "ordinary", "ordinary"); err != nil || got != "Basic ordinary" {
++		t.Fatal("unrelated wrapper behavior changed")
++	}
 +}
 --- a/route/v1/docker.go
 +++ b/route/v1/docker.go
@@ -1614,7 +1713,7 @@
  				common.PropertyTypeContainerName.Name: tempName,
 --- /dev/null
 +++ b/service/recreation_image.go
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,68 @@
 +package service
 +
 +import (
@@ -1644,34 +1743,48 @@
 +}
 +
 +type recreationImageDeps struct {
-+	image func(context.Context, string) (*types.ImageInspect, error)
-+	compare func(context.Context, string, []string) (bool, error)
-+	pull func(context.Context, string, func(io.ReadCloser)) error
++	image    func(context.Context, string) (*types.ImageInspect, error)
++	compare  func(context.Context, string, []string) (bool, error)
++	pull     func(context.Context, string, func(io.ReadCloser)) error
 +	progress func(io.ReadCloser)
 +}
 +
 +func stageRecreationImage(ctx context.Context, name string, deps recreationImageDeps) (bool, error) {
-+	if ctx.Err() != nil || strings.HasPrefix(name, "sha256:") { return false, errSyncthingPolicy }
++	if ctx.Err() != nil || strings.HasPrefix(name, "sha256:") {
++		return false, errSyncthingPolicy
++	}
 +	inspect := func() (*types.ImageInspect, error) {
 +		readCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 +		defer cancel()
 +		image, err := deps.image(readCtx, name)
-+		if err != nil || readCtx.Err() != nil || image == nil || image.ID == "" { return nil, errSyncthingPolicy }
++		if err != nil || readCtx.Err() != nil || image == nil || image.ID == "" {
++			return nil, errSyncthingPolicy
++		}
 +		return image, nil
 +	}
 +	before, err := inspect()
-+	if err != nil { return false, errSyncthingPolicy }
++	if err != nil {
++		return false, errSyncthingPolicy
++	}
 +	match, err := deps.compare(ctx, name, before.RepoDigests)
-+	if err != nil || ctx.Err() != nil { return false, errSyncthingPolicy }
-+	if match { return false, nil }
-+	if err := deps.pull(ctx, name, deps.progress); err != nil || ctx.Err() != nil { return false, errSyncthingPolicy }
++	if err != nil || ctx.Err() != nil {
++		return false, errSyncthingPolicy
++	}
++	if match {
++		return false, nil
++	}
++	if err := deps.pull(ctx, name, deps.progress); err != nil || ctx.Err() != nil {
++		return false, errSyncthingPolicy
++	}
 +	after, err := inspect()
-+	if err != nil || ctx.Err() != nil { return false, errSyncthingPolicy }
++	if err != nil || ctx.Err() != nil {
++		return false, errSyncthingPolicy
++	}
 +	return before.ID != after.ID, nil
 +}
 --- /dev/null
 +++ b/service/recreation_image_test.go
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,137 @@
 +package service
 +
 +import (
@@ -1697,9 +1810,13 @@
 +					image: func(readCtx context.Context, _ string) (*types.ImageInspect, error) {
 +						calls++
 +						deadline, ok := readCtx.Deadline()
-+						if !ok || time.Until(deadline) > 3*time.Second { t.Fatal("unbounded inspect") }
++						if !ok || time.Until(deadline) > 3*time.Second {
++							t.Fatal("unbounded inspect")
++						}
 +						if (stage == "initial" && calls == 1) || (stage == "final" && calls == 2) {
-+							if parentCancel { cancel() }
++							if parentCancel {
++								cancel()
++							}
 +							<-readCtx.Done()
 +							return nil, readCtx.Err()
 +						}
@@ -1707,7 +1824,9 @@
 +					},
 +					compare: func(readCtx context.Context, _ string, _ []string) (bool, error) {
 +						if stage == "compare" {
-+							if parentCancel { cancel() }
++							if parentCancel {
++								cancel()
++							}
 +							<-readCtx.Done()
 +							return false, readCtx.Err()
 +						}
@@ -1722,9 +1841,17 @@
 +				d.pull = func(ctx context.Context, name string) (bool, error) { return stageRecreationImage(ctx, name, deps) }
 +				started := time.Now()
 +				err := recreateContainer(ctx, c.ID, true, true, d)
-+				if err != errSyncthingPolicy || time.Since(started) > time.Second { t.Fatal(err, callsLog) }
-+				for _, call := range callsLog { if call == "finish" { t.Fatal("clone after cancellation") } }
-+				if stage != "final" && pulls != 0 { t.Fatal("pull after failed read") }
++				if err != errSyncthingPolicy || time.Since(started) > time.Second {
++					t.Fatal(err, callsLog)
++				}
++				for _, call := range callsLog {
++					if call == "finish" {
++						t.Fatal("clone after cancellation")
++					}
++				}
++				if stage != "final" && pulls != 0 {
++					t.Fatal("pull after failed read")
++				}
 +			})
 +		}
 +	}
@@ -1737,13 +1864,18 @@
 +		_, err := stageRecreationImage(context.Background(), "ordinary:latest", recreationImageDeps{
 +			image: func(ctx context.Context, _ string) (*types.ImageInspect, error) {
 +				calls++
-+				if calls == blocked { <-ctx.Done(); return nil, ctx.Err() }
++				if calls == blocked {
++					<-ctx.Done()
++					return nil, ctx.Err()
++				}
 +				return &types.ImageInspect{ID: "ordinary"}, nil
 +			},
 +			compare: func(context.Context, string, []string) (bool, error) { return false, nil },
-+			pull: func(context.Context, string, func(io.ReadCloser)) error { return nil },
++			pull:    func(context.Context, string, func(io.ReadCloser)) error { return nil },
 +		})
-+		if err != errSyncthingPolicy || time.Since(started) > 4*time.Second { t.Fatal("missing actual 3s inspect bound", err) }
++		if err != errSyncthingPolicy || time.Since(started) > 4*time.Second {
++			t.Fatal("missing actual 3s inspect bound", err)
++		}
 +	}
 +}
 +
@@ -1754,25 +1886,39 @@
 +			updated, err := stageRecreationImage(context.Background(), "ordinary:latest", recreationImageDeps{
 +				image: func(context.Context, string) (*types.ImageInspect, error) {
 +					calls++
-+					if mode == "nil-image" { return nil, nil }
++					if mode == "nil-image" {
++						return nil, nil
++					}
 +					id := "ordinary"
-+					if mode == "updated" && calls == 2 { id = "updated" }
++					if mode == "updated" && calls == 2 {
++						id = "updated"
++					}
 +					return &types.ImageInspect{ID: id}, nil
 +				},
 +				compare: func(context.Context, string, []string) (bool, error) {
-+					if mode == "compare-failure" { return false, errors.New("SECRET-SENTINEL") }
++					if mode == "compare-failure" {
++						return false, errors.New("SECRET-SENTINEL")
++					}
 +					return mode == "match", nil
 +				},
 +				pull: func(context.Context, string, func(io.ReadCloser)) error {
 +					pulls++
-+					if mode == "pull-failure" { return errors.New("SECRET-SENTINEL") }
++					if mode == "pull-failure" {
++						return errors.New("SECRET-SENTINEL")
++					}
 +					return nil
 +				},
 +			})
 +			failure := strings.Contains(mode, "failure") || mode == "nil-image"
-+			if (err != nil) != failure || updated != (mode == "updated") { t.Fatal(updated, err) }
-+			if err != nil && strings.Contains(err.Error(), "SECRET") { t.Fatal("raw error leaked") }
-+			if (mode == "match" || mode == "compare-failure" || mode == "nil-image") && pulls != 0 { t.Fatal("unexpected pull") }
++			if (err != nil) != failure || updated != (mode == "updated") {
++				t.Fatal(updated, err)
++			}
++			if err != nil && strings.Contains(err.Error(), "SECRET") {
++				t.Fatal("raw error leaked")
++			}
++			if (mode == "match" || mode == "compare-failure" || mode == "nil-image") && pulls != 0 {
++				t.Fatal("unexpected pull")
++			}
 +		})
 +	}
 +}

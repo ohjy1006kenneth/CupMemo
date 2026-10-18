@@ -16,8 +16,8 @@
   ],
   "patch": {
     "path": "appmanagement-syncthing-policy.patch",
-    "bytes": 126086,
-    "sha256": "78f57ec00e11ca8943a575b6751fe5b7bc03d9506eb445f60eb1326c5559a9eb"
+    "bytes": 126674,
+    "sha256": "dfe7b6095d7a8ed902e661fa6fa027d63543e8fdc3f5f743e6ce60174834fcd4"
   },
   "upstream_files": [
     {
@@ -69,8 +69,8 @@
   "patched_files": [
     {
       "path": "pkg/docker/auth.go",
-      "bytes": 7791,
-      "sha256": "0d63c40e91572f37ebfc74672e296da6448b169d40da7550f7d2982e5fec2425"
+      "bytes": 7861,
+      "sha256": "775f3e860542c625716b01b93982fb9a42a3983e6910f07d7f4cdeb3b2b52350"
     },
     {
       "path": "pkg/docker/container_clone_plan.go",
@@ -84,13 +84,13 @@
     },
     {
       "path": "pkg/docker/digest.go",
-      "bytes": 6969,
-      "sha256": "bab7cb1eb58eda8b7a17dc47223fba08ca22844b1bb1132487fd19819a5e3e46"
+      "bytes": 7005,
+      "sha256": "c0eddb629fab3d02744e893c99a237b570e4b40e5e4d09cbc82ce59c63d0f259"
     },
     {
       "path": "pkg/docker/registry_context_test.go",
-      "bytes": 5119,
-      "sha256": "8b32ac4fe39f7d9d0b930cbeb549fcdf1819a8af5cef92f13e62a16b557cad9e"
+      "bytes": 5256,
+      "sha256": "8bf6be3f4fbdc782e0990a06838298361dc1f57c67b0c60074eec4bfa293ebc6"
     },
     {
       "path": "route/v1/docker.go",
@@ -139,13 +139,13 @@
     },
     {
       "path": "service/recreation_image.go",
-      "bytes": 2537,
-      "sha256": "4cf5bb3cbd20e79795f87d13a0f831d315e768914fabc465e0badd1135803887"
+      "bytes": 2568,
+      "sha256": "17c521a0e95f8faa11bf7e9e7aea820e576c8c7454a0dcb8adf39f5834a46051"
     },
     {
       "path": "service/recreation_image_test.go",
-      "bytes": 4185,
-      "sha256": "135730aced7af043e1755e893d55d0afcc16d6ce25b5ebb0b1248206934e7c9f"
+      "bytes": 4352,
+      "sha256": "fe4ed1a5d3ead2b1af699f44421f3ced5c98469e6e221a322757ce5c81bca448"
     },
     {
       "path": "service/syncthing_legacy.go",
