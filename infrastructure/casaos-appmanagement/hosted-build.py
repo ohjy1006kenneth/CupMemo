@@ -142,7 +142,11 @@ def main():
     builder = create("build", image["Id"], "bridge")
     command(builder, ["go", "version"])
     go_files = [r["path"] for r in LOCK["patched_files"] if r["path"].endswith(".go")]
-    command(builder, ["gofmt", "-w", *go_files])
+    # gofmt reads runner-owned inputs; the runner writes its own formatted bytes.
+    # cap-drop ALL intentionally does not grant container root DAC override.
+    for name in go_files:
+        formatted_text = command(builder, ["gofmt", name]) + "\n"
+        (WORK / "source" / name).write_text(formatted_text)
     formatted = EVIDENCE / "formatted-source"
     for record_ in LOCK["patched_files"]:
         dest = formatted / record_["path"]
@@ -152,6 +156,8 @@ def main():
         raise RuntimeError("gofmt checkpoint: adopt exported formatted source before ANY compilation; no build attempt consumed")
     command(builder, ["go", "install", LOCK["generator"]], cwd="/work/generator")
     (WORK / "source/codegen/message_bus").mkdir(parents=True)
+    (WORK / "source/codegen").chmod(0o777)
+    (WORK / "source/codegen/message_bus").chmod(0o777)
     command(builder, ["/work/bin/oapi-codegen", "-generate", "types,server,spec", "-package", "codegen", "-o", "codegen/app_management_api.go", "api/app_management/openapi.yaml"])
     command(builder, ["/work/bin/oapi-codegen", "-generate", "types,client", "-package", "message_bus", "-o", "codegen/message_bus/api.go", "/work/message-bus.yaml"])
     generated = ["api/app_management/openapi.yaml", "codegen/app_management_api.go", "codegen/message_bus/api.go"]

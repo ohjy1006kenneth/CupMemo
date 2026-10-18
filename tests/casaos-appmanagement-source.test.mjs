@@ -106,6 +106,13 @@ beforeAll(() => {
 afterAll(() => {
   if (root) fs.rmSync(root, { recursive: true, force: true });
 });
+test('real materializer refuses adversarial archives without execution', () => {
+  const result = run('/usr/bin/python3', ['-B', path.join(bundle, 'test_materialize.py')]);
+  expect(result.error).toBeUndefined();
+  expect(result.status).toBe(0);
+  expect(result.stderr).toContain('Ran 5 tests');
+  expect(result.stderr).toContain('OK');
+});
 test('offline original fixtures are minimal, exact and not a runnable manager', () => {
   expect(lock.upstream_files.map((r) => r.path).sort()).toEqual([
     'LICENSE',
