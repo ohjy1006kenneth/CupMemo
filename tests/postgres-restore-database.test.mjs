@@ -9,6 +9,8 @@ test('read-only snapshot validates exact target, PG17, ownership, empty inventor
   expect(f.seen).toContain('SET LOCAL search_path = pg_catalog');
   expect(f.seen.at(-1)).toBe('ROLLBACK');
   const inventory = f.seen.find((s) => s.includes('restore:inventory'));
+  expect(inventory).toContain('s.subdbid=d.oid');
+  expect(inventory).toContain('d.datname=pg_catalog.current_database()');
   for (const catalog of [
     'pg_rewrite',
     'pg_inherits',

@@ -55,7 +55,7 @@ const inventorySQL = `/* restore:inventory */ SELECT
  (SELECT count(*) FROM pg_catalog.pg_event_trigger) +
  (SELECT count(*) FROM pg_catalog.pg_foreign_server) +
  (SELECT count(*) FROM pg_catalog.pg_publication) +
- (SELECT count(*) FROM pg_catalog.pg_subscription) +
+ (SELECT count(s.oid) FROM pg_catalog.pg_subscription s JOIN pg_catalog.pg_database d ON s.subdbid=d.oid WHERE d.datname=pg_catalog.current_database()) +
  (SELECT count(*) FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace WHERE ${userNamespace} AND t.typrelid=0 AND t.typelem=0) +
  (SELECT count(*) FROM pg_catalog.pg_operator o JOIN pg_catalog.pg_namespace n ON n.oid=o.oprnamespace WHERE ${userNamespace}) +
  (SELECT count(*) FROM pg_catalog.pg_collation o JOIN pg_catalog.pg_namespace n ON n.oid=o.collnamespace WHERE ${userNamespace}) +
