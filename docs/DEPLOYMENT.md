@@ -646,6 +646,13 @@ malformed/truncated/empty streams, read failures and cancellation instead of usi
 the legacy void progress callback. Streaming caps are1MiB per message/64MiB total,
 with3s headers/blocking reads and owned-body cancellation/cleanup. The transitive
 native credential helper is context-bound too; legacy callers are unchanged.
+Recreation owns all real configured SDK transport response bodies per invocation,
+including discarded HTTP errors, negotiation/fallback and SDK retries. Wrapping
+occurs after SDK host/TLS/API initialization, retaining its configured settings;
+close-once body ownership, joined watchers and original idle-transport cleanup are
+covered by controlled real-SDK error/cancel/configuration/isolation regressions.
+Those tests and cached-image forced-recreation failure controls precede the single
+owner-authorized fourth full hosted build; no live Docker proof is implied.
 Actual Docker-client/consumer/staging/forced-recreation tests use a test-tag-only
 private transport bridge, no daemon/listener or production override; normal full
 build excludes the bridge. All affected offline Go tests must pass before the
