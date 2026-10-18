@@ -635,7 +635,13 @@ An immutable deep-copied clone plan binds old-default removal/runtime overrides
 plus target-image default labels and the inspected target image ID; actual creation
 never resolves the tag again. Real helper/orchestration/clone/httptest controls use
 injected Docker dependencies, not deployed daemon evidence. Background work is
-bounded10minutes with reads3s. External daemon/root races, nonidentity image effects
+bounded10minutes with reads3s. Recreation-only registry challenge/token/digest
+requests propagate cancellation through response-body close, with3s request/body
+limits; initial/final staging image inspections also have3s child contexts. Registry
+failure refuses before pull/forced clone rather than using the unrelated legacy
+fallback. Controlled in-process transport/body-stall regressions and fake Docker
+inspection cancellation are offline tests, not live registry/daemon evidence.
+External daemon/root races, nonidentity image effects
 and ordinary-project/live rollback behavior remain separate gates.
 PGDATA provisioning, database startup and
 public deployment remain held; primary outcome and privacy readiness remain false.

@@ -16,14 +16,24 @@
   ],
   "patch": {
     "path": "appmanagement-syncthing-policy.patch",
-    "bytes": 107725,
-    "sha256": "e90e4dde94e313b3b217ff0e1823c3f0843b97cc53a2be04e5bc205f5387bb0f"
+    "bytes": 126086,
+    "sha256": "78f57ec00e11ca8943a575b6751fe5b7bc03d9506eb445f60eb1326c5559a9eb"
   },
   "upstream_files": [
     {
       "path": "LICENSE",
       "bytes": 11357,
       "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "pkg/docker/auth.go",
+      "bytes": 4764,
+      "sha256": "4f4836620066108be9cc3e967d4db9ac2d89641ef2e9243d7374410f95d747f8"
+    },
+    {
+      "path": "pkg/docker/digest.go",
+      "bytes": 5126,
+      "sha256": "dc2d45cc790e94ea845ece2964c7afea1dc0f107e7e28068da472aa1a1b334d3"
     },
     {
       "path": "route/v1/docker.go",
@@ -58,6 +68,11 @@
   ],
   "patched_files": [
     {
+      "path": "pkg/docker/auth.go",
+      "bytes": 7791,
+      "sha256": "0d63c40e91572f37ebfc74672e296da6448b169d40da7550f7d2982e5fec2425"
+    },
+    {
       "path": "pkg/docker/container_clone_plan.go",
       "bytes": 6345,
       "sha256": "b5aa8919ca77a691f8c851495e0abe2497424d769b7927d28a6c2d1a3dc183d0"
@@ -66,6 +81,16 @@
       "path": "pkg/docker/container_clone_plan_test.go",
       "bytes": 5333,
       "sha256": "a62d5350447de0727e7b620d15e06c4b42985a089c9235b3fac2fb852546b181"
+    },
+    {
+      "path": "pkg/docker/digest.go",
+      "bytes": 6969,
+      "sha256": "bab7cb1eb58eda8b7a17dc47223fba08ca22844b1bb1132487fd19819a5e3e46"
+    },
+    {
+      "path": "pkg/docker/registry_context_test.go",
+      "bytes": 5119,
+      "sha256": "8b32ac4fe39f7d9d0b930cbeb549fcdf1819a8af5cef92f13e62a16b557cad9e"
     },
     {
       "path": "route/v1/docker.go",
@@ -109,8 +134,18 @@
     },
     {
       "path": "service/container.go",
-      "bytes": 26284,
-      "sha256": "9d41583c3b2134fce7dffc7f53a6451b17ff96ce7282ad10bb35a9d3d7911d9b"
+      "bytes": 26294,
+      "sha256": "c15c9ad24e1da6159e91810b3703621a7c6b9c83c944ba2b1728683aeec8a8a4"
+    },
+    {
+      "path": "service/recreation_image.go",
+      "bytes": 2537,
+      "sha256": "4cf5bb3cbd20e79795f87d13a0f831d315e768914fabc465e0badd1135803887"
+    },
+    {
+      "path": "service/recreation_image_test.go",
+      "bytes": 4185,
+      "sha256": "135730aced7af043e1755e893d55d0afcc16d6ce25b5ebb0b1248206934e7c9f"
     },
     {
       "path": "service/syncthing_legacy.go",
@@ -715,11 +750,12 @@
   "provenance": {
     "original_implementer": "code-monkey-cupmemo",
     "original_implementation_run_id": 2817,
-    "previous_coder_revision_run_id": 3372,
-    "prior_technical_review_run_id": 3370,
+    "previous_coder_revision_run_id": 3375,
+    "prior_technical_review_run_id": 3377,
     "owner_scope_run_id": 3371,
-    "coder_revision_run_id": 3375,
-    "owner_adjudication_run_id": 3374
+    "coder_revision_run_id": 3378,
+    "owner_adjudication_run_id": 3374,
+    "revision_full_build_number": 3
   },
   "go": {
     "url": "https://go.dev/dl/go1.26.9.linux-arm64.tar.gz",

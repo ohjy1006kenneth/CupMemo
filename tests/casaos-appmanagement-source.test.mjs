@@ -116,6 +116,8 @@ test('real materializer refuses adversarial archives without execution', () => {
 test('offline original fixtures are minimal, exact and not a runnable manager', () => {
   expect(lock.upstream_files.map((r) => r.path).sort()).toEqual([
     'LICENSE',
+    'pkg/docker/auth.go',
+    'pkg/docker/digest.go',
     'route/v1/docker.go',
     'route/v2/compose_app.go',
     'route/v2/docker.go',

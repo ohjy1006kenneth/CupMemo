@@ -5,7 +5,7 @@ manager or permission to launch PostgreSQL. It extends the accepted source-only
 checkpoint (coder3361 / independent3362 / owner3363) on primary hq/t_9cbb487a,
 [Issue11](https://github.com/ohjy1006kenneth/CupMemo/issues/11). Original implementer
 is `code-monkey-cupmemo`, integer original implementation run **2817**; current
-publication revision **3375**, owner scope **3371**, superseding effective-image
+publication revision **3378** (technical3377 B1 correction), owner scope **3371**, superseding effective-image
 amendment and authentic operational adjudication **3374**. `source-lock.json` binds original inputs, modules,
 cumulative patch, authoritative helper and service tests. It does not assert a
 compiled or live PASS. Actual build identities/results reside in the exact-head
@@ -15,7 +15,7 @@ Actions artifact and same-card native evidence, not guessed binary hashes.
 
 - Full upstream revision `cc80b3313113d946f7216ff4b95c3c4b83381149`, fetched only
   by the bounded hosted reproduction script and verified against locked bytes/hash.
-- Six minimal ORIGINAL affected Go files plus upstream LICENSE, solely for offline
+- Eight minimal ORIGINAL affected Go files plus upstream LICENSE, solely for offline
   patch regression. They are not a runnable manager. No applicable upstream NOTICE
   was present in the pinned source.
 - A cumulative patch modifying those real service/routes and adding
@@ -93,7 +93,8 @@ hashes, resource/cleanup receipts and exact modified sources; no module cache or
 toolchain/private configuration is uploaded. Fresh pinned extraction/application
 must reproduce every changed file and unchanged module. No bitwise reproducible
 binary claim is made. Source changes require affected exact-head review/build;
-no blind retries, at most two full build attempts for a concrete changed cause.
+no blind retries. The two original full builds remain counted; owner explicitly
+authorized one additional full build (revision build3) for technical3377 B1 only.
 
 ## Explicit remaining gates
 
@@ -119,6 +120,16 @@ only**, not final admission or success: a newly protected target image yields a
 sanitized async error before any clone/create/stop/start/remove/rename/network
 effect. Ordinary no-op and pull/force defaults remain; failed pull never falls
 through into forced cloning. Whole background work is bounded10minutes, reads3s.
+
+Recreation staging now uses `CompareDigestContext`: actual challenge, bearer-token
+and digest HTTP requests receive child contexts capped at3s, kept alive through
+body consumption/close. The production HTTP client also bounds headers and total
+request/body lifetime. Token bodies have a1MiB cap; cancellation reaches the actual
+transport, not an abandoned synchronous call. Initial/final Docker image reads
+also use3s child contexts. A failed registry read refuses rather than falling back
+to pull/forced clone. Legacy exported helpers and unrelated `PullLatestImage`
+behavior remain unchanged. In-process controlled RoundTripper/body stalls and fake
+Docker inspection tests run network=none; these are not live registry/daemon tests.
 
 For non-no-op work, the target reference is inspected once after optional pull,
 and the old image by immutable ID. `PrepareContainerClone` deep-copies snapshots,
