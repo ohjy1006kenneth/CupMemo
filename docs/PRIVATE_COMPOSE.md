@@ -1,13 +1,83 @@
-# Dormant private Compose preparation (Refs #32)
+# Private Compose and stock CasaOS app preparation (Refs #11, #32)
 
 Primary `hq/t_7077042b`, original coder run3040. This is an **offline configuration
 candidate, not deployment**. Accepted image preparation remains PR82, integrated
 commit `9b000bac4c908bd86cd152968613dd294fa75204`, technical3210 / owner3233,
 postmerge CI38988329447. Offline Compose preparation was accepted in PR83,
 integrated commit `e7c6d04b3adba00bc0e1e15deb3d8bd195db4441`, technical3271 /
-owner3272. This continuation adds source-only guarded startup wiring and a dormant
-service template; the existing HDD guard, Compose model, images, application,
-schema and development configuration remain unchanged. Issues32/42 remain open.
+owner3272. The HDD guard, original Compose model, images, application, schema and
+development configuration remain unchanged. Issues11/32/42 remain open.
+
+## Stock CasaOS app: selected ownership, not a live installation
+
+See [ADR0001](DECISIONS/0001-stock-casaos-app.md) for the user-directed reversal,
+alternatives and migration impact. Primary `hq/t_9cbb487a`, original coder2817.
+
+Kenneth selected **stock CasaOS** and stock CasaOS-AppManagement, not a replacement
+manager. `infrastructure/casaos/docker-compose.yml` is the standalone ordinary app
+candidate: the same three production services and runtime contracts below, plus
+`name: cupmemo` and supported `x-casaos` metadata. Tests compare the complete
+runtime models and exercise both files with the real offline Compose CLI.
+There are no forks, hooks, manager shims, Docker-socket mounts or privileged mounts.
+The former custom-manager bundles, dedicated build workflow and tests are retired
+in a forward source change; historical artifacts/review evidence stay outside
+active product source. Stock host binaries/services need no rollback or restart.
+
+CasaOS is the **single lifecycle owner** for any future installed app. Do not also
+install/enable the dormant `cupmemo-private.service.in` or run the retained
+`private-stack-start.mjs` launcher against the same services. Those source-only
+guarded-start artifacts remain regression-tested reference material, **not the
+selected deployment instructions**. They do not guard CasaOS dashboard operations.
+No live unit, app or unrelated workload is changed by this source pass.
+
+Kenneth accepts **file sharing** in his operator-declared sole-user **Tailscale**
+setup; the CasaOS dashboard is not public. Custom Samba share-exclusion enforcement
+and proof of internet isolation are not deployment prerequisites. Preserve existing
+approved NAS changes without more sharing permission prompts. This acceptance is
+not permission to sync raw live PGDATA, allow concurrent writers or delete data.
+Retain ordinary application auth, private credentials, correct DB ownership,
+HDD-only placement/no-SSD-fallback and database-integrity/backup requirements.
+
+### Supported metadata and actual importer compatibility
+
+The official [Compose/x-casaos specification][casaos-metadata] defines `main`,
+localized title/description, architectures and install tips; ordinary runtime
+configuration uses standard Compose. This candidate is a custom-app preparation,
+not a published store listing. It deliberately omits `port_map`/a dashboard launch
+URL and publishes no port: private browser ingress has not been selected or tested.
+There is no claim that an Open button or a running app is delivered.
+
+**The source is not importable unchanged into the inspected older stock parser.**
+Official AppManagement source at
+`debfa317f0f996b91b43210e8d57799461388704` pins `compose-go v1.20.2` in
+[`go.mod`][casaos-go-mod]. Read-only module metadata from the unchanged installed
+AppManagement binary also identifies v1.20.2. That parser's [schema][casaos-schema] accepts only a
+string/list of strings for `env_file`; it cannot accept the required long-form
+`env_file` with `format: raw` (modern Compose2.30+). The stock
+[`NewComposeAppFromYAML` loader][casaos-loader] uses that parser and a temporary
+working directory; arbitrary external interpolation settings must not be assumed
+available in the dashboard. Suppressing schema validation would not establish
+support. Do not remove raw handling, inline real credentials or change the manager
+to make an import appear successful. The current official app-store docs now cover
+ZimaOS/v2 as well as legacy output; metadata documentation is not installed-CasaOS
+version/behavior evidence.
+
+This is a precise residual for owner adjudication: retain the safe modern Compose
+model and disabled live launch until an ordinary stock import path demonstrably
+preserves secrets, every required runtime field and HDD admission. No custom
+manager, CasaOS DB inspection/chmod/snapshot/migration or new permission request for
+that abandoned route follows. A newer Docker Compose config PASS does not prove
+the installed importer accepts it. Import, start, restart, Pi reboot, absent-HDD
+and positive DB/app behavior are **UNVERIFIED**. `restart: 'no'` stays in both
+files. A no-auto-create bind prevents missing-directory creation, not use of an
+existing SSD directory at the same path. The host guard still needs fresh verified
+mount identity on every authorized launch; CasaOS currently has no demonstrated
+integration. Do not import/install as a test: an importer may immediately start it.
+
+[casaos-metadata]: https://github.com/IceWhaleTech/CasaOS-AppStore/blob/main/docs/specs/compose-and-x-casaos.md
+[casaos-go-mod]: https://github.com/IceWhaleTech/CasaOS-AppManagement/blob/debfa317f0f996b91b43210e8d57799461388704/go.mod
+[casaos-schema]: https://github.com/compose-spec/compose-go/blob/v1.20.2/schema/compose-spec.json
+[casaos-loader]: https://github.com/IceWhaleTech/CasaOS-AppManagement/blob/debfa317f0f996b91b43210e8d57799461388704/service/compose_app.go#L951-L1016
 
 ## What this candidate defines
 
@@ -25,14 +95,14 @@ stack deliberately provides no user-accessible entry point.
 
 Issue #44 now supplies a separate optional dormant
 [Cloudflare overlay](CLOUDFLARE_COMPOSE.md), opt-in profile `tunnel`. This does not
-change the three-service base or the private wrapper/systemd template below.
+change the three-service base. It is not part of the stock CasaOS app candidate.
 Only that overlay's connector joins a new project-local egress network; the base
 web/API/PG network memberships remain unchanged. It is source preparation, not
 an installed connector, public ingress, restart supervisor or activation authority.
 
 All services have `restart: 'no'`: this is **not restart protection delivered**.
 Automatic Docker restarts could bypass the existing Issue11 host guard. The
-prepared wrapper below runs a fresh guard on each service start, but does not
+retained alternative wrapper below runs a fresh guard on each invocation, but does not
 close manual Docker/root bypasses. A separately authorized Issue42/activation
 design must address runtime/reboot/restart safety before changing this policy.
 A successful config check or prior guard
@@ -133,7 +203,10 @@ Those remain mandatory reviewed operator/guard gates, not properties proven by
 Compose's schema. Never render a real API env-file into retained JSON/logs:
 `config --format json` expands its contents and would expose credentials.
 
-## Source-only guarded startup (not installed or authorized to launch)
+## Retained alternative guarded startup (not selected for CasaOS)
+
+Do not install this alternative alongside CasaOS app ownership. It is preserved
+for its useful guard/regression behavior, not a second supervisor.
 
 `infrastructure/scripts/private-stack-start.mjs` exports `runPrivateStack` and
 `main`; importing it is silent and does not probe or spawn. Its production CLI
@@ -226,6 +299,7 @@ HDD/DB/stack/reboot acceptance or permission to activate.
 Run the focused test from the repository root:
 
 ```sh
+corepack pnpm exec vitest run tests/casaos-compose.test.mjs tests/production-compose.test.mjs --maxWorkers=1 --no-file-parallelism
 corepack pnpm exec vitest run tests/private-stack-start.test.mjs tests/production-compose.test.mjs --maxWorkers=1 --no-file-parallelism
 corepack pnpm exec prettier --ignore-path /dev/null --check infrastructure/scripts/private-stack-start.mjs tests/private-stack-start.test.mjs docs/PRIVATE_COMPOSE.md
 corepack pnpm exec eslint infrastructure/scripts/private-stack-start.mjs tests/private-stack-start.test.mjs
@@ -246,6 +320,14 @@ the candidate's explicit false source setting. Neither variant creates the path.
 It does not pull images or inspect real HDD/device/permission state. The rendered dummy
 model stays in memory; only assertion summaries are retained. Tests fail rather
 than skip if the Compose CLI is absent/incompatible.
+
+The separate task-owned SSD Docker fixture uses an existing immutable local Alpine
+image, no network and only a read-only disposable sentinel bind, never PostgreSQL.
+It exercises missing-source refusal with `create_host_path: false` and a positive
+existing-source read, then removes only its exact owned fixture containers. This
+is engine/Compose bind behavior, **not** stock CasaOS import, mount identity,
+absent-HDD/reboot protection or positive production app acceptance. Any engine
+resource-limit warning remains a limitation, not a capacity/security PASS.
 
 The startup tests use disposable task-owned SSD directories, parameter-injected
 mount evidence and fake child transport, never a live Docker daemon/image or DB.
@@ -280,8 +362,9 @@ migrations, NAS changes or public exposure. In particular, resolve together:
    runtime integration. Missing-HDD refusal must prevent SSD fallback and bind creation.
    Check daemon restart, reboot and operator bypasses under separately reviewed
    Issue42 wiring; `restart: 'no'` alone does not prevent a manual start.
-3. Remaining backup/rclone exclusions and CasaOS regeneration durability/privacy
-   evidence. Previously accepted SMB client evidence is not repeated here.
+3. Database-integrity-safe backup/recovery, no raw live-PGDATA sync or concurrent
+   writers. Owner-only NAS sharing is accepted; custom CasaOS regeneration/share
+   exclusion is no longer required. Existing approved NAS isolation is preserved.
 4. Explicit owner/user authority for exact HDD provisioning and private activation,
    including separately authorized migrations and a reversible resource window.
 5. Real DB-backed API readiness/auth/sessions/schema behavior, durable brew

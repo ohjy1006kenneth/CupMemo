@@ -1,0 +1,133 @@
+name: cupmemo
+# Dormant stock CasaOS candidate. See docs/PRIVATE_COMPOSE.md before validation.
+# No default images, production paths, identities or secret values.
+x-bounded-service: &bounded-service
+  platform: linux/arm64
+  pull_policy: never
+  restart: 'no'
+  cpus: 1
+  pids_limit: 128
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '3'
+
+x-node-service: &node-service
+  <<: *bounded-service
+  user: node
+  read_only: true
+  tmpfs: ['/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777']
+
+x-readiness: &readiness
+  interval: 10s
+  timeout: 5s
+  retries: 6
+  start_period: 30s
+
+services:
+  cupmemo-web:
+    <<: *node-service
+    image: ${CUPMEMO_WEB_IMAGE:?CUPMEMO_WEB_IMAGE must select an immutable ARM64 image}
+    mem_limit: 512m
+    memswap_limit: 512m
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: '3101'
+      CUPMEMO_API_ORIGIN: http://cupmemo-api:4101
+    networks: [frontend]
+    depends_on:
+      cupmemo-api:
+        condition: service_healthy
+    healthcheck:
+      <<: *readiness
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3101/sign-in',{signal:AbortSignal.timeout(3000),redirect:'manual'}).then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
+
+  cupmemo-api:
+    <<: *node-service
+    image: ${CUPMEMO_API_IMAGE:?CUPMEMO_API_IMAGE must select an immutable ARM64 image}
+    mem_limit: 256m
+    memswap_limit: 256m
+    env_file:
+      - path: ${CUPMEMO_API_ENV_FILE:?CUPMEMO_API_ENV_FILE must name a private external runtime env file}
+        required: true
+        format: raw
+    environment:
+      NODE_ENV: production
+      CUPMEMO_DB_ENV: production
+      CUPMEMO_API_HOST: 0.0.0.0
+      CUPMEMO_API_PORT: '4101'
+    networks: [frontend, backend]
+    depends_on:
+      cupmemo-postgres:
+        condition: service_healthy
+    healthcheck:
+      <<: *readiness
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4101/ready',{signal:AbortSignal.timeout(3000),redirect:'manual'}).then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
+
+  cupmemo-postgres:
+    <<: *bounded-service
+    image: ${CUPMEMO_POSTGRES_IMAGE:?CUPMEMO_POSTGRES_IMAGE must select an immutable ARM64 PG17 image}
+    user: ${POSTGRES_DATA_UID:?POSTGRES_DATA_UID must be an explicitly verified positive numeric UID}
+    # PROVISIONAL ceiling only: no positive database or Pi capacity acceptance.
+    mem_limit: 512m
+    memswap_limit: 512m
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be explicitly configured}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be explicitly configured}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    secrets:
+      - source: postgres_password
+        target: /run/secrets/postgres_password
+    volumes:
+      - type: bind
+        source: ${POSTGRES_DATA_DIR:?POSTGRES_DATA_DIR must name a pre-existing verified HDD-only directory}
+        target: /var/lib/postgresql/data
+        bind:
+          create_host_path: false
+    networks: [backend]
+    healthcheck:
+      <<: *readiness
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+
+networks:
+  frontend:
+    internal: true
+  backend:
+    internal: true
+
+secrets:
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_FILE:?POSTGRES_PASSWORD_FILE must name a private external password file}
+
+# Stock CasaOS metadata only; no manager patches or privileged hooks.
+# No port_map: there is no published web port or approved dashboard launch URL.
+x-casaos:
+  id: io.github.ohjy1006kenneth.cupmemo
+  main: cupmemo-web
+  architectures: [arm64]
+  category: Productivity
+  developer: CupMemo
+  author: CupMemo
+  title:
+    en_US: CupMemo
+  tagline:
+    en_US: Personal coffee brewing journal
+  description:
+    en_US: Private coffee journal. Offline preparation only; live launch remains held.
+  version: '0.1.0'
+  tips:
+    before_install:
+      en_US: Do not install/start yet. Review docs/PRIVATE_COMPOSE.md for stock importer compatibility and HDD admission. Keep restart disabled.

@@ -1,12 +1,27 @@
 # NAS isolation preparation (Refs #11)
 
+## Superseding stock-CasaOS and sharing decision
+
+The procedure below is retained historical preparation, not a current activation
+instruction or share-exclusion prerequisite. Kenneth selected stock CasaOS/stock
+AppManagement and explicitly accepts file sharing in his private sole-user
+Tailscale setup. Do not introduce custom managers or reopen that permission
+question. Preserve approved NAS changes and historical receipts; no live rollback
+is authorized. Current app ownership/import limitations are in
+[PRIVATE_COMPOSE.md](PRIVATE_COMPOSE.md). HDD/no-SSD-fallback, private secrets,
+proper DB ownership and data integrity still apply; sharing does not permit raw
+live-PGDATA sync, concurrent writers or deletion. PGDATA provisioning, database
+startup and public deployment remain held. Earlier statements below making
+CasaOS share-regeneration durability a deployment prerequisite are superseded.
+
 Issue: https://github.com/ohjy1006kenneth/CupMemo/issues/11. SAME primary HQ card
 `t_9cbb487a`, tenant `cupmemo`. Original implementer `code-monkey-cupmemo`,
 implementation run2817; this preparation continues that unfinished outcome.
 The [current approval](https://github.com/ohjy1006kenneth/CupMemo/issues/11#issuecomment-6157130412),
 [four-file preparation contract](https://github.com/ohjy1006kenneth/CupMemo/issues/11#issuecomment-6157243778)
 and [baseline amendment](https://github.com/ohjy1006kenneth/CupMemo/issues/11#issuecomment-6159413165)
-govern. Prior dated audit observations remain historical, not current permission.
+governed that preparation. Prior dated audit observations remain historical, not
+current permission; the superseding decision above controls current work.
 
 ## Approved versus held
 
