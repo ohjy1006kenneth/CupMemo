@@ -5,7 +5,7 @@ manager or permission to launch PostgreSQL. It extends the accepted source-only
 checkpoint (coder3361 / independent3362 / owner3363) on primary hq/t_9cbb487a,
 [Issue11](https://github.com/ohjy1006kenneth/CupMemo/issues/11). Original implementer
 is `code-monkey-cupmemo`, integer original implementation run **2817**; current
-publication revision **3378** (technical3377 B1 correction), owner scope **3371**, superseding effective-image
+publication revision **3381** (owner3380 B2 redesign after technical3379), owner scope **3371**, superseding effective-image
 amendment and authentic operational adjudication **3374**. `source-lock.json` binds original inputs, modules,
 cumulative patch, authoritative helper and service tests. It does not assert a
 compiled or live PASS. Actual build identities/results reside in the exact-head
@@ -94,7 +94,10 @@ toolchain/private configuration is uploaded. Fresh pinned extraction/application
 must reproduce every changed file and unchanged module. No bitwise reproducible
 binary claim is made. Source changes require affected exact-head review/build;
 no blind retries. The two original full builds remain counted; owner explicitly
-authorized one additional full build (revision build3) for technical3377 B1 only.
+authorized build3 for technical3377 B1, and then exactly one additional full
+build4 for owner3380's redesigned B2 success boundary. All protocol/affected
+regressions must pass BEFORE that full build; failed tests consume no full build
+but remain retained failures, not permission for blind retries.
 
 ## Explicit remaining gates
 
@@ -130,6 +133,30 @@ also use3s child contexts. A failed registry read refuses rather than falling ba
 to pull/forced clone. Legacy exported helpers and unrelated `PullLatestImage`
 behavior remain unchanged. In-process controlled RoundTripper/body stalls and fake
 Docker inspection tests run network=none; these are not live registry/daemon tests.
+
+Recreation now binds `PullImageContext`, never the legacy void progress callback.
+It returns real Docker setup/auth/HTTP and consumer errors, owns client/body
+cleanup, cancels header waits within3s and closes the actual body on parent
+cancellation or a3s blocked read. The short-lived watcher/timers are stopped and
+joined; the parser is synchronous, not an abandoned goroutine. Its strict consumer
+frames and decodes actual Docker JSONMessage objects with a1MiB per-message cap
+and64MiB stream cap, rejecting daemon errorDetail/error, malformed/truncated/empty
+streams, non-EOF read errors and cancellation. Clean EOF after well-formed frames
+is allowed without guessing a final status string. Begin/error/end events remain;
+legacy per-layer best-effort progress is not used as a strict success boundary,
+and daemon message text is never emitted. Failed pulls cannot inspect a cached
+final candidate or reach forced cloning.
+
+The actual options chain was traced to a potentially blocking native Docker
+credential helper. Only recreation uses a3s context-bound counterpart: bounded
+regular config input, bounded helper output, process-group cancellation and finite
+WaitDelay, sanitized refusal on helper failure. File/env/anonymous credentials
+remain supported; unrelated legacy options/auth exports are unchanged.
+Cross-package tests opt in to `cupmemo_recreation_test`, exposing only the private
+adapter dependency seam to a controlled RoundTripper/body. This exercises actual
+Docker ImagePull, strict consumer, staging and forced recreation in one chain,
+not an injected canned pull error. `go list` proves the test bridge is excluded
+from the normal full manager build, which uses no test tag or runtime override.
 
 For non-no-op work, the target reference is inspected once after optional pull,
 and the old image by immutable ID. `PrepareContainerClone` deep-copies snapshots,

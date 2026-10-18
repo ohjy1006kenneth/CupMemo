@@ -162,25 +162,30 @@ def main():
     command(builder, ["/work/bin/oapi-codegen", "-generate", "types,client", "-package", "message_bus", "-o", "codegen/message_bus/api.go", "/work/message-bus.yaml"])
     generated = ["api/app_management/openapi.yaml", "codegen/app_management_api.go", "codegen/message_bus/api.go"]
     record("codegen", {"generator": LOCK["generator"], "message_bus": LOCK["message_bus"], "files": [{"path": p, **identity(WORK / "source" / p)} for p in generated]})
-    command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/service.test", "./service"])
-    command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/route-v1.test", "./route/v1"])
-    command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/route-v2.test", "./route/v2"])
-    command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/pkg-docker.test", "./pkg/docker"])
+    ignored = command(builder, ["go", "list", "-mod=readonly", "-f", "{{join .IgnoredGoFiles \"\\n\"}}", "./pkg/docker"])
+    assert "recreation_testbridge.go" in ignored.splitlines()
+    record("production-test-seam-exclusion", {"ignored_go_files": ignored.splitlines(), "full_build_tags": [], "test_tag": "cupmemo_recreation_test"})
+    # Test-only bridge exposes private production dependencies across package
+    # boundaries. The actual full manager build below DOES NOT set this tag.
+    command(builder, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/service.test", "./service"])
+    command(builder, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/route-v1.test", "./route/v1"])
+    command(builder, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/route-v2.test", "./route/v2"])
+    command(builder, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/pkg-docker.test", "./pkg/docker"])
     resources(builder)
     tester = create("test", image["Id"], "none")
     # Node's official image uses /usr/local/bin; the real production adapter is fixed
     # to /usr/bin/node. This symlink exists ONLY in the disposable test root.
     command(tester, ["/bin/ln", "-s", "/usr/local/bin/node", "/usr/bin/node"])
-    tests = command(tester, ["go", "test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", "./service", "-run", "^TestSyncthingPolicy", "-v"], timeout=180)
+    tests = command(tester, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", "./service", "-run", "^TestSyncthingPolicy", "-v"], timeout=180)
     assert "--- PASS: TestSyncthingPolicy" in tests and "no tests to run" not in tests and "FAIL" not in tests
     record("test-summary", {"top_level_passes": len(re.findall(r"^--- PASS: TestSyncthingPolicy", tests, re.M)), "subtest_passes": len(re.findall(r"^\s+--- PASS:", tests, re.M)), "network": "none", "scope": "existing real focused service package and actual Node helper; fake Docker writers"})
     for package, key in [("./service", "legacy-service"), ("./route/v1", "legacy-route-v1")]:
-        tests = command(tester, ["go", "test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", package, "-run", "^TestSyncthingLegacy", "-v"], timeout=180)
+        tests = command(tester, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", package, "-run", "^TestSyncthingLegacy", "-v"], timeout=180)
         assert "--- PASS: TestSyncthingLegacy" in tests and "no tests to run" not in tests and "FAIL" not in tests
         record(key + "-test-summary", {"top_level_passes": len(re.findall(r"^--- PASS: TestSyncthingLegacy", tests, re.M)), "subtest_passes": len(re.findall(r"^\s+--- PASS:", tests, re.M)), "network": "none", "scope": "actual shared service/handler implementation, real helper; injected Docker writers and terminal continuation, no live session"})
     resources(tester)
     for package, key in [("./service", "recreate-service"), ("./route/v2", "recreate-route-v2"), ("./pkg/docker", "recreate-pkg-docker")]:
-        tests = command(tester, ["go", "test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", package, "-run", "^TestSyncthingRecreate", "-v"], timeout=180)
+        tests = command(tester, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", package, "-run", "^TestSyncthingRecreate", "-v"], timeout=180)
         assert "--- PASS: TestSyncthingRecreate" in tests and "no tests to run" not in tests and "FAIL" not in tests
         record(key + "-test-summary", {"top_level_passes": len(re.findall(r"^--- PASS: TestSyncthingRecreate", tests, re.M)), "subtest_passes": len(re.findall(r"^\s+--- PASS:", tests, re.M)), "network": "none", "scope": "real orchestration/handler/clone plan and production registry chain with controlled RoundTripper/body cancellation, real helper, explicit injected Docker inspections; not live registry/daemon proof"})
     resources(tester)

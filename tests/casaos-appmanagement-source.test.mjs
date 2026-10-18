@@ -136,6 +136,23 @@ test('materialized actual helper admits ordinary identity', () => {
   expect(result.stdout).toBe('{"version":1,"allowed":true}\n');
   expect(result.stderr).toBe('');
 });
+test('strict pull production binding and test-only bridge are distributed exactly', () => {
+  const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
+  const staging = read('service/recreation_image.go');
+  expect(staging).toContain('pull: docker.PullImageContext');
+  expect(staging).toContain('deps.pull(ctx, name, consumeRecreationPull)');
+  expect(staging).not.toContain('pullImageProgress');
+  expect(read('pkg/docker/recreation_testbridge.go')).toMatch(
+    /^\/\/go:build cupmemo_recreation_test\n/,
+  );
+  expect(read('service/recreation_protocol_test.go')).toContain('docker.RecreationPullTestBridge');
+  const hosted = fs.readFileSync(path.join(bundle, 'hosted-build.py'), 'utf8');
+  expect(hosted.indexOf('"go", "build"')).toBeGreaterThan(
+    hosted.indexOf('record(key + "-test-summary"', hosted.indexOf('"recreate-pkg-docker"')),
+  );
+  const buildLine = hosted.split('\n').find((line) => line.includes('"go", "build"'));
+  expect(buildLine).not.toContain('-tags');
+});
 for (const side of ['current', 'candidate']) {
   for (const selector of ['name', 'directory', 'compose', 'service']) {
     test(`materialized helper refuses protected ${side} ${selector}`, () => {

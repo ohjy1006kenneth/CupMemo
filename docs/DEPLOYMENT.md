@@ -641,6 +641,15 @@ limits; initial/final staging image inspections also have3s child contexts. Regi
 failure refuses before pull/forced clone rather than using the unrelated legacy
 fallback. Controlled in-process transport/body-stall regressions and fake Docker
 inspection cancellation are offline tests, not live registry/daemon evidence.
+The strict recreation-only Docker pull adapter now propagates daemon JSON errors,
+malformed/truncated/empty streams, read failures and cancellation instead of using
+the legacy void progress callback. Streaming caps are1MiB per message/64MiB total,
+with3s headers/blocking reads and owned-body cancellation/cleanup. The transitive
+native credential helper is context-bound too; legacy callers are unchanged.
+Actual Docker-client/consumer/staging/forced-recreation tests use a test-tag-only
+private transport bridge, no daemon/listener or production override; normal full
+build excludes the bridge. All affected offline Go tests must pass before the
+single owner-authorized B2 revision full build4. None of this is live approval.
 External daemon/root races, nonidentity image effects
 and ordinary-project/live rollback behavior remain separate gates.
 PGDATA provisioning, database startup and

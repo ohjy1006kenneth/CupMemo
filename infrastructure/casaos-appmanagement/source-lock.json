@@ -16,8 +16,8 @@
   ],
   "patch": {
     "path": "appmanagement-syncthing-policy.patch",
-    "bytes": 128303,
-    "sha256": "3d8ed9fc9724c78dfacfdc13fe4127a4c006a386f0b21ec63ef330e694a7eed2"
+    "bytes": 150780,
+    "sha256": "2ce21471092e97b01b49ec7e16bb5ae1a926e7d664b8d1414283a4d5102af604"
   },
   "upstream_files": [
     {
@@ -84,8 +84,33 @@
     },
     {
       "path": "pkg/docker/digest.go",
-      "bytes": 7005,
-      "sha256": "c0eddb629fab3d02744e893c99a237b570e4b40e5e4d09cbc82ce59c63d0f259"
+      "bytes": 7084,
+      "sha256": "6810e8d88f0163ee9343a2842ec0546bbbe085c2cbcc30a0bea8f8725745a5a5"
+    },
+    {
+      "path": "pkg/docker/image_context.go",
+      "bytes": 2937,
+      "sha256": "7aa2b33f395e3b81e00782f074b50fda4807d7e17b3af03209751ab5fe3f79e2"
+    },
+    {
+      "path": "pkg/docker/image_context_test.go",
+      "bytes": 3777,
+      "sha256": "7618cc56c4c30a8486c4a69e2a0ed22ee7af42d17f9d2949de9118985eb53c5c"
+    },
+    {
+      "path": "pkg/docker/recreation_credentials.go",
+      "bytes": 4130,
+      "sha256": "181413066a29e6d0252c8db3613eb12a4306d77ab71cd623dcf1539eb1f714c9"
+    },
+    {
+      "path": "pkg/docker/recreation_credentials_test.go",
+      "bytes": 1843,
+      "sha256": "e0c0ca81bb1ab41dd15f3ea96850329fe5a49e384cf1453665a047887708e8be"
+    },
+    {
+      "path": "pkg/docker/recreation_testbridge.go",
+      "bytes": 995,
+      "sha256": "4bc17d31f432c63ba846143eca2d7e9c8381051cd4df043bc20c68aa0ff238a6"
     },
     {
       "path": "pkg/docker/registry_context_test.go",
@@ -139,18 +164,28 @@
     },
     {
       "path": "service/recreation_image.go",
-      "bytes": 2568,
-      "sha256": "17c521a0e95f8faa11bf7e9e7aea820e576c8c7454a0dcb8adf39f5834a46051"
+      "bytes": 2493,
+      "sha256": "68cde40a4a579dcc2e7223a0c9eae54e66e6d3b7b2cdfcab424839f74ae15804"
     },
     {
       "path": "service/recreation_image_test.go",
-      "bytes": 4352,
-      "sha256": "fe4ed1a5d3ead2b1af699f44421f3ced5c98469e6e221a322757ce5c81bca448"
+      "bytes": 4421,
+      "sha256": "b885f237c88e46039c46b8a67fa57071a01530d5f233bcdf65ffd8f0efe1b481"
+    },
+    {
+      "path": "service/recreation_protocol_test.go",
+      "bytes": 5857,
+      "sha256": "56c7ac9247bc878009d6ce2363ffc4138610ceb9089dc7dcfff3b011ff404781"
+    },
+    {
+      "path": "service/recreation_pull.go",
+      "bytes": 1902,
+      "sha256": "7690c3adcdc7c890ccaf9bff54be007b80e3e62bf289018c73ae628264637d70"
     },
     {
       "path": "service/recreation_pull_test.go",
-      "bytes": 1518,
-      "sha256": "7d1af7156698cbee4e31b6ffb824bd7a311dd131476aa9b302201984c324b982"
+      "bytes": 1452,
+      "sha256": "c6652b49ed5793990288b4c4de46e354474b9335992fd72daf026a13cc95ecd9"
     },
     {
       "path": "service/syncthing_legacy.go",
