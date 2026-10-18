@@ -14,7 +14,7 @@ const applicationNamespace = "n.nspname IN ('public','cupmemo','drizzle')";
 const identitySQL = `/* restore:identity */
 SELECT pg_catalog.current_setting('server_version_num') AS version,
  pg_catalog.current_database() AS database, current_user AS username,
- pg_catalog.inet_server_addr()::text AS address, pg_catalog.inet_server_port() AS port,
+ pg_catalog.host(pg_catalog.inet_server_addr()) AS address, pg_catalog.inet_server_port() AS port,
  d.datdba = r.oid AS owner,
  (NOT r.rolsuper AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolreplication
  AND NOT r.rolbypassrls AND r.rolcanlogin AND NOT EXISTS

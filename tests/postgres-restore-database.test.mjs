@@ -8,6 +8,11 @@ test('read-only snapshot validates exact target, PG17, ownership, empty inventor
   expect(f.seen[0]).toBe('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
   expect(f.seen).toContain('SET LOCAL search_path = pg_catalog');
   expect(f.seen.at(-1)).toBe('ROLLBACK');
+  const identity = f.seen.find((s) => s.includes('restore:identity'));
+  // inet::text adds the /32 or /128 mask; host(inet) supplies the address
+  // expected by the exact configured loopback comparison, on real PG17 too.
+  expect(identity).toContain('pg_catalog.host(pg_catalog.inet_server_addr())');
+  expect(identity).not.toContain('inet_server_addr()::text');
   const inventory = f.seen.find((s) => s.includes('restore:inventory'));
   expect(inventory).toContain('s.subdbid=d.oid');
   expect(inventory).toContain('d.datname=pg_catalog.current_database()');

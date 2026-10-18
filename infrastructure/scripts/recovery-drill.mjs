@@ -229,6 +229,12 @@ async function prepare(fixture) {
   phase = 'empty_identities';
   const source = connect('source', fixture),
     target = connect('restore', fixture);
+  const nativeAddress = await source.pool.query(`SELECT
+    pg_catalog.inet_server_addr()::text = '127.0.0.1/32' AS text_includes_mask,
+    pg_catalog.host(pg_catalog.inet_server_addr()) = '127.0.0.1' AS host_is_exact_loopback`);
+  assert.equal(nativeAddress.rows[0].text_includes_mask, true);
+  assert.equal(nativeAddress.rows[0].host_is_exact_loopback, true);
+  mark('native_pg17_inet_text_mask_and_host_loopback_verified');
   await empty(source, 'source');
   await empty(target, 'restore');
   mark('pg17_empty_nonsuperuser_source_and_target');
