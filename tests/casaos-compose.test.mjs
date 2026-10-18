@@ -49,10 +49,17 @@ function offlineModel(relativePath) {
   }
 }
 
-test('stock app preserves the complete production runtime model, without hooks or new mounts', () => {
+test('stock app preserves production runtime fields with supported explicit API environment', () => {
   const base = offlineModel('infrastructure/docker/production.compose.yml');
   const app = offlineModel('infrastructure/casaos/docker-compose.yml');
   const { 'x-casaos': metadata, ...runtime } = app;
+  expect(base.services['cupmemo-api'].env_file[0].format).toBe('raw');
+  delete base.services['cupmemo-api'].env_file;
+  expect(runtime.services['cupmemo-api'].env_file).toBeUndefined();
+  for (const key of ['CUPMEMO_DATABASE_URL_PRODUCTION', 'BETTER_AUTH_SECRET', 'BETTER_AUTH_URL']) {
+    expect(runtime.services['cupmemo-api'].environment[key]).toContain(`\${${key}:?`);
+    delete runtime.services['cupmemo-api'].environment[key];
+  }
   expect(runtime).toEqual(base);
   expect(metadata).toMatchObject({
     id: 'io.github.ohjy1006kenneth.cupmemo',
@@ -104,7 +111,7 @@ test('documents stock ownership, importer limitations and accepted sharing witho
     'UNVERIFIED',
     'file sharing',
     'Tailscale',
-    'not importable unchanged',
+    'private configuration',
   ]) {
     expect(docs).toContain(phrase);
   }

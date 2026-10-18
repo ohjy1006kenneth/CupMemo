@@ -16,8 +16,9 @@ alternatives and migration impact. Primary `hq/t_9cbb487a`, original coder2817.
 Kenneth selected **stock CasaOS** and stock CasaOS-AppManagement, not a replacement
 manager. `infrastructure/casaos/docker-compose.yml` is the standalone ordinary app
 candidate: the same three production services and runtime contracts below, plus
-`name: cupmemo` and supported `x-casaos` metadata. Tests compare the complete
-runtime models and exercise both files with the real offline Compose CLI.
+`name: cupmemo` and supported `x-casaos` metadata. The app variant uses explicit
+API environment entries instead of the modern reference's raw env-file. Tests
+compare effective runtime fields, not identical source serialization.
 There are no forks, hooks, manager shims, Docker-socket mounts or privileged mounts.
 The former custom-manager bundles, dedicated build workflow and tests are retired
 in a forward source change; historical artifacts/review evidence stay outside
@@ -47,32 +48,70 @@ not a published store listing. It deliberately omits `port_map`/a dashboard laun
 URL and publishes no port: private browser ingress has not been selected or tested.
 There is no claim that an Open button or a running app is delivered.
 
-**The source is not importable unchanged into the inspected older stock parser.**
+**Offline stock-import packaging is executable; live installation is still held.**
 Official AppManagement source at
 `debfa317f0f996b91b43210e8d57799461388704` pins `compose-go v1.20.2` in
 [`go.mod`][casaos-go-mod]. Read-only module metadata from the unchanged installed
-AppManagement binary also identifies v1.20.2. That parser's [schema][casaos-schema] accepts only a
-string/list of strings for `env_file`; it cannot accept the required long-form
-`env_file` with `format: raw` (modern Compose2.30+). The stock
-[`NewComposeAppFromYAML` loader][casaos-loader] uses that parser and a temporary
-working directory; arbitrary external interpolation settings must not be assumed
-available in the dashboard. Suppressing schema validation would not establish
-support. Do not remove raw handling, inline real credentials or change the manager
-to make an import appear successful. The current official app-store docs now cover
-ZimaOS/v2 as well as legacy output; metadata documentation is not installed-CasaOS
-version/behavior evidence.
+AppManagement binary also identifies v1.20.2. Its [schema][casaos-schema] cannot
+accept modern long-form `env_file` with `format: raw`. That syntax remains unchanged
+in `infrastructure/docker/production.compose.yml`, but is **not** a requirement
+for this app variant: exact credential values are. The stock
+[`NewComposeAppFromYAML` loader][casaos-loader] uses a temporary working directory,
+so dashboard interpolation environment and `.env` settings must not be assumed.
 
-This is a precise residual for owner adjudication: retain the safe modern Compose
-model and disabled live launch until an ordinary stock import path demonstrably
-preserves secrets, every required runtime field and HDD admission. No custom
-manager, CasaOS DB inspection/chmod/snapshot/migration or new permission request for
-that abandoned route follows. A newer Docker Compose config PASS does not prove
-the installed importer accepts it. Import, start, restart, Pi reboot, absent-HDD
-and positive DB/app behavior are **UNVERIFIED**. `restart: 'no'` stays in both
-files. A no-auto-create bind prevents missing-directory creation, not use of an
-existing SSD directory at the same path. The host guard still needs fresh verified
-mount identity on every authorized launch; CasaOS currently has no demonstrated
-integration. Do not import/install as a test: an importer may immediately start it.
+Short normal flow (offline now, future install only after the holds below lift):
+
+1. Maintain one private JSON object outside Git, with the eight nonsecret inputs
+   `CUPMEMO_WEB_IMAGE`, `CUPMEMO_API_IMAGE`, `CUPMEMO_POSTGRES_IMAGE`,
+   `POSTGRES_DATA_UID`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_DATA_DIR`,
+   `POSTGRES_PASSWORD_FILE`, plus `CUPMEMO_DATABASE_URL_PRODUCTION`,
+   `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`. All values are explicit strings. There
+   is no `CUPMEMO_API_ENV_FILE` in this variant. Preserve the independently verified
+   URL/password relationship and production HTTPS/auth configuration. Use a private
+   operator-owned regular file mode0600 (0400 is also accepted), no hardlinks, in
+   a mode0700 operator-owned directory. Do not copy real values into these docs.
+2. Generate a new private configuration file with the offline Node24 helper:
+
+   ```sh
+   node infrastructure/scripts/casaos-app-prepare.mjs --config /private/operator/app.json --output /private/operator/cupmemo.yml
+   ```
+
+   Both paths must be absolute and normalized, with real nonsymlink parents.
+   Output parent must also be owned mode0700; output is exclusively created0600,
+   never overwritten or followed through a symlink. Failures give a fixed redacted
+   diagnostic; stdout is empty. A failed write may leave an incomplete private new
+   file: inspect privately and choose a new output, never silently reuse it. The
+   helper reads no operator credential file other than the explicitly selected
+   JSON; it does not read the PG password, stat/create PGDATA, source `.env`, call
+   Docker/network/services or grant HDD/secret-readability approval. Its immutable
+   image/positive UID/absolute external-path checks validate shape, not provenance.
+
+3. Only after separate live clearance, use CasaOS Custom Install with that generated
+   private file. It is **stock-import-specific**, not a direct Compose start file.
+   Do not import now even as a test: installation can start containers.
+
+Literal handling is tested against the actual pinned parser, not a guessed dotenv
+dialect. JSON-quoted YAML scalars retain quotes, hashes, backslashes, whitespace
+and Unicode (NUL/ill-formed Unicode refused). Stock Install first interpolates,
+then marshals the model to a private retained file, then reloads it. The helper
+therefore encodes each literal dollar as four dollars in the import file: the
+retained artifact has two, and the final runtime value has one. The PG healthcheck
+uses the same two-stage escaping so its container-side variables survive. Do not
+hand-edit escapes or treat the intermediate model as runtime values. The focused
+offline harness reproduces those public loader/options, YAML marshal and Compose
+v2.23.3 resource normalization with compose-go v1.20.2. It also enforces the schema
+independently (the live install route skips schema validation), checks normalized
+runtime/security/HDD fields and hostile literal values, validates the retained
+artifact using modern Compose, and rejects a single-pass-escaping negative control.
+It runs no manager or live import. UI/settings edits and actual installation are
+not exercised; do not claim arbitrary later dashboard rewrites preserve secrets.
+
+Start, restart, Pi reboot, absent-HDD and positive DB/app behavior remain
+**UNVERIFIED**. `restart: 'no'` stays in both files. A no-auto-create bind prevents
+missing-directory creation, not use of an existing SSD directory at the same path.
+The host guard still needs fresh verified mount identity on every authorized
+launch; CasaOS currently has no demonstrated integration. No custom manager,
+CasaOS DB access/repair or additional sharing permission is needed for this package.
 
 [casaos-metadata]: https://github.com/IceWhaleTech/CasaOS-AppStore/blob/main/docs/specs/compose-and-x-casaos.md
 [casaos-go-mod]: https://github.com/IceWhaleTech/CasaOS-AppManagement/blob/debfa317f0f996b91b43210e8d57799461388704/go.mod
@@ -139,7 +178,8 @@ Use explicitly supplied environment settings, maintained privately outside the
 repository; do not create or commit production values in this pass. The startup
 wrapper does not read/source an interpolation file or load `.env`. Its future
 service may receive settings from a required trusted systemd EnvironmentFile.
-Required Compose interpolation inputs:
+Required modern-reference Compose interpolation inputs (the app JSON variant
+above replaces `CUPMEMO_API_ENV_FILE` with its three explicit API values):
 
 | Variable                 | Required operator selection                                             |
 | ------------------------ | ----------------------------------------------------------------------- |
@@ -176,7 +216,7 @@ check. The existing Issue11 guard must freshly validate device/UUID/ext4,
 ancestry, exact positive UID and0700/0750 data permissions. A path string, numeric
 placeholder or successful config render is not HDD/owner validation.
 
-The API external `env_file` is required and uses Compose `format: raw` to avoid
+The modern-reference API external `env_file` is required and uses Compose `format: raw` to avoid
 accidentally interpolating `$` in credentials. Use a current Docker Compose plugin
 supporting raw env files (2.30+), long bind options and JSON config. Supply
 `CUPMEMO_DATABASE_URL_PRODUCTION`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` there;
@@ -303,7 +343,23 @@ corepack pnpm exec vitest run tests/casaos-compose.test.mjs tests/production-com
 corepack pnpm exec vitest run tests/private-stack-start.test.mjs tests/production-compose.test.mjs --maxWorkers=1 --no-file-parallelism
 corepack pnpm exec prettier --ignore-path /dev/null --check infrastructure/scripts/private-stack-start.mjs tests/private-stack-start.test.mjs docs/PRIVATE_COMPOSE.md
 corepack pnpm exec eslint infrastructure/scripts/private-stack-start.mjs tests/private-stack-start.test.mjs
+corepack pnpm exec vitest run tests/casaos-app-prepare.test.mjs --maxWorkers=1 --no-file-parallelism
 ```
+
+For the separate stock-parser integration check, with an available trusted Go
+toolchain and task-local cache/output (no global install or manager build):
+
+```sh
+cd tests/casaos-importer
+GOMAXPROCS=2 go build -p 1 -o /private/task/cupmemo-offline-importer .
+cd ../..
+node tests/casaos-importer/check.mjs /private/task/cupmemo-offline-importer
+```
+
+The harness is synthetic only and emits a bounded assertion summary; do not pass
+real configuration to it. It fails instead of skipping without Go/Compose. Module
+versions and checksums are pinned in its test-local go.mod/go.sum, not application
+dependencies. The modern reference/guard/launcher remain unchanged.
 
 The unchanged Compose test uses actual installed `docker compose config --format json` and
 `--quiet`, without contacting a daemon (`DOCKER_HOST` is an absent Unix socket).

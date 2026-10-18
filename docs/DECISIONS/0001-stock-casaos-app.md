@@ -38,17 +38,22 @@ privileged hook or new deployment framework is introduced.
   present to undo on the host.
 - Run both CasaOS and the host unit: rejected because duplicated ownership can
   bypass/reorder startup checks and contend over resources.
-- Weaken secret/bind/restart settings to satisfy an older importer: rejected.
-  Stock importer limitations must be documented, not hidden by schema changes.
+- Weaken credential values/bind/restart settings to satisfy an older importer:
+  rejected. App-specific supported serialization is allowed; unsupported raw
+  env-file syntax was a template detail, not a user requirement.
 
 ## Consequences
 
 The active source is simpler and ordinary app services remain unchanged. Offline
 Compose checks are executable but are not real CasaOS import or restart evidence.
-The inspected stock parser cannot accept the required raw long-form env-file;
-see [PRIVATE_COMPOSE.md](../PRIVATE_COMPOSE.md) for exact official sources. Live
-launch stays disabled pending owner adjudication of an ordinary supported import
-path and fresh HDD admission. Missing-directory refusal does not prove rejection
+The inspected stock parser cannot accept the modern reference's raw long-form
+env-file. The stock app variant instead uses explicit API environment entries and
+a small offline private-JSON preparation helper, with installed-version
+import/marshal/reload tests preserving exact literal values. See
+[PRIVATE_COMPOSE.md](../PRIVATE_COMPOSE.md) for sources, short preparation flow and
+two-stage dollar escaping. No manager or application adapter is introduced; the
+modern reference stays unchanged. Live launch stays disabled pending fresh HDD
+admission and remaining authority/runtime gates. Missing-directory refusal does not prove rejection
 of an existing SSD directory, hot-unmount safety or reboot behavior. No port or
 dashboard launch URL is selected by this private candidate.
 

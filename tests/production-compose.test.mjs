@@ -74,6 +74,9 @@ beforeAll(() => {
     POSTGRES_DATA_UID: '12345',
     POSTGRES_DB: 'offline_candidate',
     POSTGRES_USER: 'offline_operator',
+    CUPMEMO_DATABASE_URL_PRODUCTION: 'NONSECRET_OFFLINE_PLACEHOLDER',
+    BETTER_AUTH_SECRET: 'NONSECRET_OFFLINE_PLACEHOLDER',
+    BETTER_AUTH_URL: 'https://offline.invalid',
   };
 });
 afterAll(() => {
@@ -85,6 +88,15 @@ describe.each([
   'infrastructure/casaos/docker-compose.yml',
 ])('dormant %s (actual offline CLI)', (relativePath) => {
   const compose = path.join(root, relativePath);
+  const appVariant = relativePath.includes('/casaos/');
+  const inputs = appVariant
+    ? [
+        ...required.filter((key) => key !== 'CUPMEMO_API_ENV_FILE'),
+        'CUPMEMO_DATABASE_URL_PRODUCTION',
+        'BETTER_AUTH_SECRET',
+        'BETTER_AUTH_URL',
+      ]
+    : required;
   function config(overrides = {}, args = ['--format', 'json'], composePath = compose) {
     return renderConfig(overrides, args, composePath);
   }
@@ -102,7 +114,7 @@ describe.each([
     ]);
   });
 
-  it.each(required)('refuses omitted or empty %s instead of development defaults', (key) => {
+  it.each(inputs)('refuses omitted or empty %s instead of development defaults', (key) => {
     for (const value of [undefined, '']) {
       const result = config({ [key]: value });
       expect(result.status).not.toBe(0);
@@ -112,7 +124,9 @@ describe.each([
 
   it('requires a real external API env file, without creating it or the data path', () => {
     const missing = path.join(temp, 'never-created-api.env');
-    expect(config({ CUPMEMO_API_ENV_FILE: missing }).status).not.toBe(0);
+    // Only the modern production reference uses raw env_file. The stock variant
+    // receives explicit API entries and must not attempt to read this path.
+    expect(config({ CUPMEMO_API_ENV_FILE: missing }).status === 0).toBe(appVariant);
     expect(existsSync(missing)).toBe(false);
     expect(existsSync(settings.POSTGRES_DATA_DIR)).toBe(false);
   });
