@@ -39,6 +39,16 @@ Do not assume the HDD mount path. Discover it on the actual Pi.
 
 ## Production services
 
+The selected future app owner is **stock CasaOS**, with stock AppManagement.
+See [private Compose / stock app preparation](PRIVATE_COMPOSE.md) and
+`infrastructure/casaos/docker-compose.yml`. Custom CasaOS manager replacements,
+their source bundles and dedicated build/test lane are retired; no host rollback,
+restart or CasaOS private database repair is required or authorized. The retained
+host launcher/unit are an uninstalled alternative, not a second app supervisor.
+Do not install both. The stock import path has a documented raw-env compatibility
+gap; import/start/reboot/absent-HDD behavior is **UNVERIFIED**, and live launch is
+disabled pending owner adjudication. Source cleanup is not an installed app.
+
 Target Docker Compose services:
 
 ```text
@@ -52,7 +62,7 @@ Use:
 
 - private Docker networking
 - health checks
-- sensible restart policies
+- `restart: 'no'` until fresh HDD startup/restart admission is demonstrated
 - externalized environment configuration
 - persistent database storage
 - structured logs
@@ -162,10 +172,11 @@ with profile `tunnel`, connector-only project-local egress and native token-file
 mapping. The base remains unchanged. No image/account/tunnel/UID is selected;
 source/config/test preparation is not live setup, actual reachability or restart
 acceptance. No runnable connector start/restart interface is delivered.
-`infrastructure/scripts/private-stack-start.mjs` accepts only `--start`; it has
+The retained alternative `infrastructure/scripts/private-stack-start.mjs` accepts only `--start`; it has
 no stop/restart interface and does not include cloudflared. The uninstalled
 `infrastructure/systemd/cupmemo-private.service.in` template has `Restart=no`,
-no enablement and no deployed service identity. It is not a supervisor. Do not
+no enablement and no deployed service identity. It is not selected for CasaOS
+app ownership or a running supervisor. Do not
 invent a `cloudflared.service`, change restart policy or use a blanket stack
 start/restart as an operational shortcut.
 
@@ -472,43 +483,28 @@ Before assigning ports or writing production paths:
 
 Do not stop unrelated services merely to obtain a preferred port.
 
-## Current authorized NAS isolation preparation (Refs #11)
+## Current NAS decision and preserved preparation (Refs #11)
 
 The dated audit and preparatory guard observations below are retained history.
-The current user decision approves the existing HDD's root0777 ->0755 restrictions
-and narrow reserved-cupmemo Samba/Syncthing/known-backup isolation, preserving root
-ownership and existing child permissions/content. This resolves that prior
-permission question only; no PGDATA/UID provisioning, database startup, public
-deployment or startup/restart clearance is granted.
+Earlier approved HDD root0777 ->0755 and narrow NAS isolation changes remain
+preserved, with root ownership and existing child permissions/content unchanged.
+Kenneth now explicitly accepts owner-only file sharing in his declared private,
+sole-user Tailscale setup; the CasaOS dashboard is not public. Custom share-exclusion
+enforcement, manager replacements and internet-isolation proof are not delivery
+prerequisites. No new sharing permission prompt, network/firewall change or undoing
+approved NAS changes follows. Acceptance does not permit raw live-PGDATA syncing,
+concurrent writers or deletion. HDD/no-SSD-fallback, DB ownership/integrity, private
+secrets and ordinary application authentication remain required. PGDATA/UID
+provisioning, database startup, public deployment and startup/restart clearance
+remain held.
 
 See [NAS_ISOLATION.md](NAS_ISOLATION.md) for the read-only component preflight,
 exclusive private SSD candidate preparation, actual source provenance, independently
 reviewed owner-only staged rollout/rollback and required client/runtime controls.
-The coder/reviewer do not apply live NAS changes. Samba preparatory eligibility
-does not mean an installed veto; Syncthing's private managed source may safely
-refuse unavailable access. Root rclone dynamic/future backup exclusions remain
-UNVERIFIED and block any private database provisioning. No all-isolated PASS or
-replacement of the original PostgreSQL guard is implied.
-
-### Samba durability source-publication checkpoint
-
-The [CasaOS Samba source bundle](../infrastructure/casaos-samba/README.md) publishes
-the immutable pinned upstream patch, public provenance lock, minimal original
-patch-application fixtures and actual offline materialized-adapter regression.
-The accepted separate ARM64 manager build exited0 and independent affected Go
-tests passed10 top-level +52 subtests; the binary has never been executed or
-installed. Historical resource sampling exceeded the literal100ms condition:
-artifact validity was accepted, not full resource compliance or hard memory
-isolation. This publication performs no new manager compilation or live rollout.
-
-The writer retains protected owner-managed nas even with zero rows, while preserving
-ordinary sections; source/tests are not installed enforcement. Current-state
-canonical policy/root/include/manager hashes, safe storage, alias/mount identity,
-real generation/create/delete/reload and exact rollback still need separately
-reviewed live impact and owner authorization. Stock rollback restores a known
-durability gap. Syncthing per-app updates and unrestricted root rclone RC remain
-independent unfinished privacy gates. No PGDATA-ready or whole-outcome PASS follows
-from source integration, the closed GitHub Issue11, or integrated32/42 templates.
+The coder/reviewer do not apply live NAS changes. Those tools/evidence remain
+historical preparation, not a custom-manager prerequisite or all-isolated PASS.
+Data-integrity-safe backups and no raw live database synchronization remain
+required. The original PostgreSQL mount guard is preserved unchanged.
 
 ## HDD startup guard (development/preparation only, Refs #11)
 
@@ -611,56 +607,6 @@ integration must not close Issue11 or finish the same primary card. All12 depend
 advisories, R1 and separate auth-redirect attribution retain the development-only
 [Issue30 risk disposition](https://github.com/ohjy1006kenneth/CupMemo/issues/30#issuecomment-6140040612),
 not public-production clearance.
-
-### Pinned AppManagement source/build checkpoint
-
-The [pinned AppManagement source bundle](../infrastructure/casaos-appmanagement/README.md)
-distributes the Syncthing CURRENT/effective-CANDIDATE mutation admission patch,
-minimal original offline fixtures and actual service/helper tests. Its separate
-hosted ARM64 reproduction lane requires verified effective hard cgroup limits;
-do not compile/run the manager or Docker build on the shared Pi. Build receipts
-bind the exact publication head; artifact existence is not independent review or
-deployed privacy protection. The source now guards the four registered legacy v1
-update/uninstall/archive/terminal triggers using inspected CURRENT plus effective
-update CANDIDATE before writers, async success or WebSocket upgrade/exec. Actual
-service and shared-handler httptest controls use injected writers/terminal
-continuation, not a live Docker mutation or interactive session. Neither manager is installed or executed by this
-source publication. Live rollout/rollback, aliases/custody, ordinary-project impact
-and root-RC coverage remain unverified. The reachable v2
-`recreateContainerByID` path now synchronously admits inspected CURRENT before
-scheduling/HTTP200 and rechecks it at service entrance before optional image
-staging. HTTP200 means scheduled only: a protected effective image candidate
-produces sanitized asynchronous failure before container effects, not retroactive403.
-An immutable deep-copied clone plan binds old-default removal/runtime overrides
-plus target-image default labels and the inspected target image ID; actual creation
-never resolves the tag again. Real helper/orchestration/clone/httptest controls use
-injected Docker dependencies, not deployed daemon evidence. Background work is
-bounded10minutes with reads3s. Recreation-only registry challenge/token/digest
-requests propagate cancellation through response-body close, with3s request/body
-limits; initial/final staging image inspections also have3s child contexts. Registry
-failure refuses before pull/forced clone rather than using the unrelated legacy
-fallback. Controlled in-process transport/body-stall regressions and fake Docker
-inspection cancellation are offline tests, not live registry/daemon evidence.
-The strict recreation-only Docker pull adapter now propagates daemon JSON errors,
-malformed/truncated/empty streams, read failures and cancellation instead of using
-the legacy void progress callback. Streaming caps are1MiB per message/64MiB total,
-with3s headers/blocking reads and owned-body cancellation/cleanup. The transitive
-native credential helper is context-bound too; legacy callers are unchanged.
-Recreation owns all real configured SDK transport response bodies per invocation,
-including discarded HTTP errors, negotiation/fallback and SDK retries. Wrapping
-occurs after SDK host/TLS/API initialization, retaining its configured settings;
-close-once body ownership, joined watchers and original idle-transport cleanup are
-covered by controlled real-SDK error/cancel/configuration/isolation regressions.
-Those tests and cached-image forced-recreation failure controls precede the single
-owner-authorized fourth full hosted build; no live Docker proof is implied.
-Actual Docker-client/consumer/staging/forced-recreation tests use a test-tag-only
-private transport bridge, no daemon/listener or production override; normal full
-build excludes the bridge. All affected offline Go tests must pass before the
-single owner-authorized B2 revision full build4. None of this is live approval.
-External daemon/root races, nonidentity image effects
-and ordinary-project/live rollback behavior remain separate gates.
-PGDATA provisioning, database startup and
-public deployment remain held; primary outcome and privacy readiness remain false.
 
 ## Backups
 

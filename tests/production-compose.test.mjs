@@ -8,7 +8,7 @@ import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const compose = path.join(root, 'infrastructure/docker/production.compose.yml');
+
 const required = [
   'CUPMEMO_WEB_IMAGE',
   'CUPMEMO_API_IMAGE',
@@ -24,7 +24,7 @@ let temp;
 let settings;
 let model;
 
-function config(overrides = {}, args = ['--format', 'json'], composePath = compose) {
+function renderConfig(overrides, args, composePath) {
   // No inherited production variables, implicit .env, or reachable Docker daemon.
   const env = {
     PATH: process.env.PATH,
@@ -80,7 +80,14 @@ afterAll(() => {
   if (temp) rmSync(temp, { recursive: true, force: true });
 });
 
-describe('dormant private production Compose (actual offline CLI)', () => {
+describe.each([
+  'infrastructure/docker/production.compose.yml',
+  'infrastructure/casaos/docker-compose.yml',
+])('dormant %s (actual offline CLI)', (relativePath) => {
+  const compose = path.join(root, relativePath);
+  function config(overrides = {}, args = ['--format', 'json'], composePath = compose) {
+    return renderConfig(overrides, args, composePath);
+  }
   it('renders without a daemon and passes actual quiet validation', () => {
     const result = config();
     expect(result.error).toBeUndefined();
