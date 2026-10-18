@@ -187,6 +187,12 @@ def main():
     for package, key in [("./service", "recreate-service"), ("./route/v2", "recreate-route-v2"), ("./pkg/docker", "recreate-pkg-docker")]:
         tests = command(tester, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", package, "-run", "^TestSyncthingRecreate", "-v"], timeout=180)
         assert "--- PASS: TestSyncthingRecreate" in tests and "no tests to run" not in tests and "FAIL" not in tests
+        if key == "recreate-service":
+            assert "--- PASS: TestSyncthingRecreatePullProtocolSuppressesForce" in tests
+            assert "--- PASS: TestSyncthingRecreateEmptyPullSuppressesForce" in tests
+        if key == "recreate-pkg-docker":
+            assert "--- PASS: TestSyncthingRecreateStrictPullAdapter" in tests
+            assert "--- PASS: TestSyncthingRecreateCredentialContext" in tests
         record(key + "-test-summary", {"top_level_passes": len(re.findall(r"^--- PASS: TestSyncthingRecreate", tests, re.M)), "subtest_passes": len(re.findall(r"^\s+--- PASS:", tests, re.M)), "network": "none", "scope": "real orchestration/handler/clone plan and production registry chain with controlled RoundTripper/body cancellation, real helper, explicit injected Docker inspections; not live registry/daemon proof"})
     resources(tester)
     for rec in LOCK["module_files"] + LOCK["patched_files"]:

@@ -572,7 +572,7 @@
 +type recreationPullBody struct {
 +	io.ReadCloser
 +	cancel context.CancelFunc
-+	once sync.Once
++	once   sync.Once
 +}
 +
 +func (b *recreationPullBody) Close() error {
@@ -596,7 +596,7 @@
 +}
 --- /dev/null
 +++ b/pkg/docker/image_context_test.go
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,132 @@
 +package docker
 +
 +import (
@@ -615,9 +615,9 @@
 +
 +type pullTestBody struct {
 +	io.Reader
-+	closed int
++	closed  int
 +	unblock chan struct{}
-+	once sync.Once
++	once    sync.Once
 +}
 +
 +func (b *pullTestBody) Read(p []byte) (int, error) {
@@ -630,7 +630,9 @@
 +func (b *pullTestBody) Close() error {
 +	b.once.Do(func() {
 +		b.closed++
-+		if b.unblock != nil { close(b.unblock) }
++		if b.unblock != nil {
++			close(b.unblock)
++		}
 +	})
 +	return nil
 +}
@@ -640,48 +642,81 @@
 +		t.Run(mode, func(t *testing.T) {
 +			ctx, cancel := context.WithCancel(context.Background())
 +			defer cancel()
-+			if strings.Contains(mode, "deadline") { ctx, cancel = context.WithTimeout(ctx, 40*time.Millisecond); defer cancel() }
++			if strings.Contains(mode, "deadline") {
++				ctx, cancel = context.WithTimeout(ctx, 40*time.Millisecond)
++				defer cancel()
++			}
 +			body := &pullTestBody{Reader: strings.NewReader(`{"status":"ordinary"}`)}
-+			if strings.HasPrefix(mode, "body-") { body.unblock = make(chan struct{}) }
++			if strings.HasPrefix(mode, "body-") {
++				body.unblock = make(chan struct{})
++			}
 +			requests, consumed := 0, 0
 +			var requestCtx context.Context
 +			factory := func() (recreationPullClient, error) {
-+				if mode == "setup" { return nil, errors.New("PRIVATE-SENTINEL") }
++				if mode == "setup" {
++					return nil, errors.New("PRIVATE-SENTINEL")
++				}
 +				return client.NewClientWithOpts(client.WithHost("http://docker.test"), client.WithVersion("1.41"), client.WithHTTPClient(&http.Client{Transport: recreateTransport(func(r *http.Request) (*http.Response, error) {
 +					requests++
 +					requestCtx = r.Context()
-+					if !strings.HasSuffix(r.URL.Path, "/images/create") { t.Fatal("unexpected Docker API") }
++					if !strings.HasSuffix(r.URL.Path, "/images/create") {
++						t.Fatal("unexpected Docker API")
++					}
 +					if strings.HasPrefix(mode, "header-") {
-+						if mode == "header-cancel" { cancel() }
++						if mode == "header-cancel" {
++							cancel()
++						}
 +						<-r.Context().Done()
 +						return nil, r.Context().Err()
 +					}
-+					if mode == "body-cancel" { cancel() }
++					if mode == "body-cancel" {
++						cancel()
++					}
 +					status := 200
-+					if mode == "http" { status = 500 }
++					if mode == "http" {
++						status = 500
++					}
 +					return &http.Response{StatusCode: status, Header: make(http.Header), Body: body}, nil
 +				})}))
 +			}
 +			options := func(context.Context, string) (types.ImagePullOptions, error) {
-+				if mode == "auth" { return types.ImagePullOptions{}, errors.New("PRIVATE-SENTINEL") }
++				if mode == "auth" {
++					return types.ImagePullOptions{}, errors.New("PRIVATE-SENTINEL")
++				}
 +				return types.ImagePullOptions{}, nil
 +			}
 +			consume := func(ctx context.Context, out io.ReadCloser) error {
 +				consumed++
-+				if mode == "consumer" { return errors.New("PRIVATE-SENTINEL") }
++				if mode == "consumer" {
++					return errors.New("PRIVATE-SENTINEL")
++				}
 +				_, err := io.ReadAll(out)
 +				return err
 +			}
-+			if mode == "nil-consumer" { consume = nil }
++			if mode == "nil-consumer" {
++				consume = nil
++			}
 +			started := time.Now()
 +			err := pullImageContext(ctx, "ordinary:latest", consume, factory, options)
-+			if (err == nil) != (mode == "success") || (err != nil && err.Error() != "container recreation refused") { t.Fatal("unsanitized or unexpected result", err) }
++			if (err == nil) != (mode == "success") || (err != nil && err.Error() != "container recreation refused") {
++				t.Fatal("unsanitized or unexpected result", err)
++			}
 +			bound := time.Second
-+			if mode == "body-read-bound" || mode == "header-read-bound" { bound = 4*time.Second }
-+			if time.Since(started) > bound { t.Fatal("unbounded adapter") }
-+			if requests > 0 && !strings.HasPrefix(mode, "header-") && body.closed != 1 { t.Fatal("body not closed exactly once", body.closed) }
-+			if requestCtx != nil && requestCtx.Err() == nil { t.Fatal("request still alive after return") }
-+			if mode == "nil-consumer" && (requests != 0 || consumed != 0) { t.Fatal("nil consumer effects") }
++			if mode == "body-read-bound" || mode == "header-read-bound" {
++				bound = 4 * time.Second
++			}
++			if time.Since(started) > bound {
++				t.Fatal("unbounded adapter")
++			}
++			if requests > 0 && !strings.HasPrefix(mode, "header-") && body.closed != 1 {
++				t.Fatal("body not closed exactly once", body.closed)
++			}
++			if requestCtx != nil && requestCtx.Err() == nil {
++				t.Fatal("request still alive after return")
++			}
++			if mode == "nil-consumer" && (requests != 0 || consumed != 0) {
++				t.Fatal("nil consumer effects")
++			}
 +		})
 +	}
 +}
@@ -690,11 +725,13 @@
 +	// Compile-time regression: no change to unrelated exported legacy callers.
 +	var legacy func(context.Context, string, func(io.ReadCloser)) error = PullImage
 +	var strict func(context.Context, string, func(context.Context, io.ReadCloser) error) error = PullImageContext
-+	if legacy == nil || strict == nil { t.Fatal("missing API") }
++	if legacy == nil || strict == nil {
++		t.Fatal("missing API")
++	}
 +}
 --- /dev/null
 +++ b/pkg/docker/recreation_credentials.go
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,126 @@
 +package docker
 +
 +import (
@@ -720,25 +757,37 @@
 +func getPullOptionsContext(ctx context.Context, name string) (types.ImagePullOptions, error) {
 +	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 +	defer cancel()
-+	if ctx.Err() != nil { return types.ImagePullOptions{}, errImagePullContext }
++	if ctx.Err() != nil {
++		return types.ImagePullOptions{}, errImagePullContext
++	}
 +	auth, err := EncodedEnvAuth(name)
 +	if err != nil {
 +		server, err := ParseServerAddress(name)
-+		if err != nil { return types.ImagePullOptions{}, errImagePullContext }
++		if err != nil {
++			return types.ImagePullOptions{}, errImagePullContext
++		}
 +		dir := os.Getenv("DOCKER_CONFIG")
-+		if dir == "" { dir = "/" }
++		if dir == "" {
++			dir = "/"
++		}
 +		path := filepath.Join(dir, "config.json")
 +		cfg := configfile.New(path)
 +		// Nonblocking open plus descriptor validation refuses special files even
 +		// if replaced between lookup/open. Never read unbounded host config.
 +		f, openErr := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
-+		if openErr != nil && !os.IsNotExist(openErr) { return types.ImagePullOptions{}, errImagePullContext }
++		if openErr != nil && !os.IsNotExist(openErr) {
++			return types.ImagePullOptions{}, errImagePullContext
++		}
 +		if openErr == nil {
 +			defer f.Close()
 +			info, err := f.Stat()
-+			if err != nil || !info.Mode().IsRegular() || info.Size() > 1024*1024 { return types.ImagePullOptions{}, errImagePullContext }
++			if err != nil || !info.Mode().IsRegular() || info.Size() > 1024*1024 {
++				return types.ImagePullOptions{}, errImagePullContext
++			}
 +			data, err := io.ReadAll(io.LimitReader(f, 1024*1024+1))
-+			if err != nil || len(data) > 1024*1024 || cfg.LoadFromReader(bytes.NewReader(data)) != nil { return types.ImagePullOptions{}, errImagePullContext }
++			if err != nil || len(data) > 1024*1024 || cfg.LoadFromReader(bytes.NewReader(data)) != nil {
++				return types.ImagePullOptions{}, errImagePullContext
++			}
 +		}
 +		var entry clitypes.AuthConfig
 +		if cfg.CredentialsStore == "" {
@@ -746,46 +795,72 @@
 +		} else {
 +			entry, err = recreationCredential(ctx, cfg.CredentialsStore, server)
 +		}
-+		if err != nil || ctx.Err() != nil { return types.ImagePullOptions{}, errImagePullContext }
++		if err != nil || ctx.Err() != nil {
++			return types.ImagePullOptions{}, errImagePullContext
++		}
 +		auth = ""
 +		if entry != (clitypes.AuthConfig{}) {
 +			auth, err = EncodeAuth(entry)
-+			if err != nil { return types.ImagePullOptions{}, errImagePullContext }
++			if err != nil {
++				return types.ImagePullOptions{}, errImagePullContext
++			}
 +		}
 +	}
-+	if ctx.Err() != nil { return types.ImagePullOptions{}, errImagePullContext }
-+	return types.ImagePullOptions{RegistryAuth:auth, PrivilegeFunc:func() (string,error) { return "",nil }}, nil
++	if ctx.Err() != nil {
++		return types.ImagePullOptions{}, errImagePullContext
++	}
++	return types.ImagePullOptions{RegistryAuth: auth, PrivilegeFunc: func() (string, error) { return "", nil }}, nil
 +}
 +
 +func recreationCredential(ctx context.Context, helper, server string) (clitypes.AuthConfig, error) {
-+	if len(helper) == 0 || len(helper) > 128 || strings.ContainsAny(server, "\r\n") { return clitypes.AuthConfig{}, errImagePullContext }
++	if len(helper) == 0 || len(helper) > 128 || strings.ContainsAny(server, "\r\n") {
++		return clitypes.AuthConfig{}, errImagePullContext
++	}
 +	for _, c := range helper {
-+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return clitypes.AuthConfig{}, errImagePullContext }
++		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') {
++			return clitypes.AuthConfig{}, errImagePullContext
++		}
 +	}
 +	cmd := exec.CommandContext(ctx, "docker-credential-"+helper, "get")
-+	cmd.Stdin = strings.NewReader(server+"\n")
-+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid:true}
++	cmd.Stdin = strings.NewReader(server + "\n")
++	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 +	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-+	cmd.WaitDelay = 250*time.Millisecond
++	cmd.WaitDelay = 250 * time.Millisecond
 +	out := &recreationCredentialOutput{}
 +	cmd.Stdout = out
 +	cmd.Stderr = io.Discard
-+	if cmd.Run() != nil || ctx.Err() != nil || out.overflow { return clitypes.AuthConfig{}, errImagePullContext }
-+	var response struct { Username string; Secret string }
-+	if json.Unmarshal(out.Bytes(), &response) != nil || response.Username == "" || response.Secret == "" { return clitypes.AuthConfig{}, errImagePullContext }
-+	if response.Username == "<token>" { return clitypes.AuthConfig{IdentityToken:response.Secret, ServerAddress:server},nil }
-+	return clitypes.AuthConfig{Username:response.Username, Password:response.Secret, ServerAddress:server},nil
++	if cmd.Run() != nil || ctx.Err() != nil || out.overflow {
++		return clitypes.AuthConfig{}, errImagePullContext
++	}
++	var response struct {
++		Username string
++		Secret   string
++	}
++	if json.Unmarshal(out.Bytes(), &response) != nil || response.Username == "" || response.Secret == "" {
++		return clitypes.AuthConfig{}, errImagePullContext
++	}
++	if response.Username == "<token>" {
++		return clitypes.AuthConfig{IdentityToken: response.Secret, ServerAddress: server}, nil
++	}
++	return clitypes.AuthConfig{Username: response.Username, Password: response.Secret, ServerAddress: server}, nil
 +}
 +
-+type recreationCredentialOutput struct { buffer bytes.Buffer; overflow bool }
++type recreationCredentialOutput struct {
++	buffer   bytes.Buffer
++	overflow bool
++}
++
 +func (b *recreationCredentialOutput) Bytes() []byte { return b.buffer.Bytes() }
-+func (b *recreationCredentialOutput) Write(p []byte) (int,error) {
-+	if b.buffer.Len()+len(p) > 64*1024 { b.overflow = true; return 0,errImagePullContext }
++func (b *recreationCredentialOutput) Write(p []byte) (int, error) {
++	if b.buffer.Len()+len(p) > 64*1024 {
++		b.overflow = true
++		return 0, errImagePullContext
++	}
 +	return b.buffer.Write(p)
 +}
 --- /dev/null
 +++ b/pkg/docker/recreation_credentials_test.go
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,59 @@
 +package docker
 +
 +import (
@@ -806,24 +881,42 @@
 +			t.Setenv("DOCKER_CONFIG", root)
 +			t.Setenv("PATH", root+":/usr/bin:/bin")
 +			config := `{"auths":{"registry.test":{"auth":"dXNlcjpwYXNz"}}}`
-+			if mode == "anonymous" { config = `{}` }
++			if mode == "anonymous" {
++				config = `{}`
++			}
 +			if mode != "anonymous" && mode != "file" {
 +				config = `{"credsStore":"fixture"}`
 +				script := "#!/bin/sh\nread server\nprintf '%s' '{\"Username\":\"user\",\"Secret\":\"pass\"}'\n"
-+				if mode == "timeout" { script = "#!/bin/sh\n/bin/sleep 10\n" }
-+				if mode == "overflow" { script = "#!/bin/sh\n/usr/bin/head -c 70000 /dev/zero\n" }
-+				if mode == "malformed" { script = "#!/bin/sh\nprintf 'PRIVATE-SENTINEL'\n" }
-+				if err := os.WriteFile(filepath.Join(root, "docker-credential-fixture"), []byte(script), 0700); err != nil { t.Fatal(err) }
++				if mode == "timeout" {
++					script = "#!/bin/sh\n/bin/sleep 10\n"
++				}
++				if mode == "overflow" {
++					script = "#!/bin/sh\n/usr/bin/head -c 70000 /dev/zero\n"
++				}
++				if mode == "malformed" {
++					script = "#!/bin/sh\nprintf 'PRIVATE-SENTINEL'\n"
++				}
++				if err := os.WriteFile(filepath.Join(root, "docker-credential-fixture"), []byte(script), 0700); err != nil {
++					t.Fatal(err)
++				}
 +			}
-+			if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(config), 0600); err != nil { t.Fatal(err) }
++			if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(config), 0600); err != nil {
++				t.Fatal(err)
++			}
 +			ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
 +			defer cancel()
 +			started := time.Now()
 +			opts, err := getPullOptionsContext(ctx, "registry.test/ordinary:latest")
 +			failure := mode == "timeout" || mode == "overflow" || mode == "malformed"
-+			if (err != nil) != failure || time.Since(started) > time.Second { t.Fatal("unbounded or wrong credential outcome", err) }
-+			if err != nil && strings.Contains(err.Error(), "PRIVATE") { t.Fatal("credential error leak") }
-+			if !failure && (opts.RegistryAuth == "") != (mode == "anonymous") { t.Fatal("credential behavior lost") }
++			if (err != nil) != failure || time.Since(started) > time.Second {
++				t.Fatal("unbounded or wrong credential outcome", err)
++			}
++			if err != nil && strings.Contains(err.Error(), "PRIVATE") {
++				t.Fatal("credential error leak")
++			}
++			if !failure && (opts.RegistryAuth == "") != (mode == "anonymous") {
++				t.Fatal("credential behavior lost")
++			}
 +		})
 +	}
 +}
@@ -2106,9 +2199,9 @@
 +}
 +
 +type recreationImageDeps struct {
-+	image    func(context.Context, string) (*types.ImageInspect, error)
-+	compare  func(context.Context, string, []string) (bool, error)
-+	pull     func(context.Context, string, func(context.Context, io.ReadCloser) error) error
++	image   func(context.Context, string) (*types.ImageInspect, error)
++	compare func(context.Context, string, []string) (bool, error)
++	pull    func(context.Context, string, func(context.Context, io.ReadCloser) error) error
 +}
 +
 +func stageRecreationImage(ctx context.Context, name string, deps recreationImageDeps) (bool, error) {
@@ -2286,7 +2379,7 @@
 +}
 --- /dev/null
 +++ b/service/recreation_protocol_test.go
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,184 @@
 +//go:build cupmemo_recreation_test
 +
 +package service
@@ -2307,22 +2400,31 @@
 +)
 +
 +type pullTransport func(*http.Request) (*http.Response, error)
++
 +func (f pullTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 +
 +type pullProtocolBody struct {
 +	io.Reader
-+	block bool
-+	cancel context.CancelFunc
++	block     bool
++	cancel    context.CancelFunc
 +	cancelEOF bool
-+	closed chan struct{}
-+	count atomic.Int32
-+	once sync.Once
++	closed    chan struct{}
++	count     atomic.Int32
++	once      sync.Once
 +}
++
 +func (b *pullProtocolBody) Read(p []byte) (int, error) {
-+	if b.cancel != nil && !b.cancelEOF { b.cancel() }
-+	if b.block { <-b.closed; return 0, errors.New("PRIVATE-SENTINEL") }
++	if b.cancel != nil && !b.cancelEOF {
++		b.cancel()
++	}
++	if b.block {
++		<-b.closed
++		return 0, errors.New("PRIVATE-SENTINEL")
++	}
 +	n, err := b.Reader.Read(p)
-+	if b.cancelEOF && err == io.EOF { b.cancel() }
++	if b.cancelEOF && err == io.EOF {
++		b.cancel()
++	}
 +	return n, err
 +}
 +func (b *pullProtocolBody) Close() error {
@@ -2332,11 +2434,19 @@
 +}
 +
 +type pullReadFailure struct{}
++
 +func (pullReadFailure) Read([]byte) (int, error) { return 0, errors.New("PRIVATE-SENTINEL") }
 +
-+type pullRepeatFrame struct { frame string; position int }
++type pullRepeatFrame struct {
++	frame    string
++	position int
++}
++
 +func (r *pullRepeatFrame) Read(p []byte) (int, error) {
-+	for i := range p { p[i] = r.frame[r.position]; r.position = (r.position+1)%len(r.frame) }
++	for i := range p {
++		p[i] = r.frame[r.position]
++		r.position = (r.position + 1) % len(r.frame)
++	}
 +	return len(p), nil
 +}
 +
@@ -2350,27 +2460,46 @@
 +		t.Run(mode, func(t *testing.T) {
 +			ctx, cancel := context.WithCancel(context.Background())
 +			defer cancel()
-+			if mode == "deadline" { ctx, cancel = context.WithTimeout(ctx, 40*time.Millisecond); defer cancel() }
-+			payload := `{"status":"Pulling fs layer","id":"ordinary"}`+"\n"+`{"aux":{"ID":"ordinary"}}`+"\n"
++			if mode == "deadline" {
++				ctx, cancel = context.WithTimeout(ctx, 40*time.Millisecond)
++				defer cancel()
++			}
++			payload := `{"status":"Pulling fs layer","id":"ordinary"}` + "\n" + `{"aux":{"ID":"ordinary"}}` + "\n"
 +			switch mode {
-+			case "daemon-error": payload = `{"errorDetail":{"message":"PRIVATE-SENTINEL"},"error":"PRIVATE-SENTINEL"}`
-+			case "error-only": payload = `{"error":"PRIVATE-SENTINEL"}`
-+			case "progress-error": payload += `{"errorDetail":{"message":"PRIVATE-SENTINEL"}}`
-+			case "malformed": payload = "!PRIVATE-SENTINEL"
-+			case "truncated": payload = `{"status":"PRIVATE-SENTINEL`
-+			case "empty": payload = ""
-+			case "whitespace": payload = " \n\t\r "
-+			case "oversize-message": payload = `{"status":"`+strings.Repeat("a", 1024*1024)+`"}`
++			case "daemon-error":
++				payload = `{"errorDetail":{"message":"PRIVATE-SENTINEL"},"error":"PRIVATE-SENTINEL"}`
++			case "error-only":
++				payload = `{"error":"PRIVATE-SENTINEL"}`
++			case "progress-error":
++				payload += `{"errorDetail":{"message":"PRIVATE-SENTINEL"}}`
++			case "malformed":
++				payload = "!PRIVATE-SENTINEL"
++			case "truncated":
++				payload = `{"status":"PRIVATE-SENTINEL`
++			case "empty":
++				payload = ""
++			case "whitespace":
++				payload = " \n\t\r "
++			case "oversize-message":
++				payload = `{"status":"` + strings.Repeat("a", 1024*1024) + `"}`
 +
 +			}
 +			body := &pullProtocolBody{Reader: strings.NewReader(payload), closed: make(chan struct{})}
-+			if mode == "read-error" { body.Reader = io.MultiReader(strings.NewReader(payload), pullReadFailure{}) }
-+			if mode == "total-limit" { body.Reader = io.LimitReader(&pullRepeatFrame{frame:`{"status":"`+strings.Repeat("a",1024)+`"}`+"\n"}, 64*1024*1024+1) }
-+			if mode == "cancel" || mode == "cancel-at-eof" { body.cancel = cancel }
++			if mode == "read-error" {
++				body.Reader = io.MultiReader(strings.NewReader(payload), pullReadFailure{})
++			}
++			if mode == "total-limit" {
++				body.Reader = io.LimitReader(&pullRepeatFrame{frame: `{"status":"` + strings.Repeat("a", 1024) + `"}` + "\n"}, 64*1024*1024+1)
++			}
++			if mode == "cancel" || mode == "cancel-at-eof" {
++				body.cancel = cancel
++			}
 +			body.cancelEOF = mode == "cancel-at-eof"
 +			body.block = mode == "cancel" || mode == "deadline" || mode == "read-bound"
 +			c, old, target := recreateFixture()
-+			if mode != "success" { target = old } // cached old image survives ALL failed pulls
++			if mode != "success" {
++				target = old
++			} // cached old image survives ALL failed pulls
 +			calls := []string{}
 +			d := recreateDependencies(t, c, old, target, &calls)
 +			if mode == "deadline" {
@@ -2383,7 +2512,9 @@
 +				return stageRecreationImage(ctx, name, recreationImageDeps{
 +					image: func(context.Context, string) (*types.ImageInspect, error) {
 +						inspections++
-+						if mode == "success" && inspections == 2 { return target, nil }
++						if mode == "success" && inspections == 2 {
++							return target, nil
++						}
 +						return old, nil
 +					},
 +					compare: func(context.Context, string, []string) (bool, error) { return false, nil },
@@ -2391,8 +2522,10 @@
 +						return docker.RecreationPullTestBridge(ctx, name, consume, pullTransport(func(r *http.Request) (*http.Response, error) {
 +							requests++
 +							actualCtx = r.Context()
-+							if !strings.HasSuffix(r.URL.Path,"/images/create") { t.Fatal("unexpected Docker API") }
-+							return &http.Response{StatusCode:200, Header: make(http.Header), Body:body}, nil
++							if !strings.HasSuffix(r.URL.Path, "/images/create") {
++								t.Fatal("unexpected Docker API")
++							}
++							return &http.Response{StatusCode: 200, Header: make(http.Header), Body: body}, nil
 +						}))
 +					},
 +				})
@@ -2400,24 +2533,40 @@
 +			started := time.Now()
 +			err := recreateContainer(ctx, c.ID, true, mode != "same-no-force", d)
 +			healthy := mode == "success" || mode == "same-force" || mode == "same-no-force"
-+			if (err == nil) != healthy || (err != nil && err != errSyncthingPolicy) { t.Fatal("unsanitized or wrong protocol result", err) }
-+			if body.count.Load() != 1 || requests != 1 || actualCtx == nil || actualCtx.Err() == nil { t.Fatal("body/request cleanup", body.count.Load(), requests) }
++			if (err == nil) != healthy || (err != nil && err != errSyncthingPolicy) {
++				t.Fatal("unsanitized or wrong protocol result", err)
++			}
++			if body.count.Load() != 1 || requests != 1 || actualCtx == nil || actualCtx.Err() == nil {
++				t.Fatal("body/request cleanup", body.count.Load(), requests)
++			}
 +			finished := false
 +			for _, call := range calls {
-+				if call == "finish" { finished = true }
-+				if !healthy && call != "inspect" && call != "current" { t.Fatal("candidate/effect after pull failure", calls) }
++				if call == "finish" {
++					finished = true
++				}
++				if !healthy && call != "inspect" && call != "current" {
++					t.Fatal("candidate/effect after pull failure", calls)
++				}
 +			}
-+			if finished != (healthy && mode != "same-no-force") || inspections != map[bool]int{true:2,false:1}[healthy] { t.Fatal("forced cached-image bypass", inspections, calls) }
-+			bound := 2*time.Second
-+			if mode == "read-bound" { bound = 4*time.Second }
-+			if mode == "total-limit" { bound = 20*time.Second }
-+			if time.Since(started) > bound { t.Fatal("unbounded protocol work", mode) }
++			if finished != (healthy && mode != "same-no-force") || inspections != map[bool]int{true: 2, false: 1}[healthy] {
++				t.Fatal("forced cached-image bypass", inspections, calls)
++			}
++			bound := 2 * time.Second
++			if mode == "read-bound" {
++				bound = 4 * time.Second
++			}
++			if mode == "total-limit" {
++				bound = 20 * time.Second
++			}
++			if time.Since(started) > bound {
++				t.Fatal("unbounded protocol work", mode)
++			}
 +		})
 +	}
 +}
 --- /dev/null
 +++ b/service/recreation_pull.go
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,79 @@
 +package service
 +
 +import (
@@ -2434,42 +2583,65 @@
 +// arbitrary whitespace and adjacent objects, including clean EOF without newline.
 +// Never log daemon status/error text or run the legacy best-effort progress loop.
 +func consumeRecreationPull(ctx context.Context, out io.ReadCloser) error {
-+	const messageLimit = 1024*1024
-+	const streamLimit = 64*1024*1024
++	const messageLimit = 1024 * 1024
++	const streamLimit = 64 * 1024 * 1024
 +	buffer := make([]byte, 32*1024)
 +	frame := make([]byte, 0, 4096)
 +	total, messages, depth := 0, 0, 0
 +	quoted, escaped := false, false
 +	for {
-+		if ctx.Err() != nil { return errSyncthingPolicy }
++		if ctx.Err() != nil {
++			return errSyncthingPolicy
++		}
 +		n, readErr := out.Read(buffer)
 +		total += n
-+		if total > streamLimit || (n == 0 && readErr == nil) { return errSyncthingPolicy }
++		if total > streamLimit || (n == 0 && readErr == nil) {
++			return errSyncthingPolicy
++		}
 +		for _, b := range buffer[:n] {
 +			if len(frame) == 0 {
-+				if b == ' ' || b == '\n' || b == '\r' || b == '\t' { continue }
-+				if b != '{' { return errSyncthingPolicy }
++				if b == ' ' || b == '\n' || b == '\r' || b == '\t' {
++					continue
++				}
++				if b != '{' {
++					return errSyncthingPolicy
++				}
 +			}
-+			if len(frame) >= messageLimit { return errSyncthingPolicy }
++			if len(frame) >= messageLimit {
++				return errSyncthingPolicy
++			}
 +			frame = append(frame, b)
 +			if quoted {
-+				if escaped { escaped = false } else if b == '\\' { escaped = true } else if b == '"' { quoted = false }
++				if escaped {
++					escaped = false
++				} else if b == '\\' {
++					escaped = true
++				} else if b == '"' {
++					quoted = false
++				}
 +			} else {
 +				switch b {
-+				case '"': quoted = true
-+				case '{', '[': depth++
-+				case '}', ']': depth--
++				case '"':
++					quoted = true
++				case '{', '[':
++					depth++
++				case '}', ']':
++					depth--
 +				}
 +			}
 +			if depth == 0 {
 +				var message jsonmessage.JSONMessage
-+				if json.Unmarshal(frame, &message) != nil || message.Error != nil || message.ErrorMessage != "" || ctx.Err() != nil { return errSyncthingPolicy }
++				if json.Unmarshal(frame, &message) != nil || message.Error != nil || message.ErrorMessage != "" || ctx.Err() != nil {
++					return errSyncthingPolicy
++				}
 +				messages++
 +				frame = frame[:0]
 +			}
 +		}
 +		if readErr != nil {
-+			if readErr != io.EOF || len(frame) != 0 || messages == 0 || ctx.Err() != nil { return errSyncthingPolicy }
++			if readErr != io.EOF || len(frame) != 0 || messages == 0 || ctx.Err() != nil {
++				return errSyncthingPolicy
++			}
 +			return nil
 +		}
 +	}
