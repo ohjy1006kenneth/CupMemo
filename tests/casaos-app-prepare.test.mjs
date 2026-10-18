@@ -37,7 +37,14 @@ export function fixture(temp) {
       'postgresql://offline:synthetic@cupmemo-postgres:5432/offline_candidate',
     BETTER_AUTH_SECRET:
       '  SYNTHETIC ONLY $NAME ${NAME:-default} $$ # " \\ café 🫘 \t\n\u0085\u2028\u2029  ',
-    BETTER_AUTH_URL: 'https://offline.invalid',
+    BETTER_AUTH_URL: 'https://fixture.tailnet.ts.net:8445',
+    CUPMEMO_TLS_IMAGE: `caddy:2.11.7-alpine@sha256:${'4'.repeat(64)}`,
+    CUPMEMO_TLS_BIND_IP: '100.64.0.1',
+    CUPMEMO_TLS_HOSTNAME: 'fixture.tailnet.ts.net',
+    CUPMEMO_TLS_UID: '12346',
+    CUPMEMO_TLS_CONFIG_FILE: path.join(temp, 'Caddyfile'),
+    CUPMEMO_TLS_CERT_FILE: path.join(temp, 'cert'),
+    CUPMEMO_TLS_KEY_FILE: path.join(temp, 'key'),
   };
 }
 
@@ -90,13 +97,20 @@ test.each([null, ...Object.keys(fixture('/synthetic'))])(
         for (const value of ['', ' ', null, 1, {}, ['SECRET'], 'SECRET\0'])
           invalid.push({ ...base, [key]: value });
       }
-      if (['CUPMEMO_WEB_IMAGE', 'CUPMEMO_API_IMAGE', 'CUPMEMO_POSTGRES_IMAGE'].includes(key)) {
+      if (
+        [
+          'CUPMEMO_WEB_IMAGE',
+          'CUPMEMO_API_IMAGE',
+          'CUPMEMO_POSTGRES_IMAGE',
+          'CUPMEMO_TLS_IMAGE',
+        ].includes(key)
+      ) {
         for (const value of ['latest', 'postgres:17', '--option', `sha256:${'A'.repeat(64)}`])
           invalid.push({ ...base, [key]: value });
       }
-      if (key === 'POSTGRES_DATA_UID') {
+      if (['POSTGRES_DATA_UID', 'CUPMEMO_TLS_UID'].includes(key)) {
         for (const value of ['0', '-1', '001', '1.5', '4294967295'])
-          invalid.push({ ...base, POSTGRES_DATA_UID: value });
+          invalid.push({ ...base, [key]: value });
       }
       if (key === 'POSTGRES_HDD_UUID') {
         for (const value of ['not-a-uuid', '11111111-2222-3333-4444-AAAAAAAAAAAA'])
@@ -106,8 +120,60 @@ test.each([null, ...Object.keys(fixture('/synthetic'))])(
         for (const value of [base.POSTGRES_DATA_DIR, `${temp}-other`, `${temp}/absent-data/child`])
           invalid.push({ ...base, [key]: value });
       }
-      if (['POSTGRES_DATA_DIR', 'POSTGRES_PASSWORD_FILE', 'POSTGRES_HDD_MOUNT'].includes(key)) {
+      if (
+        [
+          'POSTGRES_DATA_DIR',
+          'POSTGRES_PASSWORD_FILE',
+          'POSTGRES_HDD_MOUNT',
+          'CUPMEMO_TLS_CONFIG_FILE',
+          'CUPMEMO_TLS_CERT_FILE',
+          'CUPMEMO_TLS_KEY_FILE',
+        ].includes(key)
+      ) {
         for (const value of ['/', './relative', '/a/../b', '/a/', '/a//b', '/a\nb'])
+          invalid.push({ ...base, [key]: value });
+      }
+      if (key === 'CUPMEMO_TLS_BIND_IP') {
+        for (const value of [
+          '0.0.0.0',
+          '::',
+          '127.0.0.1',
+          '192.168.1.1',
+          '8.8.8.8',
+          '100.63.255.255',
+          '100.128.0.0',
+          '100.064.0.1',
+          '100.64.0.256',
+          '100.64.0.1:8445',
+          ' 100.64.0.1',
+        ])
+          invalid.push({ ...base, [key]: value });
+      }
+      if (key === 'CUPMEMO_TLS_HOSTNAME') {
+        for (const value of [
+          'ts.net',
+          '*.ts.net',
+          'example.com',
+          'UPPER.ts.net',
+          '-bad.ts.net',
+          'bad-.ts.net',
+          'bad..ts.net',
+          'host.ts.net.',
+          'host.ts.net:8445',
+          'host.ts.net\n',
+        ])
+          invalid.push({ ...base, [key]: value });
+      }
+      if (key === 'BETTER_AUTH_URL') {
+        for (const value of [
+          'http://fixture.tailnet.ts.net:8445',
+          'https://other.ts.net:8445',
+          'https://fixture.tailnet.ts.net',
+          'https://fixture.tailnet.ts.net:8445/',
+          'https://fixture.tailnet.ts.net:8445?q=x',
+          'https://user@fixture.tailnet.ts.net:8445',
+          'https://fixture.tailnet.ts.net:8444',
+        ])
           invalid.push({ ...base, [key]: value });
       }
       for (const values of invalid) {

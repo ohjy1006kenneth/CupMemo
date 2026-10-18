@@ -40,7 +40,14 @@ try {
     CUPMEMO_DATABASE_URL_PRODUCTION:
       'postgresql://offline:synthetic$PASSWORD@cupmemo-postgres:5432/offline_candidate',
     BETTER_AUTH_SECRET: hostile,
-    BETTER_AUTH_URL: 'https://offline.invalid',
+    BETTER_AUTH_URL: 'https://fixture.tailnet.ts.net:8445',
+    CUPMEMO_TLS_IMAGE: `caddy:2.11.7-alpine@sha256:${'4'.repeat(64)}`,
+    CUPMEMO_TLS_BIND_IP: '100.127.255.254',
+    CUPMEMO_TLS_HOSTNAME: 'fixture.tailnet.ts.net',
+    CUPMEMO_TLS_UID: '12346',
+    CUPMEMO_TLS_CONFIG_FILE: path.join(temp, 'Caddyfile $CONFIG ${FILE:-x} " # 🫘'),
+    CUPMEMO_TLS_CERT_FILE: path.join(temp, 'cert $CERT ${FILE:-x} " # 🫘'),
+    CUPMEMO_TLS_KEY_FILE: path.join(temp, 'key $KEY ${FILE:-x} " # 🫘'),
   };
   writeFileSync(path.join(temp, 'password'), 'SYNTHETIC');
   writeFileSync(settings.POSTGRES_PASSWORD_FILE, 'SYNTHETIC', { mode: 0o600 });
@@ -62,6 +69,7 @@ try {
   assert.deepEqual(Object.keys(model.services).sort(), [
     'cupmemo-api',
     'cupmemo-postgres',
+    'cupmemo-tls',
     'cupmemo-web',
   ]);
   for (const key of ['BETTER_AUTH_SECRET', 'BETTER_AUTH_URL', 'CUPMEMO_DATABASE_URL_PRODUCTION']) {
@@ -94,6 +102,65 @@ try {
   ]);
   assert.equal(pg.secrets[0].source, 'postgres_password');
   assert.equal(pg.secrets[0].target, '/run/secrets/postgres_password');
+  const tls = model.services['cupmemo-tls'];
+  assert.equal(tls.image, settings.CUPMEMO_TLS_IMAGE);
+  assert.equal(tls.platform, 'linux/arm64');
+  assert.equal(tls.user, settings.CUPMEMO_TLS_UID);
+  assert.equal(tls.read_only, true);
+  assert.equal(tls.restart, 'no');
+  assert.equal(tls.pull_policy, 'never');
+  assert.equal(Number(tls.mem_limit), 64 * 1024 * 1024);
+  assert.equal(tls.memswap_limit, tls.mem_limit);
+  assert.equal(Number(tls.cpus), 0.25);
+  assert.equal(tls.pids_limit, 64);
+  assert.deepEqual(tls.cap_drop, ['ALL']);
+  assert.deepEqual(tls.security_opt, ['no-new-privileges:true']);
+  assert.deepEqual(tls.logging, {
+    driver: 'json-file',
+    options: { 'max-size': '10m', 'max-file': '3' },
+  });
+  assert.deepEqual(tls.environment, {
+    GOMEMLIMIT: '48MiB',
+    CUPMEMO_TLS_HOSTNAME: settings.CUPMEMO_TLS_HOSTNAME,
+  });
+  assert.deepEqual(tls.command, [
+    'caddy',
+    'run',
+    '--config',
+    '/etc/caddy/Caddyfile',
+    '--adapter',
+    'caddyfile',
+  ]);
+  assert.deepEqual(Object.keys(tls.networks).sort(), ['frontend', 'private_ingress']);
+  assert.equal(tls.depends_on['cupmemo-web'].condition, 'service_healthy');
+  assert.equal(tls.ports.length, 1);
+  assert.equal(tls.ports[0].host_ip, settings.CUPMEMO_TLS_BIND_IP);
+  assert.equal(tls.ports[0].published, '8445');
+  assert.equal(tls.ports[0].target, 8445);
+  assert.equal(tls.ports[0].protocol, 'tcp');
+  assert.deepEqual(
+    tls.tmpfs,
+    ['/data', '/config', '/tmp'].map((p) => `${p}:rw,noexec,nosuid,nodev,size=16m,mode=1777`),
+  );
+  assert.equal(tls.volumes.length, 3);
+  for (const [index, key, target] of [
+    [0, 'CUPMEMO_TLS_CONFIG_FILE', '/etc/caddy/Caddyfile'],
+    [1, 'CUPMEMO_TLS_CERT_FILE', '/run/secrets/cupmemo_tls_cert'],
+    [2, 'CUPMEMO_TLS_KEY_FILE', '/run/secrets/cupmemo_tls_key'],
+  ]) {
+    const mount = tls.volumes[index];
+    assert.equal(mount.type, 'bind');
+    assert.equal(mount.source, settings[key]);
+    assert.equal(mount.target, target);
+    assert.equal(mount.read_only, true);
+    assert.notEqual(mount.bind?.create_host_path, true);
+  }
+  assert.deepEqual(tls.healthcheck.test, [
+    'CMD-SHELL',
+    'curl --fail --silent --output /dev/null --max-time 3 --noproxy "*" --cacert /run/secrets/cupmemo_tls_cert --resolve "$CUPMEMO_TLS_HOSTNAME:8445:127.0.0.1" "https://$CUPMEMO_TLS_HOSTNAME:8445/sign-in"',
+  ]);
+  for (const key of ['privileged', 'devices', 'build', 'network_mode', 'cap_add', 'secrets'])
+    assert.equal(tls[key], undefined);
   for (const [name, image, memory] of [
     ['cupmemo-web', settings.CUPMEMO_WEB_IMAGE, 512],
     ['cupmemo-api', settings.CUPMEMO_API_IMAGE, 256],
@@ -141,9 +208,16 @@ try {
     'backend',
     'frontend',
   ]);
-  for (const network of Object.values(model.networks)) {
-    assert.equal(network.internal, true, JSON.stringify(model.networks));
+  assert.deepEqual(Object.keys(model.networks).sort(), ['backend', 'frontend', 'private_ingress']);
+  for (const [name, network] of Object.entries(model.networks)) {
+    assert.equal(
+      Boolean(network.internal),
+      name !== 'private_ingress',
+      JSON.stringify(model.networks),
+    );
     assert.notEqual(network.external, true);
+    assert.deepEqual(network.ipam ?? {}, {});
+    if (name === 'private_ingress') assert.equal(network.driver, 'bridge');
   }
   assert.equal(model['x-casaos'].main, 'cupmemo-web');
   assert.equal(model['x-casaos'].title.en_US, 'CupMemo');
