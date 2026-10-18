@@ -612,6 +612,20 @@ advisories, R1 and separate auth-redirect attribution retain the development-onl
 [Issue30 risk disposition](https://github.com/ohjy1006kenneth/CupMemo/issues/30#issuecomment-6140040612),
 not public-production clearance.
 
+### Pinned AppManagement source/build checkpoint
+
+The [pinned AppManagement source bundle](../infrastructure/casaos-appmanagement/README.md)
+distributes the Syncthing CURRENT/effective-CANDIDATE mutation admission patch,
+minimal original offline fixtures and actual service/helper tests. Its separate
+hosted ARM64 reproduction lane requires verified effective hard cgroup limits;
+do not compile/run the manager or Docker build on the shared Pi. Build receipts
+bind the exact publication head; artifact existence is not independent review or
+deployed privacy protection. Registered legacy v1 container PUT/DELETE bypasses
+remain LIVE-readiness Blocking. Neither manager is installed or executed by this
+source publication. Live rollout/rollback, aliases/custody, ordinary-project impact
+and root-RC coverage remain unverified. PGDATA provisioning, database startup and
+public deployment remain held; primary outcome and privacy readiness remain false.
+
 ## Backups
 
 See [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) for the documentation-only
