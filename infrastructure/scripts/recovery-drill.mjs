@@ -173,7 +173,8 @@ async function sourceCatalog(query) {
   const catalog = { version: 1 };
   for (const [key, sql] of Object.entries(statements))
     catalog[key] = (await query(sql)).rows.map((r) => r.tuple);
-  return sha256(canonicalCatalog(catalog));
+  const canonical = canonicalCatalog(catalog);
+  return { catalogSha256: sha256(canonical), catalog: JSON.parse(canonical) };
 }
 async function snapshot(connection) {
   const query = (sql) => connection.pool.query(sql);
@@ -197,7 +198,7 @@ async function snapshot(connection) {
     const sequence = (
       await query('SELECT last_value::text, is_called FROM drizzle.__drizzle_migrations_id_seq')
     ).rows;
-    return { rows, rowCounts, sequence, catalogSha256: await sourceCatalog(query) };
+    return { rows, rowCounts, sequence, ...(await sourceCatalog(query)) };
   } finally {
     await query('ROLLBACK');
   }
@@ -353,6 +354,7 @@ async function restore(fixture) {
     // Observe the genuine production connection, never an injected/fake DB.
     connect: async (targetConfig) => {
       const actual = await connectTarget(targetConfig);
+      const observedCatalog = { version: 1 };
       return {
         ...actual,
         query: async (sql) => {
@@ -361,7 +363,31 @@ async function restore(fixture) {
               sql,
             )?.[1];
           if (marker) phase = 'restore_query_' + marker;
+          if (sql.includes('to_regclass')) phase = 'restore_history_presence';
+          if (sql.includes('SELECT hash, created_at')) phase = 'restore_history_entries';
           const result = await actual.query(sql);
+          if (marker?.startsWith('catalog:')) {
+            const key = marker.slice('catalog:'.length);
+            observedCatalog[key] = result.rows.map((r) => r.tuple);
+            if (key === 'indexes') {
+              const original = read('original-source.json').catalog;
+              const canonical = JSON.parse(canonicalCatalog(observedCatalog));
+              for (const field of ['tables', 'columns', 'constraints', 'indexes']) {
+                const expected = original[field],
+                  observed = canonical[field];
+                mark('catalog_' + field + '_comparison', {
+                  expectedCount: expected.length,
+                  observedCount: observed.length,
+                  exact: JSON.stringify(expected) === JSON.stringify(observed),
+                  differingFields: expected[0].map(
+                    (_, i) => expected.filter((r, index) => r[i] !== observed[index]?.[i]).length,
+                  ),
+                });
+              }
+            }
+          }
+          if (sql.includes('SELECT hash, created_at'))
+            mark('history_entries_returned', result.rows.length);
           if (marker === 'inventory') {
             const r = result.rows[0];
             mark('restore_inventory', {
