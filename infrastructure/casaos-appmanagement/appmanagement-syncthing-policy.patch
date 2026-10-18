@@ -189,7 +189,7 @@
 +import (
 +	"bytes"
 +	"context"
-+	"encoding/json"
++	stdjson "encoding/json"
 +	"errors"
 +	"io"
 +	"os"
@@ -306,7 +306,7 @@
 +
 +// Explicit package-private dependencies permit transport tests without runtime hooks.
 +func runSyncthingPolicy(ctx context.Context, operation string, current, candidate *syncthingIdentity, open func(string) (*os.File, error), run func(*exec.Cmd) error) error {
-+	input, err := json.Marshal(syncthingRequest{1, operation, current, candidate})
++	input, err := stdjson.Marshal(syncthingRequest{1, operation, current, candidate})
 +	if err != nil || len(input) > syncthingPolicyLimit {
 +		return errSyncthingPolicy
 +	}
@@ -813,6 +813,52 @@
 +				t.Fatal("unsafe helper accepted")
 +			}
 +			requirePolicyRefusal(t, err)
++		})
++	}
++}
+--- /dev/null
++++ b/service/syncthing_policy_timeout_test.go
+@@ -0,0 +1,43 @@
++package service
++
++import (
++	"context"
++	"os"
++	"testing"
++	"time"
++)
++
++func TestSyncthingPolicyActualTransportFailures(t *testing.T) {
++	policyFixture(t)
++	original, err := os.ReadFile(syncthingPolicyPath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	// Deliberately failing helper fixtures, confined to disposable container root.
++	// The separate real-helper test exercises the unchanged accepted helper bytes.
++	fixtures := map[string]string{
++		"malformed":       `process.stdout.write('{}');`,
++		"trailing":        `process.stdout.write('{"version":1,"allowed":true}\nSECRET-SENTINEL');`,
++		"nonzero":         `process.exit(7);`,
++		"stdout-overflow": `process.stdout.write('x'.repeat(65537));`,
++		"stderr-overflow": `process.stderr.write('x'.repeat(65537));process.stdout.write('{"version":1,"allowed":true}\n');`,
++		"timeout":         `setInterval(()=>{},1000);`,
++	}
++	for name, script := range fixtures {
++		t.Run(name, func(t *testing.T) {
++			if err := os.WriteFile(syncthingPolicyPath, []byte(script), 0644); err != nil {
++				t.Fatal(err)
++			}
++			defer func() {
++				if err := os.WriteFile(syncthingPolicyPath, original, 0644); err != nil {
++					t.Fatal(err)
++				}
++			}()
++			started := time.Now()
++			requirePolicyRefusal(t, ordinaryPolicyApp().CheckMutation(context.Background(), "apply", nil))
++			if time.Since(started) > 5*time.Second {
++				t.Fatal("fixed transport exceeded bounded fixture deadline")
++			}
 +		})
 +	}
 +}

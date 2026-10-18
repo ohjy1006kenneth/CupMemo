@@ -16,8 +16,8 @@
   ],
   "patch": {
     "path": "appmanagement-syncthing-policy.patch",
-    "bytes": 34342,
-    "sha256": "f37998b57ae200dcdf1658ebde866f136ad3ad62597388b30c547ba3b98d8499"
+    "bytes": 35879,
+    "sha256": "2623b8667ba27914490232ce3f03a0e9bf696bf2b94e3d6dca40e2a16982d434"
   },
   "upstream_files": [
     {
@@ -59,13 +59,18 @@
     },
     {
       "path": "service/syncthing_policy.go",
-      "bytes": 9107,
-      "sha256": "380246f4945769eee276b52b6d90e1bd7ddb717f6526208c162139ac2a97cfda"
+      "bytes": 9118,
+      "sha256": "4255d1caa0e8168a7caea949fb7914158c38663e583845ad9220ccbd16e6def3"
     },
     {
       "path": "service/syncthing_policy_test.go",
       "bytes": 12636,
       "sha256": "a1f75d2cdbc7aeef2a7953cd71b57c22fe96551c04b6a194bdf269294d5d9a65"
+    },
+    {
+      "path": "service/syncthing_policy_timeout_test.go",
+      "bytes": 1405,
+      "sha256": "c2145be81c11dd4a05894c95cd8898623e3ef76f7deaa14a4d2e69c50bd9c17a"
     },
     {
       "path": "service/testdata/syncthing-manager-policy.mjs",
