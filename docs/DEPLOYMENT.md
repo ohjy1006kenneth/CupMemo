@@ -620,8 +620,11 @@ minimal original offline fixtures and actual service/helper tests. Its separate
 hosted ARM64 reproduction lane requires verified effective hard cgroup limits;
 do not compile/run the manager or Docker build on the shared Pi. Build receipts
 bind the exact publication head; artifact existence is not independent review or
-deployed privacy protection. Registered legacy v1 container PUT/DELETE bypasses
-remain LIVE-readiness Blocking. Neither manager is installed or executed by this
+deployed privacy protection. The source now guards the four registered legacy v1
+update/uninstall/archive/terminal triggers using inspected CURRENT plus effective
+update CANDIDATE before writers, async success or WebSocket upgrade/exec. Actual
+service and shared-handler httptest controls use injected writers/terminal
+continuation, not a live Docker mutation or interactive session. Neither manager is installed or executed by this
 source publication. Live rollout/rollback, aliases/custody, ordinary-project impact
 and root-RC coverage remain unverified. PGDATA provisioning, database startup and
 public deployment remain held; primary outcome and privacy readiness remain false.

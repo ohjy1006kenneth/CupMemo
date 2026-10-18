@@ -16,10 +16,20 @@
   ],
   "patch": {
     "path": "appmanagement-syncthing-policy.patch",
-    "bytes": 35915,
-    "sha256": "d0d9f894898414c5f5940fcc79889eab2cca226035b9e0433efc914144d2ed13"
+    "bytes": 67735,
+    "sha256": "91045fa9fab7fa41e06f5f69b42ce6ed5881ccfef8a7266a3b5376a25b96c0f7"
   },
   "upstream_files": [
+    {
+      "path": "LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "route/v1/docker.go",
+      "bytes": 28123,
+      "sha256": "c745cd48cd0aad8ea5fdcafdd72463c6210103f6bae7a8a2424501e9aac67104"
+    },
     {
       "path": "route/v2/compose_app.go",
       "bytes": 24059,
@@ -34,14 +44,24 @@
       "path": "service/compose_service.go",
       "bytes": 6689,
       "sha256": "fc11f662a5f0b3242ca1ba28d940891fa498977ee22f11fe7596ca621a5aaf01"
-    },
-    {
-      "path": "LICENSE",
-      "bytes": 11357,
-      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
     }
   ],
   "patched_files": [
+    {
+      "path": "route/v1/docker.go",
+      "bytes": 26484,
+      "sha256": "293347984c8d700d7919d808ecf25c237c0846bc1e179b083a857f97aeef95b7"
+    },
+    {
+      "path": "route/v1/syncthing_legacy.go",
+      "bytes": 4144,
+      "sha256": "5b3463d8f00279b0ca81916855a6c73c15cb4cd92714606580ad5759b9c38d82"
+    },
+    {
+      "path": "route/v1/syncthing_legacy_test.go",
+      "bytes": 8598,
+      "sha256": "90a9f78022e6ecc2749eb391871cf1920e9aaba57bbb720e7937ab17e83d8507"
+    },
     {
       "path": "route/v2/compose_app.go",
       "bytes": 24976,
@@ -56,6 +76,16 @@
       "path": "service/compose_service.go",
       "bytes": 7119,
       "sha256": "753b2c2f23489bab3e71d3b9aa6a209bab630b61795708a8637e95d4c3180903"
+    },
+    {
+      "path": "service/syncthing_legacy.go",
+      "bytes": 5003,
+      "sha256": "781198fee32134824e7aa41095acb4a985dc7d029cd635d71d572d81fe8a9a44"
+    },
+    {
+      "path": "service/syncthing_legacy_test.go",
+      "bytes": 6192,
+      "sha256": "b367de6ec9d1e1bd299a73f30f75dcad53e9251f861b94d2c2cef92c7f8980f7"
     },
     {
       "path": "service/syncthing_policy.go",
@@ -74,8 +104,8 @@
     },
     {
       "path": "service/testdata/syncthing-manager-policy.mjs",
-      "bytes": 5525,
-      "sha256": "7cae1cbf31a9ae9722d9d1cfda40dc342256680e1bd16f2e2675f5804058497f"
+      "bytes": 5607,
+      "sha256": "bd7bb458fea0468d2656654e20434f5e1626f0f0c0ac8d0cdda99288bdd1ca4e"
     }
   ],
   "module_files": [
@@ -640,10 +670,10 @@
   "provenance": {
     "original_implementer": "code-monkey-cupmemo",
     "original_implementation_run_id": 2817,
-    "previous_coder_revision_run_id": 3361,
-    "prior_technical_review_run_id": 3362,
-    "owner_scope_run_id": 3363,
-    "coder_revision_run_id": 3364
+    "previous_coder_revision_run_id": 3364,
+    "prior_technical_review_run_id": 3367,
+    "owner_scope_run_id": 3368,
+    "coder_revision_run_id": 3369
   },
   "go": {
     "url": "https://go.dev/dl/go1.26.9.linux-arm64.tar.gz",
