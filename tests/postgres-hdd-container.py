@@ -38,6 +38,7 @@ base = Path(tempfile.mkdtemp(prefix='cupmemo-hdd-', dir=(
     os.environ['RUNNER_TEMP'] if not args.negative_only else Path.cwd())))
 volume = base / 'volume'
 volume.mkdir()
+source = volume / 'owned fixture' / 'data'
 mounted = False
 uid = os.getuid()
 assert uid > 0
@@ -140,7 +141,6 @@ try:
         run(['mkfs.ext4', '-q', '-F', str(image)])
         run(['sudo', 'mount', '-o', 'loop,nosuid,nodev', str(image), str(volume)])
         mounted = True
-    source = volume / 'owned fixture' / 'data'
     if args.negative_only:
         source.mkdir(parents=True, mode=0o700)
     else:
@@ -196,7 +196,10 @@ try:
         for mode in ('0777', '02700'):
             run(['sudo', 'chmod', mode, str(source)])
             refusal('mode-' + mode, source)
-        run(['sudo', 'chmod', '0700', str(source)])
+        # GNU chmod preserves directory setgid with four-digit modes. Explicitly
+        # clear special bits before later positive admission (never relax gate).
+        run(['sudo', 'chmod', '00700', str(source)])
+        assert source.stat().st_mode & 0o7777 == 0o700
         run(['sudo', 'ln', '-s', '/tmp', str(source / 'pgdata')])
         # Existing unsafe child is rejected before any official mutation.
         refusal('symlink-child', source)
@@ -261,10 +264,15 @@ try:
                       'production_binary': True, 'resource_limits': resource_limits,
                       'resource_enforcement_verified': all(r['memory'] == r['swap'] == 512 * 1024**2 and r['pids'] == 128 and r['nano_cpus'] == 1000000000 for r in resource_limits),
                       'live_HDD_or_CasaOS_acceptance': False}))
+except BaseException:
+    print(json.dumps({'completed_checks_before_failure': checks,
+                      'source_mode': oct(source.lstat().st_mode & 0o7777) if source.exists() else None}), flush=True)
+    raise
 finally:
     # Exact owned resources only. Never prune, detach a live disk or delete live data.
     for name in reversed(owned):
         subprocess.run(['docker', 'rm', '-f', '-v', name], capture_output=True, timeout=30)
+        assert subprocess.run(['docker', 'inspect', name], capture_output=True, timeout=10).returncode != 0, 'owned container cleanup failed'
     if mounted:
         run(['sudo', 'umount', str(volume)])
     if args.negative_only:
