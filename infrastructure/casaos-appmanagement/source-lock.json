@@ -16,8 +16,8 @@
   ],
   "patch": {
     "path": "appmanagement-syncthing-policy.patch",
-    "bytes": 151616,
-    "sha256": "f221048d272d2d30ab8e24e7ef8eaad9ddbf9f5e5e4297d251ab0f1a50ec9d20"
+    "bytes": 164799,
+    "sha256": "2d2c05663a4fd7e53ced887652d6735bc1bc7781764a35efc758bbc3098eacb2"
   },
   "upstream_files": [
     {
@@ -89,13 +89,13 @@
     },
     {
       "path": "pkg/docker/image_context.go",
-      "bytes": 2939,
-      "sha256": "ed1d164fe56bdef46b1cb2e1173a9c1a729b95fb98fc637c47708e8c7eb38160"
+      "bytes": 4513,
+      "sha256": "38d4805d57fcd9381f89cb8a55b5952dae23b0f04e11c8cfa72e2e4df293154d"
     },
     {
       "path": "pkg/docker/image_context_test.go",
-      "bytes": 3930,
-      "sha256": "dc505417fd83587b3f2bb4b15b88729f5d49d8c4f85326ce3e768f43cf24ebff"
+      "bytes": 3924,
+      "sha256": "6fa854967cfac0b43327cd2dc3c18ea082481336221529d8bdd2da5bb6b93a8b"
     },
     {
       "path": "pkg/docker/recreation_credentials.go",
@@ -108,9 +108,14 @@
       "sha256": "c6e7745755c4b51e48756030f9e987bf7b3628d1b42b681f61b69539f9fb8321"
     },
     {
+      "path": "pkg/docker/recreation_ownership_test.go",
+      "bytes": 10872,
+      "sha256": "0cf59b333794371e12ce457d89dd521bada1366a62193ef3d01721e07fc81022"
+    },
+    {
       "path": "pkg/docker/recreation_testbridge.go",
-      "bytes": 995,
-      "sha256": "4bc17d31f432c63ba846143eca2d7e9c8381051cd4df043bc20c68aa0ff238a6"
+      "bytes": 989,
+      "sha256": "6f732f59f4a63c58e2d829500a3984d680eb9d3a364741f74286d595fed85712"
     },
     {
       "path": "pkg/docker/registry_context_test.go",
@@ -174,8 +179,8 @@
     },
     {
       "path": "service/recreation_protocol_test.go",
-      "bytes": 6090,
-      "sha256": "7e055d55b3e0124838a1f81ee38eee47c444ef8eea27999364110366a93e9402"
+      "bytes": 6476,
+      "sha256": "0eb009aadb49fe57db86f1667586e35bc331a1e95f6f7ba85019f6d6407b08a9"
     },
     {
       "path": "service/recreation_pull.go",
@@ -790,13 +795,14 @@
   "provenance": {
     "original_implementer": "code-monkey-cupmemo",
     "original_implementation_run_id": 2817,
-    "previous_coder_revision_run_id": 3378,
+    "previous_coder_revision_run_id": 3381,
     "prior_technical_review_run_id": 3379,
     "owner_scope_run_id": 3371,
-    "coder_revision_run_id": 3381,
+    "coder_revision_run_id": 3383,
     "owner_adjudication_run_id": 3374,
     "revision_full_build_number": 4,
-    "owner_design_disposition_run_id": 3380
+    "owner_design_disposition_run_id": 3380,
+    "owner_sdk_ownership_disposition_run_id": 3382
   },
   "go": {
     "url": "https://go.dev/dl/go1.26.9.linux-arm64.tar.gz",

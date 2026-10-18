@@ -152,6 +152,16 @@ test('strict pull production binding and test-only bridge are distributed exactl
   );
   const buildLine = hosted.split('\n').find((line) => line.includes('"go", "build"'));
   expect(buildLine).not.toContain('-tags');
+  const ownership = read('pkg/docker/recreation_ownership_test.go');
+  for (const selector of [
+    'ErrorBodyOwnership',
+    'NegotiationOwnership',
+    'OwnershipIsolation',
+    'ConfigurationPreserved',
+  ]) {
+    expect(ownership).toContain(`func TestSyncthingRecreate${selector}`);
+    expect(hosted).toContain(`"${selector}"`);
+  }
 });
 for (const side of ['current', 'candidate']) {
   for (const selector of ['name', 'directory', 'compose', 'service']) {

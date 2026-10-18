@@ -491,13 +491,14 @@
  func CompareDigest(imageName string, repoDigests []string) (bool, error) {
 --- /dev/null
 +++ b/pkg/docker/image_context.go
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,170 @@
 +package docker
 +
 +import (
 +	"context"
 +	"errors"
 +	"io"
++	"net/http"
 +	"sync"
 +	"time"
 +
@@ -507,20 +508,15 @@
 +
 +var errImagePullContext = errors.New("container recreation refused")
 +
-+type recreationPullClient interface {
-+	ImagePull(context.Context, string, types.ImagePullOptions) (io.ReadCloser, error)
-+	Close() error
-+}
-+
 +// PullImageContext owns the real Docker client/body and returns consumer errors.
 +// Legacy PullImage and its unrelated callers retain their existing behavior.
 +func PullImageContext(ctx context.Context, imageName string, consume func(context.Context, io.ReadCloser) error) error {
-+	return pullImageContext(ctx, imageName, consume, func() (recreationPullClient, error) {
++	return pullImageContext(ctx, imageName, consume, func() (*client.Client, error) {
 +		return client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 +	}, getPullOptionsContext)
 +}
 +
-+func pullImageContext(ctx context.Context, name string, consume func(context.Context, io.ReadCloser) error, newClient func() (recreationPullClient, error), options func(context.Context, string) (types.ImagePullOptions, error)) error {
++func pullImageContext(ctx context.Context, name string, consume func(context.Context, io.ReadCloser) error, newClient func() (*client.Client, error), options func(context.Context, string) (types.ImagePullOptions, error)) error {
 +	if ctx.Err() != nil || consume == nil {
 +		return errImagePullContext
 +	}
@@ -530,49 +526,121 @@
 +	if err != nil || cli == nil {
 +		return errImagePullContext
 +	}
-+	defer cli.Close()
++	// Initialize scheme/TLS/env/API first, then decorate a copy of its HTTP
++	// client on the SAME initialized SDK. Never change a global transport.
++	owner, err := ownRecreationPull(ctx, cancel, cli)
++	if err != nil {
++		_ = cli.Close()
++		return errImagePullContext
++	}
++	defer owner.cleanup()
 +	opts, err := options(ctx, name)
 +	if err != nil || ctx.Err() != nil {
 +		return errImagePullContext
 +	}
-+	// Bound API negotiation/headers without limiting a healthy entire download
-+	// to 3s. Join any timer callback before inspecting the resulting context.
-+	headerDone := make(chan struct{})
-+	timer := time.AfterFunc(3*time.Second, func() { cancel(); close(headerDone) })
 +	out, err := cli.ImagePull(ctx, name, opts)
-+	if !timer.Stop() {
-+		<-headerDone
-+	}
 +	if out == nil {
 +		return errImagePullContext
 +	}
-+	body := &recreationPullBody{ReadCloser: out, cancel: cancel}
-+	defer body.Close()
++	defer out.Close()
 +	if err != nil || ctx.Err() != nil {
 +		return errImagePullContext
 +	}
-+	// Cancellation closes the ACTUAL transport body to unblock Read. Always
-+	// stop/join the watcher; never abandon an old synchronous consumer.
-+	stop, joined := make(chan struct{}), make(chan struct{})
-+	go func() {
-+		defer close(joined)
-+		select {
-+		case <-ctx.Done():
-+			body.Close()
-+		case <-stop:
-+		}
-+	}()
-+	defer func() { close(stop); <-joined }()
-+	if err := consume(ctx, body); err != nil || ctx.Err() != nil {
++	if err := consume(ctx, out); err != nil || ctx.Err() != nil {
 +		return errImagePullContext
 +	}
 +	return nil
 +}
 +
++// Per-invocation ownership includes bodies the SDK discards on error, ping and
++// retry. Request/header and body reads run synchronously, never race-abandoned.
++type recreationPullOwner struct {
++	transport http.RoundTripper
++	ctx context.Context
++	cancel context.CancelFunc
++	mu sync.Mutex
++	bodies []*recreationPullBody
++	closed bool
++	stop chan struct{}
++	joined chan struct{}
++}
++
++func ownRecreationPull(ctx context.Context, cancel context.CancelFunc, cli *client.Client) (*recreationPullOwner, error) {
++	hc := cli.HTTPClient()
++	if hc == nil || hc.Transport == nil {
++		return nil, errImagePullContext
++	}
++	o := &recreationPullOwner{transport: hc.Transport, ctx: ctx, cancel: cancel, stop: make(chan struct{}), joined: make(chan struct{})}
++	hc.Transport = o
++	if err := client.WithHTTPClient(hc)(cli); err != nil {
++		return nil, errImagePullContext
++	}
++	go func() {
++		defer close(o.joined)
++		select {
++		case <-ctx.Done():
++			o.closeBodies()
++		case <-o.stop:
++		}
++	}()
++	return o, nil
++}
++
++func (o *recreationPullOwner) closeBodies() {
++	o.mu.Lock()
++	o.closed = true
++	bodies := o.bodies
++	o.bodies = nil
++	o.mu.Unlock()
++	for _, body := range bodies {
++		_ = body.Close()
++	}
++}
++
++func (o *recreationPullOwner) cleanup() {
++	o.cancel()
++	close(o.stop)
++	<-o.joined
++	o.closeBodies()
++	// SDK Close only recognizes *http.Transport, hidden by our decorator.
++	if idle, ok := o.transport.(interface{ CloseIdleConnections() }); ok {
++		idle.CloseIdleConnections()
++	}
++}
++
++func (o *recreationPullOwner) RoundTrip(r *http.Request) (*http.Response, error) {
++	if o.ctx.Err() != nil {
++		return nil, errImagePullContext
++	}
++	done := make(chan struct{})
++	timer := time.AfterFunc(3*time.Second, func() { o.cancel(); close(done) })
++	response, err := o.transport.RoundTrip(r)
++	if !timer.Stop() {
++		<-done
++	}
++	if response != nil && response.Body != nil {
++		body := &recreationPullBody{ReadCloser: response.Body, cancel: o.cancel}
++		response.Body = body
++		o.mu.Lock()
++		closed := o.closed || o.ctx.Err() != nil
++		if !closed {
++			o.bodies = append(o.bodies, body)
++		}
++		o.mu.Unlock()
++		if closed {
++			_ = body.Close()
++		}
++	}
++	if o.ctx.Err() != nil {
++		return response, errImagePullContext
++	}
++	return response, err
++}
++
 +type recreationPullBody struct {
 +	io.ReadCloser
 +	cancel context.CancelFunc
-+	once   sync.Once
++	once sync.Once
 +}
 +
 +func (b *recreationPullBody) Close() error {
@@ -652,7 +720,7 @@
 +			}
 +			requests, consumed := 0, 0
 +			var requestCtx context.Context
-+			factory := func() (recreationPullClient, error) {
++			factory := func() (*client.Client, error) {
 +				if mode == "setup" {
 +					return nil, errors.New("PRIVATE-SENTINEL")
 +				}
@@ -921,6 +989,224 @@
 +	}
 +}
 --- /dev/null
++++ b/pkg/docker/recreation_ownership_test.go
+@@ -0,0 +1,215 @@
++package docker
++
++import (
++	"context"
++	"crypto/tls"
++	"errors"
++	"io"
++	"net/http"
++	"reflect"
++	"strings"
++	"sync"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/docker/docker/api/types"
++	"github.com/docker/docker/client"
++)
++
++// Count actual Close calls, not just first close; block until actual cleanup.
++type ownershipBody struct {
++	io.Reader
++	block bool
++	closed chan struct{}
++	once sync.Once
++	closes atomic.Int32
++	reads atomic.Int32
++	entered chan struct{}
++}
++
++func (b *ownershipBody) Read(p []byte) (int, error) {
++	b.reads.Add(1)
++	if b.block {
++		b.once.Do(func() { close(b.entered) })
++		<-b.closed
++		return 0, errors.New("PRIVATE-SENTINEL")
++	}
++	return b.Reader.Read(p)
++}
++func (b *ownershipBody) Close() error {
++	if b.closes.Add(1) == 1 { close(b.closed) }
++	return nil
++}
++func ownedBody(payload string) *ownershipBody {
++	return &ownershipBody{Reader: strings.NewReader(payload), closed: make(chan struct{}), entered: make(chan struct{})}
++}
++
++type ownershipTransport struct {
++	trip func(*http.Request) (*http.Response, error)
++	idles atomic.Int32
++}
++func (t *ownershipTransport) RoundTrip(r *http.Request) (*http.Response, error) { return t.trip(r) }
++func (t *ownershipTransport) CloseIdleConnections() { t.idles.Add(1) }
++func ownershipOptions(context.Context, string) (types.ImagePullOptions, error) { return types.ImagePullOptions{}, nil }
++func ownershipConsume(_ context.Context, body io.ReadCloser) error { _, err := io.Copy(io.Discard, body); return err }
++
++type ownershipReadError struct{}
++func (ownershipReadError) Read([]byte) (int, error) { return 0, errors.New("PRIVATE-SENTINEL") }
++
++func TestSyncthingRecreateErrorBodyOwnership(t *testing.T) {
++	for _, mode := range []string{"json", "plain", "malformed", "truncated", "oversize", "read-error", "cancel", "deadline", "read-bound", "response-error"} {
++		t.Run(mode, func(t *testing.T) {
++			ctx, cancel := context.WithCancel(context.Background())
++			defer cancel()
++			if mode == "deadline" { ctx, cancel = context.WithTimeout(ctx, 40*time.Millisecond); defer cancel() }
++			body := ownedBody(`{"message":"PRIVATE-SENTINEL"}`)
++			switch mode {
++			case "plain": body.Reader = strings.NewReader("PRIVATE-SENTINEL")
++			case "malformed": body.Reader = strings.NewReader("!PRIVATE-SENTINEL")
++			case "truncated": body.Reader = strings.NewReader(`{"message":"PRIVATE-SENTINEL`)
++			case "oversize": body.Reader = strings.NewReader(strings.Repeat("a", 1024*1024+1))
++			case "read-error": body.Reader = ownershipReadError{}
++			case "cancel", "deadline", "read-bound": body.block = true
++			}
++			var requestCtx context.Context
++			transport := &ownershipTransport{trip: func(r *http.Request) (*http.Response, error) {
++				if r.Method != http.MethodPost || r.URL.Path != "/v1.41/images/create" { t.Fatal("unexpected Docker request", r.Method, r.URL.Path) }
++				requestCtx = r.Context()
++				resp := &http.Response{StatusCode: 500, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: body}
++				if mode == "response-error" { return resp, errors.New("PRIVATE-SENTINEL") }
++				return resp, nil
++			}}
++			factory := func() (*client.Client, error) { return client.NewClientWithOpts(client.WithHost("http://docker.test"), client.WithVersion("1.41"), client.WithHTTPClient(&http.Client{Transport: transport})) }
++			joined := make(chan struct{})
++			if mode == "cancel" {
++				go func() { defer close(joined); <-body.entered; cancel() }()
++			} else { close(joined) }
++			start := time.Now()
++			consumed := false
++			err := pullImageContext(ctx, "ordinary:latest", func(context.Context, io.ReadCloser) error { consumed = true; return nil }, factory, ownershipOptions)
++			<-joined
++			if err != errImagePullContext || consumed || body.closes.Load() != 1 || transport.idles.Load() != 1 || requestCtx == nil || requestCtx.Err() == nil { t.Fatal("error ownership/sanitization", err, consumed, body.closes.Load(), transport.idles.Load()) }
++			bound := time.Second
++			if mode == "read-bound" { bound = 4*time.Second }
++			if time.Since(start) > bound { t.Fatal("unbounded SDK error-body read") }
++			reads := body.reads.Load()
++			time.Sleep(10*time.Millisecond)
++			if body.reads.Load() != reads { t.Fatal("late read") }
++		})
++	}
++}
++
++func TestSyncthingRecreateNegotiationOwnership(t *testing.T) {
++	for _, mode := range []string{"negotiate", "fallback", "ping-error", "fixed", "sdk-retry"} {
++		t.Run(mode, func(t *testing.T) {
++			bodies := []*ownershipBody{}
++			paths := []string{}
++			contexts := []context.Context{}
++			pulls := 0
++			transport := &ownershipTransport{trip: func(r *http.Request) (*http.Response, error) {
++				paths = append(paths, r.Method+" "+r.URL.Path)
++				contexts = append(contexts, r.Context())
++				status := 200
++				header := http.Header{"Api-Version": []string{"1.41"}}
++				body := ownedBody("")
++				if r.URL.Path == "/_ping" {
++					if r.Method == http.MethodHead && mode == "fallback" { status = 405 }
++					if mode == "ping-error" { status = 500; body = ownedBody(`{"message":"PRIVATE-SENTINEL"}`) }
++				} else {
++					pulls++
++					if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/images/create") { t.Fatal("unexpected API") }
++					body = ownedBody(`{"status":"ordinary"}`)
++					if mode == "sdk-retry" && pulls == 1 { status = 401; body = ownedBody(`{"message":"PRIVATE-SENTINEL"}`) }
++				}
++				bodies = append(bodies, body)
++				return &http.Response{StatusCode: status, Header: header, Body: body}, nil
++			}}
++			var cli *client.Client
++			factory := func() (*client.Client, error) {
++				opts := []client.Opt{client.WithHost("http://docker.test"), client.WithAPIVersionNegotiation(), client.WithHTTPClient(&http.Client{Transport: transport})}
++				if mode == "fixed" { opts = append(opts, client.WithVersion("1.41")) }
++				var err error
++				cli, err = client.NewClientWithOpts(opts...)
++				return cli, err
++			}
++			options := func(context.Context, string) (types.ImagePullOptions, error) {
++				o := types.ImagePullOptions{}
++				if mode == "sdk-retry" { o.PrivilegeFunc = func() (string, error) { return "public-fixture", nil } }
++				return o, nil
++			}
++			err := pullImageContext(context.Background(), "ordinary:latest", ownershipConsume, factory, options)
++			if err != nil || transport.idles.Load() != 1 { t.Fatal("negotiation failed", err, paths) }
++			for i, b := range bodies { if b.closes.Load() != 1 || contexts[i].Err() == nil { t.Fatal("discarded negotiation/retry body", i, b.closes.Load()) } }
++			want := []string{"HEAD /_ping", "POST /v1.41/images/create"}
++			switch mode {
++			case "fallback": want = []string{"HEAD /_ping", "GET /_ping", "POST /v1.41/images/create"}
++			case "fixed": want = []string{"POST /v1.41/images/create"}
++			case "sdk-retry": want = append(want, "POST /v1.41/images/create")
++			}
++			if !reflect.DeepEqual(paths, want) || cli.ClientVersion() != "1.41" { t.Fatal("API mode or unexpected application retry", paths, cli.ClientVersion()) }
++		})
++	}
++}
++
++func TestSyncthingRecreateOwnershipIsolation(t *testing.T) {
++	ctxA, cancelA := context.WithCancel(context.Background())
++	defer cancelA()
++	bodyA, bodyB := ownedBody(""), ownedBody("healthy")
++	bodyA.block = true
++	transports := []*ownershipTransport{}
++	for _, b := range []*ownershipBody{bodyA, bodyB} {
++		body := b
++		transports = append(transports, &ownershipTransport{trip: func(*http.Request) (*http.Response, error) { return &http.Response{StatusCode: 200, Header: make(http.Header), Body: body}, nil }})
++	}
++	factory := func(tr *ownershipTransport) func() (*client.Client, error) {
++		return func() (*client.Client, error) { return client.NewClientWithOpts(client.WithHost("http://docker.test"), client.WithVersion("1.41"), client.WithHTTPClient(&http.Client{Transport: tr})) }
++	}
++	aDone, bDone := make(chan error, 1), make(chan error, 1)
++	bReady, releaseB := make(chan struct{}), make(chan struct{})
++	go func() { aDone <- pullImageContext(ctxA, "ordinary", ownershipConsume, factory(transports[0]), ownershipOptions) }()
++	go func() { bDone <- pullImageContext(context.Background(), "ordinary", func(ctx context.Context, body io.ReadCloser) error { close(bReady); <-releaseB; return ownershipConsume(ctx, body) }, factory(transports[1]), ownershipOptions) }()
++	<-bodyA.entered
++	<-bReady
++	cancelA()
++	if <-aDone != errImagePullContext || bodyA.closes.Load() != 1 || transports[0].idles.Load() != 1 { t.Fatal("first invocation cleanup") }
++	if bodyB.closes.Load() != 0 || transports[1].idles.Load() != 0 { t.Fatal("cross-invocation cleanup") }
++	close(releaseB)
++	if <-bDone != nil || bodyB.closes.Load() != 1 || transports[1].idles.Load() != 1 { t.Fatal("healthy second invocation") }
++}
++
++func TestSyncthingRecreateConfigurationPreserved(t *testing.T) {
++	for _, mode := range []string{"unix", "tcp", "tls"} {
++		t.Run(mode, func(t *testing.T) {
++			host := "unix:///public-fixture/docker.sock"
++			if mode != "unix" { host = "tcp://docker.test:2376" }
++			// Real initialization configures its actual Unix/TCP dialer. TLS is a
++			// public empty fixture, no filesystem/env/private certificates used.
++			opts := []client.Opt{client.WithHost(host), client.WithAPIVersionNegotiation()}
++			if mode == "tls" { opts = append(opts, client.WithHTTPClient(&http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}, CheckRedirect: client.CheckRedirect})) }
++			cli, err := client.NewClientWithOpts(opts...)
++			if err != nil { t.Fatal(err) }
++			before := cli.HTTPClient()
++			underlying := before.Transport.(*http.Transport)
++			dialer, tlsConfig := reflect.ValueOf(underlying.DialContext).Pointer(), underlying.TLSClientConfig
++			// Swap ONLY the request execution after real SDK initialization so no
++			// listener/socket is used, retaining initialized transport/config below.
++			var scheme string
++			probe := &ownershipTransport{trip: func(r *http.Request) (*http.Response, error) { scheme = r.URL.Scheme; return &http.Response{StatusCode: 200, Header: make(http.Header), Body: ownedBody("")}, nil }}
++			ctx, cancel := context.WithCancel(context.Background())
++			owner, err := ownRecreationPull(ctx, cancel, cli)
++			if err != nil { t.Fatal(err) }
++			after := cli.HTTPClient()
++			if cli.DaemonHost() != host || cli.ClientVersion() == "" || after.Timeout != before.Timeout || after.Jar != before.Jar || reflect.ValueOf(after.CheckRedirect).Pointer() != reflect.ValueOf(before.CheckRedirect).Pointer() || owner.transport != underlying || reflect.ValueOf(underlying.DialContext).Pointer() != dialer || underlying.TLSClientConfig != tlsConfig { t.Fatal("configured client changed") }
++			// Use the same decorator against controlled transport after inspecting
++			// preservation; cli retains its constructor-inferred HTTP/TLS scheme.
++			owner.transport = probe
++			_, err = cli.Ping(ctx)
++			owner.cleanup()
++			underlying.CloseIdleConnections()
++			want := "http"
++			if mode == "tls" { want = "https" }
++			if err != nil || scheme != want { t.Fatal("constructor scheme concealed by decoration", scheme, err) }
++		})
++	}
++}
+--- /dev/null
 +++ b/pkg/docker/recreation_testbridge.go
 @@ -0,0 +1,22 @@
 +//go:build cupmemo_recreation_test
@@ -941,7 +1227,7 @@
 +// build tag. The full manager build uses clean GOFLAGS and excludes this file:
 +// there is no production hook, global mutation, environment switch or listener.
 +func RecreationPullTestBridge(ctx context.Context, name string, consume func(context.Context, io.ReadCloser) error, transport http.RoundTripper) error {
-+	return pullImageContext(ctx, name, consume, func() (recreationPullClient, error) {
++	return pullImageContext(ctx, name, consume, func() (*client.Client, error) {
 +		return client.NewClientWithOpts(client.WithHost("http://docker.test"), client.WithVersion("1.41"), client.WithHTTPClient(&http.Client{Transport: transport}))
 +	}, func(context.Context, string) (types.ImagePullOptions, error) { return types.ImagePullOptions{}, nil })
 +}
@@ -2379,7 +2665,7 @@
 +}
 --- /dev/null
 +++ b/service/recreation_protocol_test.go
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,186 @@
 +//go:build cupmemo_recreation_test
 +
 +package service
@@ -2456,11 +2742,11 @@
 +// registry, listener, socket, copied parser or canned pull-error replacement.
 +func TestSyncthingRecreatePullProtocolSuppressesForce(t *testing.T) {
 +	policyFixture(t)
-+	for _, mode := range []string{"daemon-error", "error-only", "progress-error", "malformed", "truncated", "empty", "whitespace", "oversize-message", "total-limit", "read-error", "cancel", "deadline", "read-bound", "cancel-at-eof", "success", "same-force", "same-no-force"} {
++	for _, mode := range []string{"daemon-error", "error-only", "progress-error", "malformed", "truncated", "empty", "whitespace", "oversize-message", "total-limit", "read-error", "cancel", "deadline", "read-bound", "cancel-at-eof", "http-error", "http-read-error", "http-cancel", "http-deadline", "http-read-bound", "success", "same-force", "same-no-force"} {
 +		t.Run(mode, func(t *testing.T) {
 +			ctx, cancel := context.WithCancel(context.Background())
 +			defer cancel()
-+			if mode == "deadline" {
++			if mode == "deadline" || mode == "http-deadline" {
 +				ctx, cancel = context.WithTimeout(ctx, 40*time.Millisecond)
 +				defer cancel()
 +			}
@@ -2485,24 +2771,24 @@
 +
 +			}
 +			body := &pullProtocolBody{Reader: strings.NewReader(payload), closed: make(chan struct{})}
-+			if mode == "read-error" {
++			if mode == "read-error" || mode == "http-read-error" {
 +				body.Reader = io.MultiReader(strings.NewReader(payload), pullReadFailure{})
 +			}
 +			if mode == "total-limit" {
 +				body.Reader = io.LimitReader(&pullRepeatFrame{frame: `{"status":"` + strings.Repeat("a", 1024) + `"}` + "\n"}, 64*1024*1024+1)
 +			}
-+			if mode == "cancel" || mode == "cancel-at-eof" {
++			if mode == "cancel" || mode == "cancel-at-eof" || mode == "http-cancel" {
 +				body.cancel = cancel
 +			}
 +			body.cancelEOF = mode == "cancel-at-eof"
-+			body.block = mode == "cancel" || mode == "deadline" || mode == "read-bound"
++			body.block = mode == "cancel" || mode == "deadline" || mode == "read-bound" || mode == "http-cancel" || mode == "http-deadline" || mode == "http-read-bound"
 +			c, old, target := recreateFixture()
 +			if mode != "success" {
 +				target = old
 +			} // cached old image survives ALL failed pulls
 +			calls := []string{}
 +			d := recreateDependencies(t, c, old, target, &calls)
-+			if mode == "deadline" {
++			if mode == "deadline" || mode == "http-deadline" {
 +				// Isolate body deadline from the independently tested real helper.
 +				d.current = func(context.Context, *types.ContainerJSON) error { return nil }
 +			}
@@ -2525,7 +2811,9 @@
 +							if !strings.HasSuffix(r.URL.Path, "/images/create") {
 +								t.Fatal("unexpected Docker API")
 +							}
-+							return &http.Response{StatusCode: 200, Header: make(http.Header), Body: body}, nil
++							status := 200
++							if strings.HasPrefix(mode, "http-") { status = 500 }
++							return &http.Response{StatusCode: status, Header: make(http.Header), Body: body}, nil
 +						}))
 +					},
 +				})
@@ -2552,7 +2840,7 @@
 +				t.Fatal("forced cached-image bypass", inspections, calls)
 +			}
 +			bound := 2 * time.Second
-+			if mode == "read-bound" {
++			if mode == "read-bound" || mode == "http-read-bound" {
 +				bound = 4 * time.Second
 +			}
 +			if mode == "total-limit" {

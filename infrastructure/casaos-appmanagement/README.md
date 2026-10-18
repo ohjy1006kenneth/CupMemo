@@ -147,6 +147,17 @@ legacy per-layer best-effort progress is not used as a strict success boundary,
 and daemon message text is never emitted. Failed pulls cannot inspect a cached
 final candidate or reach forced cloning.
 
+Body ownership is per invocation at the real SDK's configured HTTP transport,
+including HTTP-error bodies discarded by ImagePull, negotiation/fallback and SDK
+retry responses. Close-once wrappers, joined cancellation watchers and finite
+per-header/read waits cover those bodies before the SDK can discard them; final
+cleanup closes every retained body and the original owned idle transport. The
+real SDK constructor finishes env/TLS/host/API/scheme initialization before its
+HTTPClient copy is decorated on the same initialized client. No default/global
+transport hook or alternate endpoint is used. Controlled real-SDK tests check
+error-body cleanup/cancellation, negotiation/retry, configuration preservation and
+invocation isolation; these are not live Docker observations.
+
 The actual options chain was traced to a potentially blocking native Docker
 credential helper. Only recreation uses a3s context-bound counterpart: bounded
 regular config input, bounded helper output, process-group cancellation and finite

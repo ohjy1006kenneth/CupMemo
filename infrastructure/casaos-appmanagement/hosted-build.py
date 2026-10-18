@@ -193,6 +193,8 @@ def main():
         if key == "recreate-pkg-docker":
             assert "--- PASS: TestSyncthingRecreateStrictPullAdapter" in tests
             assert "--- PASS: TestSyncthingRecreateCredentialContext" in tests
+            for selector in ["ErrorBodyOwnership", "NegotiationOwnership", "OwnershipIsolation", "ConfigurationPreserved"]:
+                assert "--- PASS: TestSyncthingRecreate" + selector in tests
         record(key + "-test-summary", {"top_level_passes": len(re.findall(r"^--- PASS: TestSyncthingRecreate", tests, re.M)), "subtest_passes": len(re.findall(r"^\s+--- PASS:", tests, re.M)), "network": "none", "scope": "real orchestration/handler/clone plan and production registry chain with controlled RoundTripper/body cancellation, real helper, explicit injected Docker inspections; not live registry/daemon proof"})
     resources(tester)
     for rec in LOCK["module_files"] + LOCK["patched_files"]:
