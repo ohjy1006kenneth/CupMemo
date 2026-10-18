@@ -49,12 +49,42 @@ function connect(kind, fixture) {
   return connection;
 }
 async function empty(connection, kind) {
-  await preflight((sql) => connection.pool.query(sql), {
-    database: `cupmemo_test_t_b2e9cc04_${kind}`,
-    username: `drill_${kind}`,
-    address: '127.0.0.1',
-    port: 5432,
-  });
+  await preflight(
+    async (sql) => {
+      if (sql.includes('restore:identity')) phase = 'empty_' + kind + '_identity';
+      if (sql.includes('restore:inventory')) phase = 'empty_' + kind + '_inventory';
+      const result = await connection.pool.query(sql);
+      if (sql.includes('restore:identity')) {
+        const r = result.rows[0];
+        mark('empty_' + kind + '_identity', {
+          pg17: /^17[0-9]{4}$/.test(r?.version),
+          exactDatabase: r?.database === `cupmemo_test_t_b2e9cc04_${kind}`,
+          exactRole: r?.username === `drill_${kind}`,
+          owner: r?.owner === true,
+          safeRole: r?.safe_role === true,
+          loopback: r?.address === '127.0.0.1',
+          exactPort: r?.port === 5432,
+        });
+      }
+      if (sql.includes('restore:inventory')) {
+        const r = result.rows[0];
+        mark('empty_' + kind + '_inventory', {
+          relations: r?.relations,
+          unsupported: r?.unsupported,
+          onlyPublic: JSON.stringify(r?.schemas) === '["public"]',
+          onlyPlpgsql: JSON.stringify(r?.extensions) === '["plpgsql"]',
+          sequences: r?.sequences?.length,
+        });
+      }
+      return result;
+    },
+    {
+      database: `cupmemo_test_t_b2e9cc04_${kind}`,
+      username: `drill_${kind}`,
+      address: '127.0.0.1',
+      port: 5432,
+    },
+  );
 }
 function runtime(connection, fixture) {
   const authority = createAuth(connection.db, {
@@ -445,8 +475,17 @@ if (!stages.includes(stage) || process.argv.length !== 3 || process.getuid() ===
     } else if (stage === 'restore') await restore(fixture);
     else await application(fixture, stage === 'persistence');
     status = 'passed';
-  } catch {
+  } catch (error) {
     // Never include an assertion/error value: it may contain private synthetic rows.
+    const categories = {
+      42501: 'query_denied',
+      42883: 'undefined_function',
+      42703: 'undefined_column',
+      42601: 'query_syntax',
+      '28P01': 'authentication',
+      ECONNREFUSED: 'unavailable',
+    };
+    mark('failure_category', categories[error.code] ?? 'guard_or_assertion');
     process.exitCode = 1;
   } finally {
     for (const app of apps)
