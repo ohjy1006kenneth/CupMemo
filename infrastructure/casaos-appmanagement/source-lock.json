@@ -16,8 +16,8 @@
   ],
   "patch": {
     "path": "appmanagement-syncthing-policy.patch",
-    "bytes": 126674,
-    "sha256": "dfe7b6095d7a8ed902e661fa6fa027d63543e8fdc3f5f743e6ce60174834fcd4"
+    "bytes": 128303,
+    "sha256": "3d8ed9fc9724c78dfacfdc13fe4127a4c006a386f0b21ec63ef330e694a7eed2"
   },
   "upstream_files": [
     {
@@ -146,6 +146,11 @@
       "path": "service/recreation_image_test.go",
       "bytes": 4352,
       "sha256": "fe4ed1a5d3ead2b1af699f44421f3ced5c98469e6e221a322757ce5c81bca448"
+    },
+    {
+      "path": "service/recreation_pull_test.go",
+      "bytes": 1518,
+      "sha256": "7d1af7156698cbee4e31b6ffb824bd7a311dd131476aa9b302201984c324b982"
     },
     {
       "path": "service/syncthing_legacy.go",
@@ -750,12 +755,13 @@
   "provenance": {
     "original_implementer": "code-monkey-cupmemo",
     "original_implementation_run_id": 2817,
-    "previous_coder_revision_run_id": 3375,
-    "prior_technical_review_run_id": 3377,
+    "previous_coder_revision_run_id": 3378,
+    "prior_technical_review_run_id": 3379,
     "owner_scope_run_id": 3371,
-    "coder_revision_run_id": 3378,
+    "coder_revision_run_id": 3381,
     "owner_adjudication_run_id": 3374,
-    "revision_full_build_number": 3
+    "revision_full_build_number": 4,
+    "owner_design_disposition_run_id": 3380
   },
   "go": {
     "url": "https://go.dev/dl/go1.26.9.linux-arm64.tar.gz",

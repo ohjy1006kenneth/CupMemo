@@ -166,20 +166,6 @@ def main():
     command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/route-v1.test", "./route/v1"])
     command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/route-v2.test", "./route/v2"])
     command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/pkg-docker.test", "./pkg/docker"])
-    # Serial, one actual manager build; no retries or manager invocation.
-    command(builder, ["go", "build", "-mod=readonly", "-p=1", "-trimpath", "-buildvcs=false", "-o", "/work/artifact/casaos-app-management-linux-arm64", "."])
-    # Preserve genuine build output even if a later test fixture fails. Neither
-    # retained artifact existence nor build success asserts test/live approval.
-    metadata = command(builder, ["go", "version", "-m", "/work/artifact/casaos-app-management-linux-arm64"])
-    (EVIDENCE / "binary-go-version-m.txt").write_text(metadata + "\n")
-    binary = WORK / "artifact/casaos-app-management-linux-arm64"
-    data = binary.read_bytes()
-    assert data[:4] == b"\x7fELF" and data[4] == 2 and data[5] == 1 and int.from_bytes(data[18:20], "little") == 183
-    shutil.copyfile(binary, EVIDENCE / binary.name)
-    with (EVIDENCE / (binary.name + ".gz")).open("wb") as out:
-        with gzip.GzipFile(filename="", mode="wb", fileobj=out, mtime=0) as compressed:
-            compressed.write(data)
-    record("binary", {"elf": identity(binary), "gzip": identity(EVIDENCE / (binary.name + ".gz")), "machine": "AArch64", "executed": False, "live_readiness": False})
     resources(builder)
     tester = create("test", image["Id"], "none")
     # Node's official image uses /usr/local/bin; the real production adapter is fixed
@@ -200,6 +186,20 @@ def main():
     resources(tester)
     for rec in LOCK["module_files"] + LOCK["patched_files"]:
         checked(WORK / "source" / rec["path"], rec)
+    # Owner B2 disposition: every offline protocol/production-chain regression
+    # MUST pass before spending the single authorized revision full build4.
+    command(builder, ["go", "build", "-mod=readonly", "-p=1", "-trimpath", "-buildvcs=false", "-o", "/work/artifact/casaos-app-management-linux-arm64", "."])
+    metadata = command(builder, ["go", "version", "-m", "/work/artifact/casaos-app-management-linux-arm64"])
+    (EVIDENCE / "binary-go-version-m.txt").write_text(metadata + "\n")
+    binary = WORK / "artifact/casaos-app-management-linux-arm64"
+    data = binary.read_bytes()
+    assert data[:4] == b"\x7fELF" and data[4] == 2 and data[5] == 1 and int.from_bytes(data[18:20], "little") == 183
+    shutil.copyfile(binary, EVIDENCE / binary.name)
+    with (EVIDENCE / (binary.name + ".gz")).open("wb") as out:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=out, mtime=0) as compressed:
+            compressed.write(data)
+    record("binary", {"elf": identity(binary), "gzip": identity(EVIDENCE / (binary.name + ".gz")), "machine": "AArch64", "executed": False, "live_readiness": False, "revision_full_build_number": LOCK["provenance"]["revision_full_build_number"]})
+    resources(builder)
     record("full-final-source", [{"path": str(p.relative_to(WORK / "source")), **identity(p)} for p in sorted((WORK / "source").rglob("*")) if p.is_file()])
     # Independent fresh extraction/application proves the distributed cumulative patch.
     record("fresh-final-source", materialize(BUNDLE, WORK / "source.tar.gz", WORK / "fresh"))

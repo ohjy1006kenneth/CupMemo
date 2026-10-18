@@ -1923,6 +1923,51 @@
 +	}
 +}
 --- /dev/null
++++ b/service/recreation_pull_test.go
+@@ -0,0 +1,42 @@
++package service
++
++import (
++	"context"
++	"io"
++	"strings"
++	"testing"
++
++	"github.com/docker/docker/api/types"
++)
++
++// Reproduce the old void callback's empty-stream success with cached images and
++// force=true. The corrected adapter/consumer binding must refuse before inspect
++// of the final candidate or any clone. Docker image storage itself is injected.
++func TestSyncthingRecreateEmptyPullSuppressesForce(t *testing.T) {
++	c, old, target := recreateFixture()
++	calls := []string{}
++	d := recreateDependencies(t, c, old, target, &calls)
++	d.current = func(context.Context, *types.ContainerJSON) error { return nil }
++	d.effective = d.current
++	inspections := 0
++	d.pull = func(ctx context.Context, name string) (bool, error) {
++		return stageRecreationImage(ctx, name, recreationImageDeps{
++			image: func(context.Context, string) (*types.ImageInspect, error) {
++				inspections++
++				return old, nil
++			},
++			compare: func(context.Context, string, []string) (bool, error) { return false, nil },
++			pull: func(ctx context.Context, name string, consume func(io.ReadCloser)) error {
++				out := io.NopCloser(strings.NewReader(""))
++				defer out.Close()
++				consume(out)
++				return nil
++			},
++			progress: func(out io.ReadCloser) { pullImageProgress(ctx, out, "UPDATE", 1, 1) },
++		})
++	}
++	err := recreateContainer(context.Background(), c.ID, true, true, d)
++	if err != errSyncthingPolicy || inspections != 1 {
++		t.Fatalf("empty pull permitted forced cached-image recreation: err=%v inspections=%d effects=%v", err, inspections, calls)
++	}
++}
+--- /dev/null
 +++ b/service/syncthing_legacy.go
 @@ -0,0 +1,153 @@
 +package service
