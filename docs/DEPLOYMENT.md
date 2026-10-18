@@ -626,9 +626,40 @@ update CANDIDATE before writers, async success or WebSocket upgrade/exec. Actual
 service and shared-handler httptest controls use injected writers/terminal
 continuation, not a live Docker mutation or interactive session. Neither manager is installed or executed by this
 source publication. Live rollout/rollback, aliases/custody, ordinary-project impact
-and root-RC coverage remain unverified. The separately reachable v2
-`recreateContainerByID` async pull/clone/remove path remains LIVE-readiness Blocking,
-outside the four-legacy-trigger pass. PGDATA provisioning, database startup and
+and root-RC coverage remain unverified. The reachable v2
+`recreateContainerByID` path now synchronously admits inspected CURRENT before
+scheduling/HTTP200 and rechecks it at service entrance before optional image
+staging. HTTP200 means scheduled only: a protected effective image candidate
+produces sanitized asynchronous failure before container effects, not retroactive403.
+An immutable deep-copied clone plan binds old-default removal/runtime overrides
+plus target-image default labels and the inspected target image ID; actual creation
+never resolves the tag again. Real helper/orchestration/clone/httptest controls use
+injected Docker dependencies, not deployed daemon evidence. Background work is
+bounded10minutes with reads3s. Recreation-only registry challenge/token/digest
+requests propagate cancellation through response-body close, with3s request/body
+limits; initial/final staging image inspections also have3s child contexts. Registry
+failure refuses before pull/forced clone rather than using the unrelated legacy
+fallback. Controlled in-process transport/body-stall regressions and fake Docker
+inspection cancellation are offline tests, not live registry/daemon evidence.
+The strict recreation-only Docker pull adapter now propagates daemon JSON errors,
+malformed/truncated/empty streams, read failures and cancellation instead of using
+the legacy void progress callback. Streaming caps are1MiB per message/64MiB total,
+with3s headers/blocking reads and owned-body cancellation/cleanup. The transitive
+native credential helper is context-bound too; legacy callers are unchanged.
+Recreation owns all real configured SDK transport response bodies per invocation,
+including discarded HTTP errors, negotiation/fallback and SDK retries. Wrapping
+occurs after SDK host/TLS/API initialization, retaining its configured settings;
+close-once body ownership, joined watchers and original idle-transport cleanup are
+covered by controlled real-SDK error/cancel/configuration/isolation regressions.
+Those tests and cached-image forced-recreation failure controls precede the single
+owner-authorized fourth full hosted build; no live Docker proof is implied.
+Actual Docker-client/consumer/staging/forced-recreation tests use a test-tag-only
+private transport bridge, no daemon/listener or production override; normal full
+build excludes the bridge. All affected offline Go tests must pass before the
+single owner-authorized B2 revision full build4. None of this is live approval.
+External daemon/root races, nonidentity image effects
+and ordinary-project/live rollback behavior remain separate gates.
+PGDATA provisioning, database startup and
 public deployment remain held; primary outcome and privacy readiness remain false.
 
 ## Backups

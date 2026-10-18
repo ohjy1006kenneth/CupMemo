@@ -116,10 +116,14 @@ test('real materializer refuses adversarial archives without execution', () => {
 test('offline original fixtures are minimal, exact and not a runnable manager', () => {
   expect(lock.upstream_files.map((r) => r.path).sort()).toEqual([
     'LICENSE',
+    'pkg/docker/auth.go',
+    'pkg/docker/digest.go',
     'route/v1/docker.go',
     'route/v2/compose_app.go',
+    'route/v2/docker.go',
     'service/compose_app.go',
     'service/compose_service.go',
+    'service/container.go',
   ]);
   expect(fs.existsSync(path.join(bundle, 'upstream/go.mod'))).toBe(false);
   expect(lock.module_files.map((r) => r.path)).toEqual(['go.mod', 'go.sum']);
@@ -131,6 +135,33 @@ test('materialized actual helper admits ordinary identity', () => {
   expect(result.status).toBe(0);
   expect(result.stdout).toBe('{"version":1,"allowed":true}\n');
   expect(result.stderr).toBe('');
+});
+test('strict pull production binding and test-only bridge are distributed exactly', () => {
+  const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
+  const staging = read('service/recreation_image.go');
+  expect(staging).toContain('pull: docker.PullImageContext');
+  expect(staging).toContain('deps.pull(ctx, name, consumeRecreationPull)');
+  expect(staging).not.toContain('pullImageProgress');
+  expect(read('pkg/docker/recreation_testbridge.go')).toMatch(
+    /^\/\/go:build cupmemo_recreation_test\n/,
+  );
+  expect(read('service/recreation_protocol_test.go')).toContain('docker.RecreationPullTestBridge');
+  const hosted = fs.readFileSync(path.join(bundle, 'hosted-build.py'), 'utf8');
+  expect(hosted.indexOf('"go", "build"')).toBeGreaterThan(
+    hosted.indexOf('record(key + "-test-summary"', hosted.indexOf('"recreate-pkg-docker"')),
+  );
+  const buildLine = hosted.split('\n').find((line) => line.includes('"go", "build"'));
+  expect(buildLine).not.toContain('-tags');
+  const ownership = read('pkg/docker/recreation_ownership_test.go');
+  for (const selector of [
+    'ErrorBodyOwnership',
+    'NegotiationOwnership',
+    'OwnershipIsolation',
+    'ConfigurationPreserved',
+  ]) {
+    expect(ownership).toContain(`func TestSyncthingRecreate${selector}`);
+    expect(hosted).toContain(`"${selector}"`);
+  }
 });
 for (const side of ['current', 'candidate']) {
   for (const selector of ['name', 'directory', 'compose', 'service']) {
@@ -177,6 +208,7 @@ for (const operation of [
   'legacy-uninstall',
   'legacy-archive',
   'legacy-terminal',
+  'container-recreate',
 ]) {
   test(`${operation} uses the real shared policy for current and candidate`, () => {
     const input = { ...request(), operation };

@@ -162,12 +162,46 @@ def main():
     command(builder, ["/work/bin/oapi-codegen", "-generate", "types,client", "-package", "message_bus", "-o", "codegen/message_bus/api.go", "/work/message-bus.yaml"])
     generated = ["api/app_management/openapi.yaml", "codegen/app_management_api.go", "codegen/message_bus/api.go"]
     record("codegen", {"generator": LOCK["generator"], "message_bus": LOCK["message_bus"], "files": [{"path": p, **identity(WORK / "source" / p)} for p in generated]})
-    command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/service.test", "./service"])
-    command(builder, ["go", "test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/route-v1.test", "./route/v1"])
-    # Serial, one actual manager build; no retries or manager invocation.
+    ignored = command(builder, ["go", "list", "-mod=readonly", "-f", "{{join .IgnoredGoFiles \"\\n\"}}", "./pkg/docker"])
+    assert "recreation_testbridge.go" in ignored.splitlines()
+    record("production-test-seam-exclusion", {"ignored_go_files": ignored.splitlines(), "full_build_tags": [], "test_tag": "cupmemo_recreation_test"})
+    # Test-only bridge exposes private production dependencies across package
+    # boundaries. The actual full manager build below DOES NOT set this tag.
+    command(builder, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/service.test", "./service"])
+    command(builder, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/route-v1.test", "./route/v1"])
+    command(builder, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/route-v2.test", "./route/v2"])
+    command(builder, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-c", "-o", "/work/artifact/pkg-docker.test", "./pkg/docker"])
+    resources(builder)
+    tester = create("test", image["Id"], "none")
+    # Node's official image uses /usr/local/bin; the real production adapter is fixed
+    # to /usr/bin/node. This symlink exists ONLY in the disposable test root.
+    command(tester, ["/bin/ln", "-s", "/usr/local/bin/node", "/usr/bin/node"])
+    tests = command(tester, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", "./service", "-run", "^TestSyncthingPolicy", "-v"], timeout=180)
+    assert "--- PASS: TestSyncthingPolicy" in tests and "no tests to run" not in tests and "FAIL" not in tests
+    record("test-summary", {"top_level_passes": len(re.findall(r"^--- PASS: TestSyncthingPolicy", tests, re.M)), "subtest_passes": len(re.findall(r"^\s+--- PASS:", tests, re.M)), "network": "none", "scope": "existing real focused service package and actual Node helper; fake Docker writers"})
+    for package, key in [("./service", "legacy-service"), ("./route/v1", "legacy-route-v1")]:
+        tests = command(tester, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", package, "-run", "^TestSyncthingLegacy", "-v"], timeout=180)
+        assert "--- PASS: TestSyncthingLegacy" in tests and "no tests to run" not in tests and "FAIL" not in tests
+        record(key + "-test-summary", {"top_level_passes": len(re.findall(r"^--- PASS: TestSyncthingLegacy", tests, re.M)), "subtest_passes": len(re.findall(r"^\s+--- PASS:", tests, re.M)), "network": "none", "scope": "actual shared service/handler implementation, real helper; injected Docker writers and terminal continuation, no live session"})
+    resources(tester)
+    for package, key in [("./service", "recreate-service"), ("./route/v2", "recreate-route-v2"), ("./pkg/docker", "recreate-pkg-docker")]:
+        tests = command(tester, ["go", "test", "-tags=cupmemo_recreation_test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", package, "-run", "^TestSyncthingRecreate", "-v"], timeout=180)
+        assert "--- PASS: TestSyncthingRecreate" in tests and "no tests to run" not in tests and "FAIL" not in tests
+        if key == "recreate-service":
+            assert "--- PASS: TestSyncthingRecreatePullProtocolSuppressesForce" in tests
+            assert "--- PASS: TestSyncthingRecreateEmptyPullSuppressesForce" in tests
+        if key == "recreate-pkg-docker":
+            assert "--- PASS: TestSyncthingRecreateStrictPullAdapter" in tests
+            assert "--- PASS: TestSyncthingRecreateCredentialContext" in tests
+            for selector in ["ErrorBodyOwnership", "NegotiationOwnership", "OwnershipIsolation", "ConfigurationPreserved"]:
+                assert "--- PASS: TestSyncthingRecreate" + selector in tests
+        record(key + "-test-summary", {"top_level_passes": len(re.findall(r"^--- PASS: TestSyncthingRecreate", tests, re.M)), "subtest_passes": len(re.findall(r"^\s+--- PASS:", tests, re.M)), "network": "none", "scope": "real orchestration/handler/clone plan and production registry chain with controlled RoundTripper/body cancellation, real helper, explicit injected Docker inspections; not live registry/daemon proof"})
+    resources(tester)
+    for rec in LOCK["module_files"] + LOCK["patched_files"]:
+        checked(WORK / "source" / rec["path"], rec)
+    # Owner B2 disposition: every offline protocol/production-chain regression
+    # MUST pass before spending the single authorized revision full build4.
     command(builder, ["go", "build", "-mod=readonly", "-p=1", "-trimpath", "-buildvcs=false", "-o", "/work/artifact/casaos-app-management-linux-arm64", "."])
-    # Preserve genuine build output even if a later test fixture fails. Neither
-    # retained artifact existence nor build success asserts test/live approval.
     metadata = command(builder, ["go", "version", "-m", "/work/artifact/casaos-app-management-linux-arm64"])
     (EVIDENCE / "binary-go-version-m.txt").write_text(metadata + "\n")
     binary = WORK / "artifact/casaos-app-management-linux-arm64"
@@ -177,22 +211,8 @@ def main():
     with (EVIDENCE / (binary.name + ".gz")).open("wb") as out:
         with gzip.GzipFile(filename="", mode="wb", fileobj=out, mtime=0) as compressed:
             compressed.write(data)
-    record("binary", {"elf": identity(binary), "gzip": identity(EVIDENCE / (binary.name + ".gz")), "machine": "AArch64", "executed": False, "live_readiness": False})
+    record("binary", {"elf": identity(binary), "gzip": identity(EVIDENCE / (binary.name + ".gz")), "machine": "AArch64", "executed": False, "live_readiness": False, "revision_full_build_number": LOCK["provenance"]["revision_full_build_number"]})
     resources(builder)
-    tester = create("test", image["Id"], "none")
-    # Node's official image uses /usr/local/bin; the real production adapter is fixed
-    # to /usr/bin/node. This symlink exists ONLY in the disposable test root.
-    command(tester, ["/bin/ln", "-s", "/usr/local/bin/node", "/usr/bin/node"])
-    tests = command(tester, ["go", "test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", "./service", "-run", "^TestSyncthingPolicy", "-v"], timeout=180)
-    assert "--- PASS: TestSyncthingPolicy" in tests and "no tests to run" not in tests and "FAIL" not in tests
-    record("test-summary", {"top_level_passes": len(re.findall(r"^--- PASS: TestSyncthingPolicy", tests, re.M)), "subtest_passes": len(re.findall(r"^\s+--- PASS:", tests, re.M)), "network": "none", "scope": "existing real focused service package and actual Node helper; fake Docker writers"})
-    for package, key in [("./service", "legacy-service"), ("./route/v1", "legacy-route-v1")]:
-        tests = command(tester, ["go", "test", "-mod=readonly", "-p=1", "-count=1", "-timeout=120s", package, "-run", "^TestSyncthingLegacy", "-v"], timeout=180)
-        assert "--- PASS: TestSyncthingLegacy" in tests and "no tests to run" not in tests and "FAIL" not in tests
-        record(key + "-test-summary", {"top_level_passes": len(re.findall(r"^--- PASS: TestSyncthingLegacy", tests, re.M)), "subtest_passes": len(re.findall(r"^\s+--- PASS:", tests, re.M)), "network": "none", "scope": "actual shared service/handler implementation, real helper; injected Docker writers and terminal continuation, no live session"})
-    resources(tester)
-    for rec in LOCK["module_files"] + LOCK["patched_files"]:
-        checked(WORK / "source" / rec["path"], rec)
     record("full-final-source", [{"path": str(p.relative_to(WORK / "source")), **identity(p)} for p in sorted((WORK / "source").rglob("*")) if p.is_file()])
     # Independent fresh extraction/application proves the distributed cumulative patch.
     record("fresh-final-source", materialize(BUNDLE, WORK / "source.tar.gz", WORK / "fresh"))

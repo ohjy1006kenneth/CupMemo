@@ -16,14 +16,24 @@
   ],
   "patch": {
     "path": "appmanagement-syncthing-policy.patch",
-    "bytes": 68544,
-    "sha256": "13e372a347c8adb7491d1a1413c4f50b13ae5a460967d5d7f7425467a1b95363"
+    "bytes": 165292,
+    "sha256": "3a311b875aefb9f03cf2bb79b7e6f99d6512bf88f55d8fdf82ced9e3632c9794"
   },
   "upstream_files": [
     {
       "path": "LICENSE",
       "bytes": 11357,
       "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "pkg/docker/auth.go",
+      "bytes": 4764,
+      "sha256": "4f4836620066108be9cc3e967d4db9ac2d89641ef2e9243d7374410f95d747f8"
+    },
+    {
+      "path": "pkg/docker/digest.go",
+      "bytes": 5126,
+      "sha256": "dc2d45cc790e94ea845ece2964c7afea1dc0f107e7e28068da472aa1a1b334d3"
     },
     {
       "path": "route/v1/docker.go",
@@ -36,6 +46,11 @@
       "sha256": "0878fc3989329e10fc093d0b570fc293f63bbd54ed95e12b744b622883dcb838"
     },
     {
+      "path": "route/v2/docker.go",
+      "bytes": 2722,
+      "sha256": "d352da247e9f8bf13ac89e620d469ba9c97643a062bf2021e67d5b802ad15dcd"
+    },
+    {
       "path": "service/compose_app.go",
       "bytes": 30822,
       "sha256": "7554188bad5daf6a527491c8f1d10ab742cc1fb51ca97ac5805c6beac0893205"
@@ -44,9 +59,69 @@
       "path": "service/compose_service.go",
       "bytes": 6689,
       "sha256": "fc11f662a5f0b3242ca1ba28d940891fa498977ee22f11fe7596ca621a5aaf01"
+    },
+    {
+      "path": "service/container.go",
+      "bytes": 26360,
+      "sha256": "a4e72739b7c46401e2d9028a7b4d53a44e7b885f3a215ebf64f45009eae165ee"
     }
   ],
   "patched_files": [
+    {
+      "path": "pkg/docker/auth.go",
+      "bytes": 7861,
+      "sha256": "775f3e860542c625716b01b93982fb9a42a3983e6910f07d7f4cdeb3b2b52350"
+    },
+    {
+      "path": "pkg/docker/container_clone_plan.go",
+      "bytes": 6345,
+      "sha256": "b5aa8919ca77a691f8c851495e0abe2497424d769b7927d28a6c2d1a3dc183d0"
+    },
+    {
+      "path": "pkg/docker/container_clone_plan_test.go",
+      "bytes": 5333,
+      "sha256": "a62d5350447de0727e7b620d15e06c4b42985a089c9235b3fac2fb852546b181"
+    },
+    {
+      "path": "pkg/docker/digest.go",
+      "bytes": 7084,
+      "sha256": "6810e8d88f0163ee9343a2842ec0546bbbe085c2cbcc30a0bea8f8725745a5a5"
+    },
+    {
+      "path": "pkg/docker/image_context.go",
+      "bytes": 4545,
+      "sha256": "a9a139d64301360495d3e3ebe7f9498dd24c5956fc7dc79e42e9f4095826418a"
+    },
+    {
+      "path": "pkg/docker/image_context_test.go",
+      "bytes": 3924,
+      "sha256": "6fa854967cfac0b43327cd2dc3c18ea082481336221529d8bdd2da5bb6b93a8b"
+    },
+    {
+      "path": "pkg/docker/recreation_credentials.go",
+      "bytes": 4226,
+      "sha256": "7872e874522e977f108f181a2c2cd818388188805c6ab630f20b579bb256f31f"
+    },
+    {
+      "path": "pkg/docker/recreation_credentials_test.go",
+      "bytes": 1914,
+      "sha256": "c6e7745755c4b51e48756030f9e987bf7b3628d1b42b681f61b69539f9fb8321"
+    },
+    {
+      "path": "pkg/docker/recreation_ownership_test.go",
+      "bytes": 11222,
+      "sha256": "46d0af5b9c51f6b289d550f95cb8a30a8b2b97fa10c2a4b85a576d5915e904b4"
+    },
+    {
+      "path": "pkg/docker/recreation_testbridge.go",
+      "bytes": 989,
+      "sha256": "6f732f59f4a63c58e2d829500a3984d680eb9d3a364741f74286d595fed85712"
+    },
+    {
+      "path": "pkg/docker/registry_context_test.go",
+      "bytes": 5256,
+      "sha256": "8bf6be3f4fbdc782e0990a06838298361dc1f57c67b0c60074eec4bfa293ebc6"
+    },
     {
       "path": "route/v1/docker.go",
       "bytes": 26484,
@@ -68,6 +143,16 @@
       "sha256": "9de0c925b54072ad3ae861ed6b17941cf8fdeaeb732645436fd9ea17d01976ec"
     },
     {
+      "path": "route/v2/docker.go",
+      "bytes": 3413,
+      "sha256": "c0e43e7db90a186c6ab5e8b5445f23add818706cf97047493378abcaa49e05f1"
+    },
+    {
+      "path": "route/v2/syncthing_recreate_test.go",
+      "bytes": 7051,
+      "sha256": "e23715cdc106d507850962ccf08fd572c46ae38b6687499241e9d8d5d0c4d000"
+    },
+    {
       "path": "service/compose_app.go",
       "bytes": 31710,
       "sha256": "62d079c08dbe0cd4b4301fdf86b0b3f5a9cee70f13bd55b2194c69d060f1e78b"
@@ -76,6 +161,36 @@
       "path": "service/compose_service.go",
       "bytes": 7119,
       "sha256": "753b2c2f23489bab3e71d3b9aa6a209bab630b61795708a8637e95d4c3180903"
+    },
+    {
+      "path": "service/container.go",
+      "bytes": 26294,
+      "sha256": "c15c9ad24e1da6159e91810b3703621a7c6b9c83c944ba2b1728683aeec8a8a4"
+    },
+    {
+      "path": "service/recreation_image.go",
+      "bytes": 2490,
+      "sha256": "fd14c83c1016388ae3dce0ce63637027eed12e02e1a36ee6ca6fca264eb33fc8"
+    },
+    {
+      "path": "service/recreation_image_test.go",
+      "bytes": 4421,
+      "sha256": "b885f237c88e46039c46b8a67fa57071a01530d5f233bcdf65ffd8f0efe1b481"
+    },
+    {
+      "path": "service/recreation_protocol_test.go",
+      "bytes": 6491,
+      "sha256": "44ea3b9d1512c08eab25f3dc9dfbf552db16b24c837acccd8e9a5d67913e3a07"
+    },
+    {
+      "path": "service/recreation_pull.go",
+      "bytes": 2012,
+      "sha256": "54be2e97f833a1e07c38f2ec456ec50e02824e58d0a636652c92eaae60c9af43"
+    },
+    {
+      "path": "service/recreation_pull_test.go",
+      "bytes": 1452,
+      "sha256": "c6652b49ed5793990288b4c4de46e354474b9335992fd72daf026a13cc95ecd9"
     },
     {
       "path": "service/syncthing_legacy.go",
@@ -103,9 +218,19 @@
       "sha256": "c2145be81c11dd4a05894c95cd8898623e3ef76f7deaa14a4d2e69c50bd9c17a"
     },
     {
+      "path": "service/syncthing_recreate.go",
+      "bytes": 3169,
+      "sha256": "180b878f1e5caaae73be92877608cf09172776f97d5d400b7ec227f664d7cc35"
+    },
+    {
+      "path": "service/syncthing_recreate_test.go",
+      "bytes": 9900,
+      "sha256": "1de86404d65943d41ad6f0a18b0a196aca1930a6404577cdd4368627934c7ba0"
+    },
+    {
       "path": "service/testdata/syncthing-manager-policy.mjs",
-      "bytes": 5607,
-      "sha256": "bd7bb458fea0468d2656654e20434f5e1626f0f0c0ac8d0cdda99288bdd1ca4e"
+      "bytes": 5631,
+      "sha256": "63fc29ce133c8fa71767fbf5d238968054cfd71cc874c793bb61c5299c0aa34b"
     }
   ],
   "module_files": [
@@ -670,10 +795,14 @@
   "provenance": {
     "original_implementer": "code-monkey-cupmemo",
     "original_implementation_run_id": 2817,
-    "previous_coder_revision_run_id": 3364,
-    "prior_technical_review_run_id": 3367,
-    "owner_scope_run_id": 3368,
-    "coder_revision_run_id": 3369
+    "previous_coder_revision_run_id": 3381,
+    "prior_technical_review_run_id": 3379,
+    "owner_scope_run_id": 3371,
+    "coder_revision_run_id": 3383,
+    "owner_adjudication_run_id": 3374,
+    "revision_full_build_number": 4,
+    "owner_design_disposition_run_id": 3380,
+    "owner_sdk_ownership_disposition_run_id": 3382
   },
   "go": {
     "url": "https://go.dev/dl/go1.26.9.linux-arm64.tar.gz",
