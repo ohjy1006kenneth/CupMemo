@@ -174,7 +174,16 @@ async function sourceCatalog(query) {
   for (const [key, sql] of Object.entries(statements))
     catalog[key] = (await query(sql)).rows.map((r) => r.tuple);
   const canonical = canonicalCatalog(catalog);
-  return { catalogSha256: sha256(canonical), catalog: JSON.parse(canonical) };
+  // An alternate NATIVE deparser probe for owner adjudication only. The strict
+  // oracle still uses pg_get_constraintdef(...,false) exactly as contracted.
+  const prettyConstraints = (
+    await query(`SELECT json_build_array(n.nspname,c.relname,k.conname,k.contype,
+    pg_catalog.pg_get_constraintdef(k.oid,true),k.convalidated,k.condeferrable,k.condeferred) AS tuple
+    ${from} JOIN pg_catalog.pg_constraint k ON k.conrelid=c.oid WHERE ${scope}`)
+  ).rows
+    .map((r) => JSON.stringify(r.tuple))
+    .sort();
+  return { catalogSha256: sha256(canonical), catalog: JSON.parse(canonical), prettyConstraints };
 }
 async function snapshot(connection) {
   const query = (sql) => connection.pool.query(sql);
@@ -443,6 +452,8 @@ async function restore(fixture) {
       allTenCountsExact: JSON.stringify(observed.rowCounts) === JSON.stringify(original.rowCounts),
       historySequenceExact: JSON.stringify(observed.sequence) === JSON.stringify(original.sequence),
       catalogFingerprintExact: observed.catalogSha256 === original.catalogSha256,
+      nativePrettyConstraintsExact:
+        JSON.stringify(observed.prettyConstraints) === JSON.stringify(original.prettyConstraints),
     });
     throw error;
   });
