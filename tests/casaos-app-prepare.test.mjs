@@ -69,44 +69,54 @@ test('prepares a new private stock Compose without exposing values or provisioni
   }
 });
 
-test('refuses invalid/missing/extra inputs with fixed diagnostics and no output', () => {
-  const temp = mkdtempSync(path.join(tmpdir(), 'cupmemo-prepare-negative-'));
-  try {
-    const config = path.join(temp, 'input.json'),
-      output = path.join(temp, 'app.yml');
-    const base = fixture(temp);
-    const invalid = [null, [], 'SYNTHETIC_SECRET', { ...base, extra: 'SECRET' }];
-    for (const key of Object.keys(base)) {
-      const omitted = { ...base };
-      delete omitted[key];
-      invalid.push(omitted);
-      for (const value of ['', ' ', null, 1, {}, ['SECRET'], 'SECRET\0'])
-        invalid.push({ ...base, [key]: value });
+// Keep the same negative matrix in small independent cases, not 100+ Node
+// subprocesses behind a single Vitest deadline on a concurrent hosted runner.
+test.each([null, ...Object.keys(fixture('/synthetic'))])(
+  'refuses invalid %s with fixed diagnostics and no output',
+  (key) => {
+    const temp = mkdtempSync(path.join(tmpdir(), 'cupmemo-prepare-negative-'));
+    try {
+      const config = path.join(temp, 'input.json'),
+        output = path.join(temp, 'app.yml');
+      const base = fixture(temp);
+      const invalid =
+        key === null ? [null, [], 'SYNTHETIC_SECRET', { ...base, extra: 'SECRET' }] : [];
+      if (key !== null) {
+        const omitted = { ...base };
+        delete omitted[key];
+        invalid.push(omitted);
+        for (const value of ['', ' ', null, 1, {}, ['SECRET'], 'SECRET\0'])
+          invalid.push({ ...base, [key]: value });
+      }
+      if (['CUPMEMO_WEB_IMAGE', 'CUPMEMO_API_IMAGE', 'CUPMEMO_POSTGRES_IMAGE'].includes(key)) {
+        for (const value of ['latest', 'postgres:17', '--option', `sha256:${'A'.repeat(64)}`])
+          invalid.push({ ...base, [key]: value });
+      }
+      if (key === 'POSTGRES_DATA_UID') {
+        for (const value of ['0', '-1', '001', '1.5', '4294967295'])
+          invalid.push({ ...base, POSTGRES_DATA_UID: value });
+      }
+      if (['POSTGRES_DATA_DIR', 'POSTGRES_PASSWORD_FILE'].includes(key)) {
+        for (const value of ['/', './relative', '/a/../b', '/a/', '/a//b', '/a\nb'])
+          invalid.push({ ...base, [key]: value });
+      }
+      for (const values of invalid) {
+        writeFileSync(config, JSON.stringify(values), { mode: 0o600 });
+        const result = run(config, output);
+        expect(result.status).toBe(1);
+        expect(result.stdout).toBe('');
+        expect(result.stderr).toBe('CasaOS app: preparation refused\n');
+        expect(existsSync(output)).toBe(false);
+      }
+      if (key === null) {
+        writeFileSync(config, '{SYNTHETIC_SECRET', { mode: 0o600 });
+        expect(run(config, output).stderr).toBe('CasaOS app: preparation refused\n');
+      }
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
     }
-    for (const key of ['CUPMEMO_WEB_IMAGE', 'CUPMEMO_API_IMAGE', 'CUPMEMO_POSTGRES_IMAGE']) {
-      for (const value of ['latest', 'postgres:17', '--option', `sha256:${'A'.repeat(64)}`])
-        invalid.push({ ...base, [key]: value });
-    }
-    for (const value of ['0', '-1', '001', '1.5', '4294967295'])
-      invalid.push({ ...base, POSTGRES_DATA_UID: value });
-    for (const key of ['POSTGRES_DATA_DIR', 'POSTGRES_PASSWORD_FILE']) {
-      for (const value of ['/', './relative', '/a/../b', '/a/', '/a//b', '/a\nb'])
-        invalid.push({ ...base, [key]: value });
-    }
-    for (const values of invalid) {
-      writeFileSync(config, JSON.stringify(values), { mode: 0o600 });
-      const result = run(config, output);
-      expect(result.status).toBe(1);
-      expect(result.stdout).toBe('');
-      expect(result.stderr).toBe('CasaOS app: preparation refused\n');
-      expect(existsSync(output)).toBe(false);
-    }
-    writeFileSync(config, '{SYNTHETIC_SECRET', { mode: 0o600 });
-    expect(run(config, output).stderr).toBe('CasaOS app: preparation refused\n');
-  } finally {
-    rmSync(temp, { recursive: true, force: true });
-  }
-});
+  },
+);
 
 test('rejects unsafe files, symlink parents, hardlinks and existing outputs without clobber', () => {
   const temp = mkdtempSync(path.join(tmpdir(), 'cupmemo-prepare-files-'));
