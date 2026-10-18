@@ -64,12 +64,20 @@ def root_uuid(directory):
 
 def state():
     # Bounded fixture only; do not traverse PGDATA after positive database init.
-    return sorted((p.relative_to(volume).as_posix(), p.lstat().st_mode,
-                   p.lstat().st_uid, p.read_bytes().hex() if p.is_file() else None)
-                  for p in volume.rglob('*') if not p.is_symlink())
+    result = []
+    for root in (volume, base / 'ssd-data'):
+        if not root.exists():
+            continue
+        for p in [root, *root.rglob('*')]:
+            st = p.lstat()
+            content = os.readlink(p) if p.is_symlink() else (
+                p.read_bytes().hex() if p.is_file() else None)
+            result.append((p.relative_to(base).as_posix(), st.st_mode, st.st_uid,
+                           st.st_gid, st.st_ino, st.st_mtime_ns, st.st_ctime_ns, content))
+    return sorted(result)
 
 
-def create(label, source, changes=None, command=None, user=None, extra=None, marker=False):
+def create(label, source, changes=None, command=None, user=None, extra=None, marker=False, tmpfs=False):
     name = prefix + '-' + label
     owned.append(name)  # Reconcile even a partially successful create.
     environment = {
@@ -83,8 +91,11 @@ def create(label, source, changes=None, command=None, user=None, extra=None, mar
                '--user', str(uid if user is None else user), '--network', 'none',
                '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
                '--memory', '512m', '--memory-swap', '512m', '--cpus', '1',
-               '--pids-limit', '128', '--restart', 'no', '--mount',
-               f'type=bind,source={source},target=/var/lib/postgresql/data']
+               '--pids-limit', '128', '--restart', 'no']
+    if tmpfs:
+        options += ['--tmpfs', f'/var/lib/postgresql/data:rw,nosuid,nodev,uid={uid},gid={uid},mode=0700,size=1m']
+    else:
+        options += ['--mount', f'type=bind,source={source},target=/var/lib/postgresql/data']
     for key, value in environment.items():
         if value is not None:
             options += ['--env', key + '=' + value]
@@ -105,7 +116,8 @@ def create(label, source, changes=None, command=None, user=None, extra=None, mar
         assert host['MemorySwap'] == host['Memory'] == 512 * 1024**2
         assert host['PidsLimit'] == 128 and host['NanoCpus'] == 1000000000
     assert host['RestartPolicy']['Name'] == 'no'
-    assert all(m['Type'] == 'bind' for m in config['Mounts']), 'anonymous persistence'
+    assert all(m['Type'] == 'bind' or (tmpfs and m['Type'] == 'tmpfs' and
+               m['Destination'] == '/var/lib/postgresql/data') for m in config['Mounts']), 'anonymous persistence'
     return name
 
 
@@ -164,6 +176,12 @@ try:
         refusal('ssd-root-mismatch', source)
     else:
         # Explicitly denied ioctl with the unmodified production binary.
+        refusal('wrong-filesystem-tmpfs', source, tmpfs=True)
+        ssd = base / 'ssd-data'
+        ssd.mkdir(mode=0o700)
+        ssd_uuid = root_uuid(ssd)
+        assert ssd_uuid != actual_uuid
+        refusal('ssd-wrong-uuid', ssd, changes={'POSTGRES_DATA_DIR': str(source)})
         unsafe_parent = base / 'unsafe-parent'
         unsafe_parent.mkdir(mode=0o755)
         (unsafe_parent / 'data').mkdir()
