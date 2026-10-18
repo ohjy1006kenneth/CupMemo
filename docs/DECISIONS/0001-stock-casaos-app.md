@@ -4,8 +4,9 @@
 
 Accepted user direction for source preparation (Issue11, primary `hq/t_9cbb487a`).
 Implementation, independent review and owner integration remain distinct from live
-installation/startup acceptance. PGDATA, database startup and public deployment
-remain held.
+installation/startup acceptance. Kenneth explicitly authorizes bounded private
+HDD-only PGDATA provisioning and stock app/DB first startup, subject to reviewed
+storage safety and owner activation/rollback. Public deployment remains held.
 
 ## Context
 
@@ -23,7 +24,7 @@ Keep stock CasaOS and stock AppManagement. Retire the custom source bundles,
 dedicated manager workflow/tests and active manager deployment prerequisites in a
 forward reviewed change, preserving history/evidence and approved NAS changes.
 Prepare `infrastructure/casaos/docker-compose.yml` using the existing three-service
-production model with ordinary `x-casaos` metadata. Preserve all images, explicit
+production model with ordinary `x-casaos` metadata. Preserve web/API images, explicit
 external secrets, nonpublished database, ARM64/resource/security bounds and the
 HDD bind with `create_host_path: false`. Keep `restart: 'no'`.
 
@@ -31,6 +32,19 @@ CasaOS is the single future app lifecycle owner. Retain the useful host mount gu
 and regression-tested dormant startup alternative, but do not install that host
 unit or run its wrapper concurrently with the CasaOS app. No fork, shim, custom
 privileged hook or new deployment framework is introduced.
+
+Use a minimal app-local official PG17 Debian derivative, adding a hardened
+Linux C entrypoint and nonrecursively hardening only the IMAGE directory
+`/var/lib/postgresql` to root:root0755 at build time. The official base's
+postgres-owned1777 parent conflicts with strict ancestry admission; this narrow
+metadata correction preserves all contents/packages/layout and does not permit
+runtime/host chmod or an unsafe-ancestry exception. The entrypoint checks the actual fixed data-directory descriptor's ext4
+UUID via `EXT4_IOC_GETFSUUID`, exact container-own mountinfo root/device, ownership,
+permissions and nonsymlink paths before execing the fixed official entrypoint.
+The stock app carries four explicit nonsecret guard inputs. No extra volume,
+privilege, raw block device, host probe cache or new application dependency is
+needed. Unsupported ioctl/kernel/seccomp evidence fails closed; no test bypass is
+shipped. Initial owner provisioning/import still requires fresh host preflight.
 
 ## Alternatives considered
 
@@ -52,15 +66,17 @@ a small offline private-JSON preparation helper, with installed-version
 import/marshal/reload tests preserving exact literal values. See
 [PRIVATE_COMPOSE.md](../PRIVATE_COMPOSE.md) for sources, short preparation flow and
 two-stage dollar escaping. No manager or application adapter is introduced; the
-modern reference stays unchanged. Live launch stays disabled pending fresh HDD
-admission and remaining authority/runtime gates. Missing-directory refusal does not prove rejection
+modern reference stays unchanged. The app-local gate runs on every process start;
+live launch needs fresh HDD admission and remaining owner/runtime gates within
+the already granted private authority. Missing-directory refusal alone does not prove rejection
 of an existing SSD directory, hot-unmount safety or reboot behavior. No port or
 dashboard launch URL is selected by this private candidate.
 
 ## Migration impact
 
-This is source cleanup and packaging only. No binary replacement, service restart,
-CasaOS DB chmod/copy/migration, data deletion, live NAS rollback, PGDATA creation,
-DB startup or public exposure is needed or authorized. Historical evidence is
+This pass is source preparation only. No host binary replacement, service restart,
+CasaOS DB chmod/copy/migration, data deletion or live NAS rollback is needed.
+Specialists do not create production PGDATA or start DBs: those are authorized
+owner actions after independent affected review. Public exposure is held. Historical evidence is
 retained outside active product source. Reverting this forward source change must
 not be treated as authority to install the abandoned custom managers.

@@ -72,6 +72,8 @@ beforeAll(() => {
     POSTGRES_PASSWORD_FILE: path.join(temp, 'pg-password'),
     POSTGRES_DATA_DIR: path.join(temp, 'never-created-pgdata'),
     POSTGRES_DATA_UID: '12345',
+    POSTGRES_HDD_UUID: '11111111-2222-3333-4444-555555555555',
+    POSTGRES_HDD_MOUNT: temp,
     POSTGRES_DB: 'offline_candidate',
     POSTGRES_USER: 'offline_operator',
     CUPMEMO_DATABASE_URL_PRODUCTION: 'NONSECRET_OFFLINE_PLACEHOLDER',
@@ -95,6 +97,8 @@ describe.each([
         'CUPMEMO_DATABASE_URL_PRODUCTION',
         'BETTER_AUTH_SECRET',
         'BETTER_AUTH_URL',
+        'POSTGRES_HDD_UUID',
+        'POSTGRES_HDD_MOUNT',
       ]
     : required;
   function config(overrides = {}, args = ['--format', 'json'], composePath = compose) {
@@ -244,6 +248,16 @@ describe.each([
       POSTGRES_USER: settings.POSTGRES_USER,
       POSTGRES_PASSWORD_FILE: '/run/secrets/postgres_password',
       PGDATA: '/var/lib/postgresql/data/pgdata',
+      ...(appVariant
+        ? Object.fromEntries(
+            [
+              'POSTGRES_HDD_UUID',
+              'POSTGRES_HDD_MOUNT',
+              'POSTGRES_DATA_DIR',
+              'POSTGRES_DATA_UID',
+            ].map((key) => [key, settings[key]]),
+          )
+        : {}),
     });
     expect(pg.secrets).toEqual([
       { source: 'postgres_password', target: '/run/secrets/postgres_password' },

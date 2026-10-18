@@ -77,7 +77,7 @@ services:
 
   cupmemo-postgres:
     <<: *bounded-service
-    image: ${CUPMEMO_POSTGRES_IMAGE:?CUPMEMO_POSTGRES_IMAGE must select an immutable ARM64 PG17 image}
+    image: ${CUPMEMO_POSTGRES_IMAGE:?CUPMEMO_POSTGRES_IMAGE must select the reviewed immutable ARM64 HDD-guarded PG17 image}
     user: ${POSTGRES_DATA_UID:?POSTGRES_DATA_UID must be an explicitly verified positive numeric UID}
     # PROVISIONAL ceiling only: no positive database or Pi capacity acceptance.
     mem_limit: 512m
@@ -87,6 +87,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be explicitly configured}
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_HDD_UUID: ${POSTGRES_HDD_UUID:?POSTGRES_HDD_UUID must identify the verified ext4 HDD}
+      POSTGRES_HDD_MOUNT: ${POSTGRES_HDD_MOUNT:?POSTGRES_HDD_MOUNT must name the verified host mount root}
+      POSTGRES_DATA_DIR: ${POSTGRES_DATA_DIR:?POSTGRES_DATA_DIR must name a pre-existing verified HDD-only directory}
+      POSTGRES_DATA_UID: ${POSTGRES_DATA_UID:?POSTGRES_DATA_UID must be an explicitly verified positive numeric UID}
     secrets:
       - source: postgres_password
         target: /run/secrets/postgres_password
