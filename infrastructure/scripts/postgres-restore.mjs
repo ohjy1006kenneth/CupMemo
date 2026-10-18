@@ -123,6 +123,10 @@ function configuration(env) {
     env.CUPMEMO_RESTORE_CONFIRM_DATABASE !== config.databaseName
   )
     refuse();
+  // Resolve omission once for BOTH read-only query clients and pg_restore.
+  // Passing the original mode-less URL to pg would silently disable TLS there.
+  // Keep explicit supported modes unchanged (including installed pg semantics).
+  u.searchParams.set('sslmode', tls);
   const host = config.hostname.replace(/^\[|\]$/g, '');
   const state = absolute(env.CUPMEMO_RESTORE_STATE_DIR),
     bundle = absolute(env.CUPMEMO_RESTORE_BUNDLE_DIR),
@@ -180,7 +184,7 @@ function configuration(env) {
     JSON.stringify(['test', 'loopback', config.port, config.databaseName]),
   );
   return {
-    config,
+    config: { ...config, databaseUrl: u.href },
     state,
     bundle,
     oracleFile,

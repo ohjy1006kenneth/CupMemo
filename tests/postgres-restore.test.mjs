@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
+import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
@@ -10,6 +11,10 @@ import { databaseFixture, names, directory } from './helpers/restore-fixture.mjs
 import { canonicalCatalog, sha256 } from '../infrastructure/scripts/postgres-restore-oracle.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const requireDatabase = createRequire(
+  new URL('../packages/database/package.json', import.meta.url),
+);
+const pg = requireDatabase('pg');
 const owned = [];
 afterEach(async () => {
   for (const dir of owned.splice(0)) await fs.rm(dir, { recursive: true, force: true });
@@ -154,6 +159,40 @@ async function fixture({ version = '17.9', body = 'return 0;', post = {} } = {})
     closes: () => closes,
   };
 }
+
+test.each([undefined, 'disable', 'require', 'verify-ca', 'verify-full'])(
+  'production query clients and real child share effective sslmode %s without network access',
+  async (mode) => {
+    const { runRestore } = await import('../infrastructure/scripts/postgres-restore.mjs');
+    const f = await fixture({
+      body: `return strcmp(getenv("PGSSLMODE"),${JSON.stringify(mode ?? 'require')}) ? 41 : 0;`,
+    });
+    f.env.CUPMEMO_DATABASE_URL_TEST =
+      'postgresql://fixture:fixture-secret@127.0.0.1:55499/cupmemo_test_restore48' +
+      (mode === undefined ? '' : `?sslmode=${mode}`);
+    const clients = [];
+    // Keep runRestore -> connectTarget -> createDatabase -> installed Pool/Client
+    // parsing real. Replace ONLY socket acquisition with synthetic query results.
+    // No Client.connect/socket is ever invoked; this is not a TLS handshake test.
+    const acquire = vi.spyOn(pg.Pool.prototype, 'connect').mockImplementation(async function () {
+      const client = new this.Client(this.options);
+      clients.push({ client, url: this.options.connectionString });
+      const fixtureQuery = clients.length === 1 ? f.db : f.after;
+      return { query: fixtureQuery.query, release: () => {} };
+    });
+    try {
+      const result = await runRestore(f.env);
+      expect(result.status).toBe('structural_checks_passed');
+      expect(clients).toHaveLength(2);
+      for (const { client, url } of clients) {
+        expect(client.connectionParameters.ssl).toEqual(mode === 'disable' ? false : {});
+        expect(new URL(url).searchParams.get('sslmode')).toBe(mode ?? 'require');
+      }
+    } finally {
+      acquire.mockRestore();
+    }
+  },
+);
 
 test('guarded engine executes real ELF fixture, not a DB restore, preserves source and writes private honest receipt', async () => {
   const { runRestore, validateRelease } =
