@@ -454,10 +454,11 @@ Commit only example files such as `.env.example`, never production values.
 
 See the [historical pre-mount audit](PI_RUNTIME_AUDIT.md#historical-pre-mount-snapshot)
 and [current supplement](PI_RUNTIME_AUDIT.md#current-supplement) (Refs #31).
-Repository/Docker root and `/mnt/nas-hdd` resolve to SSD; the actual HDD is currently
-mounted at `/DATA/nas`. Production target, data directory, ownership/permissions
-and fail-closed Issue11 guard remain unapproved; path discovery is not deployment
-approval, and the world-writable mount root is not approved PostgreSQL PGDATA.
+Those dated observations resolved repository/Docker root and `/mnt/nas-hdd` to SSD
+and the HDD to `/DATA/nas`. Their unapproved-target/root0777 statements describe
+the historical audit, not current authority or a fresh host-state assertion.
+The Pi target and narrow NAS restrictions are now approved as described below;
+PGDATA path/UID provisioning, database startup and public deployment remain held.
 
 Before assigning ports or writing production paths:
 
@@ -488,6 +489,26 @@ does not mean an installed veto; Syncthing's private managed source may safely
 refuse unavailable access. Root rclone dynamic/future backup exclusions remain
 UNVERIFIED and block any private database provisioning. No all-isolated PASS or
 replacement of the original PostgreSQL guard is implied.
+
+### Samba durability source-publication checkpoint
+
+The [CasaOS Samba source bundle](../infrastructure/casaos-samba/README.md) publishes
+the immutable pinned upstream patch, public provenance lock, minimal original
+patch-application fixtures and actual offline materialized-adapter regression.
+The accepted separate ARM64 manager build exited0 and independent affected Go
+tests passed10 top-level +52 subtests; the binary has never been executed or
+installed. Historical resource sampling exceeded the literal100ms condition:
+artifact validity was accepted, not full resource compliance or hard memory
+isolation. This publication performs no new manager compilation or live rollout.
+
+The writer retains protected owner-managed nas even with zero rows, while preserving
+ordinary sections; source/tests are not installed enforcement. Current-state
+canonical policy/root/include/manager hashes, safe storage, alias/mount identity,
+real generation/create/delete/reload and exact rollback still need separately
+reviewed live impact and owner authorization. Stock rollback restores a known
+durability gap. Syncthing per-app updates and unrestricted root rclone RC remain
+independent unfinished privacy gates. No PGDATA-ready or whole-outcome PASS follows
+from source integration, the closed GitHub Issue11, or integrated32/42 templates.
 
 ## HDD startup guard (development/preparation only, Refs #11)
 
@@ -538,15 +559,18 @@ reject symlinks; a second stat pass checks identity/ownership/modes after probes
 Importing the module has no probing/launch side effects. Test injection exists
 only in exported function parameters, never in production CLI environment flags.
 
-### Current refusal controls and evidence limits
+### Historical refusal controls and evidence limits
 
-The [current audit supplement](PI_RUNTIME_AUDIT.md#current-supplement) identifies
+The [dated audit supplement](PI_RUNTIME_AUDIT.md#current-supplement) identified
 HDD `/DATA/nas`, ext4 UUID `68391fd3-3c92-4cfe-82db-47a5e6abb2ee`.
 `/mnt/nas-hdd` resolves to SSD/root UUID `493d6733-2a8b-482b-b39f-a7ecc1ce8863`;
-it is not the HDD. `/DATA/nas` is root:root777, unsafe mount ancestry, and the
-mount root itself is not valid PGDATA. These remain refused controls, not enabled
-production values or a permission-repair instruction. No approved production data
-directory, owner UID, permissions or deployment target exists.
+it is not the HDD. The original root:root777 observation was unsafe mount ancestry;
+that refusal receipt remains historical, not a fresh permission observation.
+The mount root itself is never valid PGDATA. The Pi target and narrow root0755
+restriction are now approved, not production launch values or a repair instruction.
+No PGDATA directory or production owner UID has been provisioned or authorized
+by this source-publication checkpoint. Fresh guard/privacy/authority checks remain
+mandatory before any future separately authorized launch.
 
 Focused verification:
 
