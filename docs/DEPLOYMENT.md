@@ -626,7 +626,9 @@ update CANDIDATE before writers, async success or WebSocket upgrade/exec. Actual
 service and shared-handler httptest controls use injected writers/terminal
 continuation, not a live Docker mutation or interactive session. Neither manager is installed or executed by this
 source publication. Live rollout/rollback, aliases/custody, ordinary-project impact
-and root-RC coverage remain unverified. PGDATA provisioning, database startup and
+and root-RC coverage remain unverified. The separately reachable v2
+`recreateContainerByID` async pull/clone/remove path remains LIVE-readiness Blocking,
+outside the four-legacy-trigger pass. PGDATA provisioning, database startup and
 public deployment remain held; primary outcome and privacy readiness remain false.
 
 ## Backups

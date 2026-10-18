@@ -106,8 +106,12 @@ Malformed/ambiguous projections and inspect/helper failures receive fixed403.
 Ordinary well-formed no-compose legacy containers and prefix siblings remain
 admitted; malformed legacy display names outside the policy's strict name grammar
 fail closed. This does not change read/list/SetStatus or enable commented-out
-InstallApp/ChangAppState routes. No total-manager/private-storage guarantee is made. Samba rollout,
-aliases/mounts/custody, ordinary-project impact, root-RC coverage and exact
+InstallApp/ChangAppState routes. No total-manager/private-storage guarantee is made.
+The separately registered v2 PATCH `/container/{id}` (`recreateContainerByID`)
+still reaches `RecreateContainerByID` -> `Docker().RecreateContainer` without
+these admissions, before asynchronous200/pull/clone/remove. It remains an explicit
+**LIVE-readiness Blocking** trigger outside this four-legacy-handler scope.
+Samba rollout, aliases/mounts/custody, ordinary-project impact, root-RC coverage and exact
 rollback remain separate owner decisions. Do not install/execute either manager,
 write live policy/config/DB/declarations, reload/restart services or mutate the
 NAS from these scripts. PGDATA provisioning, database startup and public

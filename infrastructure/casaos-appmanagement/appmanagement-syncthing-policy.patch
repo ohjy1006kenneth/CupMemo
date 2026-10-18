@@ -172,7 +172,7 @@
  // @Summary my app hardware usage list
 --- /dev/null
 +++ b/route/v1/syncthing_legacy.go
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,110 @@
 +package v1
 +
 +import (
@@ -192,17 +192,17 @@
 +// Private explicit dependencies, never a global hook or production override.
 +// Public routes bind real inspection, fixed policy and existing writer/session paths.
 +type legacyDependencies struct {
-+	inspect func(context.Context, string) (*types.ContainerJSON, error)
-+	check func(context.Context, string, *types.ContainerJSON, *model.CustomizationPostData) error
-+	stop func(string) error
-+	rename func(string, string) error
-+	create func(model.CustomizationPostData, string) (string, error)
-+	start func(string) error
-+	remove func(string, bool) error
-+	schedule func(func())
-+	event func(context.Context, message_bus.EventType, map[string]string)
++	inspect   func(context.Context, string) (*types.ContainerJSON, error)
++	check     func(context.Context, string, *types.ContainerJSON, *model.CustomizationPostData) error
++	stop      func(string) error
++	rename    func(string, string) error
++	create    func(model.CustomizationPostData, string) (string, error)
++	start     func(string) error
++	remove    func(string, bool) error
++	schedule  func(func())
++	event     func(context.Context, message_bus.EventType, map[string]string)
 +	uninstall func(context.Context, *types.ContainerJSON, bool) error
-+	terminal func(echo.Context, string) error
++	terminal  func(echo.Context, string) error
 +}
 +
 +func productionLegacyDependencies() legacyDependencies {
@@ -212,7 +212,9 @@
 +		stop: docker.StopContainer, rename: docker.RenameContainer, create: docker.CreateContainer,
 +		start: docker.StartContainer, remove: docker.RemoveContainer,
 +		schedule: func(work func()) { go work() },
-+		event: func(ctx context.Context, event message_bus.EventType, properties map[string]string) { go service.PublishEventWrapper(ctx, event, properties) },
++		event: func(ctx context.Context, event message_bus.EventType, properties map[string]string) {
++			go service.PublishEventWrapper(ctx, event, properties)
++		},
 +		uninstall: uninstall, terminal: legacyTerminalSession,
 +	}
 +}
@@ -224,33 +226,47 @@
 +func legacyInspect(ctx echo.Context, operation string, d legacyDependencies) (*types.ContainerJSON, error) {
 +	bounded, cancel := context.WithTimeout(ctx.Request().Context(), 3*time.Second)
 +	defer cancel()
-+	if ctx.Param("id") == "" { return nil, echo.ErrForbidden }
++	if ctx.Param("id") == "" {
++		return nil, echo.ErrForbidden
++	}
 +	container, err := d.inspect(bounded, ctx.Param("id"))
-+	if err != nil || bounded.Err() != nil { return nil, echo.ErrForbidden }
-+	if d.check(bounded, operation, container, nil) != nil { return nil, echo.ErrForbidden }
++	if err != nil || bounded.Err() != nil {
++		return nil, echo.ErrForbidden
++	}
++	if d.check(bounded, operation, container, nil) != nil {
++		return nil, echo.ErrForbidden
++	}
 +	return container, nil
 +}
 +
 +func legacyUpdate(ctx echo.Context, d legacyDependencies) error {
 +	container, err := legacyInspect(ctx, "legacy-update", d)
-+	if err != nil { return legacyRefusal(ctx) }
++	if err != nil {
++		return legacyRefusal(ctx)
++	}
 +	m := model.CustomizationPostData{}
 +	if err := ctx.Bind(&m); err != nil {
 +		return ctx.JSON(http.StatusBadRequest, modelCommon.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
 +	}
-+	if d.check(ctx.Request().Context(), "legacy-update", container, &m) != nil { return legacyRefusal(ctx) }
++	if d.check(ctx.Request().Context(), "legacy-update", container, &m) != nil {
++		return legacyRefusal(ctx)
++	}
 +	return legacyUpdateAdmitted(ctx, container.ID, m, d)
 +}
 +
 +func legacyUninstall(ctx echo.Context, d legacyDependencies) error {
 +	container, err := legacyInspect(ctx, "legacy-uninstall", d)
-+	if err != nil { return legacyRefusal(ctx) }
++	if err != nil {
++		return legacyRefusal(ctx)
++	}
 +	return legacyUninstallAdmitted(ctx, container, d)
 +}
 +
 +func legacyArchive(ctx echo.Context, d legacyDependencies) error {
 +	container, err := legacyInspect(ctx, "legacy-archive", d)
-+	if err != nil { return legacyRefusal(ctx) }
++	if err != nil {
++		return legacyRefusal(ctx)
++	}
 +	if err := d.stop(container.ID); err != nil {
 +		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 +	}
@@ -262,12 +278,14 @@
 +
 +func legacyTerminal(ctx echo.Context, d legacyDependencies) error {
 +	container, err := legacyInspect(ctx, "legacy-terminal", d)
-+	if err != nil { return legacyRefusal(ctx) }
++	if err != nil {
++		return legacyRefusal(ctx)
++	}
 +	return d.terminal(ctx, container.ID)
 +}
 --- /dev/null
 +++ b/route/v1/syncthing_legacy_test.go
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,246 @@
 +package v1
 +
 +import (
@@ -294,12 +312,23 @@
 +
 +func routeLegacyFixture(t *testing.T) {
 +	t.Helper()
-+	if os.Geteuid() != 0 { t.Fatal("disposable root required") }
-+	if _, err := os.Stat("/.dockerenv"); err != nil { t.Fatal("disposable container required") }
++	if os.Geteuid() != 0 {
++		t.Fatal("disposable root required")
++	}
++	if _, err := os.Stat("/.dockerenv"); err != nil {
++		t.Fatal("disposable container required")
++	}
 +	filename := "/usr/local/lib/cupmemo/syncthing-manager-policy.mjs"
-+	data, err := os.ReadFile("../../service/testdata/syncthing-manager-policy.mjs"); if err != nil { t.Fatal(err) }
-+	if err := os.MkdirAll(filepath.Dir(filename), 0755); err != nil { t.Fatal(err) }
-+	if err := os.WriteFile(filename, data, 0644); err != nil { t.Fatal(err) }
++	data, err := os.ReadFile("../../service/testdata/syncthing-manager-policy.mjs")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filename, data, 0644); err != nil {
++		t.Fatal(err)
++	}
 +	t.Cleanup(func() { os.Remove(filename) })
 +}
 +
@@ -312,20 +341,38 @@
 +	add := func(s string) { *calls = append(*calls, s) }
 +	return legacyDependencies{
 +		inspect: func(ctx context.Context, selector string) (*types.ContainerJSON, error) {
-+			if selector != "request-alias" { t.Fatal("unexpected selector") }
-+			deadline, ok := ctx.Deadline(); if !ok || time.Until(deadline) > 3*time.Second { t.Fatal("unbounded inspect") }
-+			add("inspect"); return c, nil
++			if selector != "request-alias" {
++				t.Fatal("unexpected selector")
++			}
++			deadline, ok := ctx.Deadline()
++			if !ok || time.Until(deadline) > 3*time.Second {
++				t.Fatal("unbounded inspect")
++			}
++			add("inspect")
++			return c, nil
 +		},
-+		check: func(ctx context.Context, op string, c *types.ContainerJSON, m *model.CustomizationPostData) error { add("check"); return service.CheckLegacyContainerMutation(ctx, op, c, m) },
-+		stop: func(id string) error { add("stop:"+id); return nil },
-+		rename: func(name, id string) error { add("rename:"+id); return nil },
-+		create: func(m model.CustomizationPostData, id string) (string, error) { add("create:"+id); return "new-stable-id", nil },
-+		start: func(id string) error { add("start:"+id); return nil },
-+		remove: func(id string, force bool) error { add("remove:"+id); return nil },
++		check: func(ctx context.Context, op string, c *types.ContainerJSON, m *model.CustomizationPostData) error {
++			add("check")
++			return service.CheckLegacyContainerMutation(ctx, op, c, m)
++		},
++		stop:   func(id string) error { add("stop:" + id); return nil },
++		rename: func(name, id string) error { add("rename:" + id); return nil },
++		create: func(m model.CustomizationPostData, id string) (string, error) {
++			add("create:" + id)
++			return "new-stable-id", nil
++		},
++		start:    func(id string) error { add("start:" + id); return nil },
++		remove:   func(id string, force bool) error { add("remove:" + id); return nil },
 +		schedule: func(work func()) { add("schedule"); work() },
-+		event: func(context.Context, message_bus.EventType, map[string]string) { add("event") },
-+		uninstall: func(ctx context.Context, c *types.ContainerJSON, remove bool) error { if !remove { t.Fatal("deletion flag lost") }; add("uninstall:"+c.ID); return nil },
-+		terminal: func(ctx echo.Context, id string) error { add("terminal:"+id); return ctx.NoContent(200) },
++		event:    func(context.Context, message_bus.EventType, map[string]string) { add("event") },
++		uninstall: func(ctx context.Context, c *types.ContainerJSON, remove bool) error {
++			if !remove {
++				t.Fatal("deletion flag lost")
++			}
++			add("uninstall:" + c.ID)
++			return nil
++		},
++		terminal: func(ctx echo.Context, id string) error { add("terminal:" + id); return ctx.NoContent(200) },
 +	}
 +}
 +
@@ -333,21 +380,39 @@
 +	t.Helper()
 +	e := echo.New()
 +	method := http.MethodPut
-+	if endpoint == "uninstall" { method = http.MethodDelete }
-+	if endpoint == "terminal" { method = http.MethodGet }
++	if endpoint == "uninstall" {
++		method = http.MethodDelete
++	}
++	if endpoint == "terminal" {
++		method = http.MethodGet
++	}
 +	req := httptest.NewRequest(method, "/v1/container/request-alias", strings.NewReader(body))
 +	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-+	if cancelled { ctx, cancel := context.WithCancel(req.Context()); cancel(); req = req.WithContext(ctx) }
-+	rec := httptest.NewRecorder(); ctx := e.NewContext(req, rec); ctx.SetParamNames("id"); ctx.SetParamValues("request-alias")
++	if cancelled {
++		ctx, cancel := context.WithCancel(req.Context())
++		cancel()
++		req = req.WithContext(ctx)
++	}
++	rec := httptest.NewRecorder()
++	ctx := e.NewContext(req, rec)
++	ctx.SetParamNames("id")
++	ctx.SetParamValues("request-alias")
 +	var err error
 +	switch endpoint {
-+	case "update": err = legacyUpdate(ctx, d)
-+	case "uninstall": err = legacyUninstall(ctx, d)
-+	case "archive": err = legacyArchive(ctx, d)
-+	case "terminal": err = legacyTerminal(ctx, d)
-+	default: t.Fatal("unknown test endpoint")
++	case "update":
++		err = legacyUpdate(ctx, d)
++	case "uninstall":
++		err = legacyUninstall(ctx, d)
++	case "archive":
++		err = legacyArchive(ctx, d)
++	case "terminal":
++		err = legacyTerminal(ctx, d)
++	default:
++		t.Fatal("unknown test endpoint")
 +	}
-+	if err != nil { t.Fatal(err) }
++	if err != nil {
++		t.Fatal(err)
++	}
 +	return rec
 +}
 +
@@ -356,18 +421,40 @@
 +	for _, endpoint := range []string{"update", "uninstall", "archive", "terminal"} {
 +		for _, control := range []string{"protected-current", "inspection-error", "nil-inspect", "helper-error", "cancelled", "malformed-inspect"} {
 +			t.Run(endpoint+"/"+control, func(t *testing.T) {
-+				c := routeLegacyContainer(); calls := []string{}; d := routeLegacyDependencies(t, c, &calls)
++				c := routeLegacyContainer()
++				calls := []string{}
++				d := routeLegacyDependencies(t, c, &calls)
 +				switch control {
-+				case "protected-current": c.Name = "/local-syncthing"
-+				case "inspection-error": d.inspect = func(context.Context, string) (*types.ContainerJSON, error) { calls = append(calls, "inspect"); return nil, errors.New("SECRET-SENTINEL") }
-+				case "nil-inspect": d.inspect = func(context.Context, string) (*types.ContainerJSON, error) { calls = append(calls, "inspect"); return nil, nil }
-+				case "helper-error": d.check = func(context.Context, string, *types.ContainerJSON, *model.CustomizationPostData) error { calls = append(calls, "check"); return errors.New("SECRET-SENTINEL") }
-+				case "malformed-inspect": c.Config = nil
++				case "protected-current":
++					c.Name = "/local-syncthing"
++				case "inspection-error":
++					d.inspect = func(context.Context, string) (*types.ContainerJSON, error) {
++						calls = append(calls, "inspect")
++						return nil, errors.New("SECRET-SENTINEL")
++					}
++				case "nil-inspect":
++					d.inspect = func(context.Context, string) (*types.ContainerJSON, error) {
++						calls = append(calls, "inspect")
++						return nil, nil
++					}
++				case "helper-error":
++					d.check = func(context.Context, string, *types.ContainerJSON, *model.CustomizationPostData) error {
++						calls = append(calls, "check")
++						return errors.New("SECRET-SENTINEL")
++					}
++				case "malformed-inspect":
++					c.Config = nil
 +				}
 +				// Invalid body proves protected update refuses BEFORE binding.
 +				rec := routeLegacyCall(t, endpoint, "SECRET-SENTINEL-invalid-json", d, control == "cancelled")
-+				if rec.Code != 403 || strings.Contains(rec.Body.String(), "SECRET-SENTINEL") || !strings.Contains(rec.Body.String(), "Syncthing manager policy refused") { t.Fatal(rec.Code, rec.Body.String()) }
-+				for _, call := range calls { if call != "inspect" && call != "check" { t.Fatal("effect before admission", calls) } }
++				if rec.Code != 403 || strings.Contains(rec.Body.String(), "SECRET-SENTINEL") || !strings.Contains(rec.Body.String(), "Syncthing manager policy refused") {
++					t.Fatal(rec.Code, rec.Body.String())
++				}
++				for _, call := range calls {
++					if call != "inspect" && call != "check" {
++						t.Fatal("effect before admission", calls)
++					}
++				}
 +			})
 +		}
 +	}
@@ -376,25 +463,36 @@
 +func TestSyncthingLegacyCandidateAndOrdinaryHandlers(t *testing.T) {
 +	routeLegacyFixture(t)
 +	for _, body := range []string{`{"container_name":"local-syncthing","label":"ordinary"}`, `{"container_name":"ordinary","label":"local-syncthing"}`, `{"container_name":"big-bear-syncthing","label":"ordinary"}`} {
-+		calls := []string{}; d := routeLegacyDependencies(t, routeLegacyContainer(), &calls)
++		calls := []string{}
++		d := routeLegacyDependencies(t, routeLegacyContainer(), &calls)
 +		rec := routeLegacyCall(t, "update", body, d, false)
-+		if rec.Code != 403 || !reflect.DeepEqual(calls, []string{"inspect", "check", "check"}) { t.Fatal(rec.Code, calls) }
++		if rec.Code != 403 || !reflect.DeepEqual(calls, []string{"inspect", "check", "check"}) {
++			t.Fatal(rec.Code, calls)
++		}
 +	}
 +	for _, endpoint := range []string{"update", "uninstall", "archive", "terminal"} {
 +		t.Run(endpoint, func(t *testing.T) {
-+			calls := []string{}; c := routeLegacyContainer(); c.Name = "/local-syncthing-extra"
++			calls := []string{}
++			c := routeLegacyContainer()
++			c.Name = "/local-syncthing-extra"
 +			d := routeLegacyDependencies(t, c, &calls)
 +			body := `{"container_name":"renamed","label":"ordinary","delete_config_folder":true}`
-+			if endpoint == "uninstall" { body = `{"delete_config_folder":true}` }
++			if endpoint == "uninstall" {
++				body = `{"delete_config_folder":true}`
++			}
 +			rec := routeLegacyCall(t, endpoint, body, d, false)
-+			if rec.Code != 200 { t.Fatal(rec.Code, rec.Body.String()) }
++			if rec.Code != 200 {
++				t.Fatal(rec.Code, rec.Body.String())
++			}
 +			expected := map[string][]string{
-+				"update": {"inspect", "check", "check", "stop:"+resolvedLegacyID, "rename:"+resolvedLegacyID, "create:"+resolvedLegacyID, "start:new-stable-id", "remove:"+resolvedLegacyID},
-+				"uninstall": {"inspect", "check", "schedule", "event", "uninstall:"+resolvedLegacyID, "event"},
-+				"archive": {"inspect", "check", "stop:"+resolvedLegacyID, "rename:"+resolvedLegacyID},
-+				"terminal": {"inspect", "check", "terminal:"+resolvedLegacyID},
++				"update":    {"inspect", "check", "check", "stop:" + resolvedLegacyID, "rename:" + resolvedLegacyID, "create:" + resolvedLegacyID, "start:new-stable-id", "remove:" + resolvedLegacyID},
++				"uninstall": {"inspect", "check", "schedule", "event", "uninstall:" + resolvedLegacyID, "event"},
++				"archive":   {"inspect", "check", "stop:" + resolvedLegacyID, "rename:" + resolvedLegacyID},
++				"terminal":  {"inspect", "check", "terminal:" + resolvedLegacyID},
 +			}[endpoint]
-+			if !reflect.DeepEqual(calls, expected) { t.Fatal(calls, expected) }
++			if !reflect.DeepEqual(calls, expected) {
++				t.Fatal(calls, expected)
++			}
 +		})
 +	}
 +}
@@ -402,21 +500,37 @@
 +func TestSyncthingLegacyHandlerFailureControls(t *testing.T) {
 +	routeLegacyFixture(t)
 +	for _, endpoint := range []string{"update", "archive"} {
-+		calls := []string{}; d := routeLegacyDependencies(t, routeLegacyContainer(), &calls)
++		calls := []string{}
++		d := routeLegacyDependencies(t, routeLegacyContainer(), &calls)
 +		d.stop = func(id string) error { calls = append(calls, "stop:"+id); return errors.New("injected writer failure") }
 +		rec := routeLegacyCall(t, endpoint, `{"container_name":"renamed","label":"ordinary"}`, d, false)
-+		if rec.Code != 500 || calls[len(calls)-1] != "stop:"+resolvedLegacyID { t.Fatal(rec.Code, calls) }
++		if rec.Code != 500 || calls[len(calls)-1] != "stop:"+resolvedLegacyID {
++			t.Fatal(rec.Code, calls)
++		}
 +	}
 +	for _, endpoint := range []string{"update", "uninstall"} {
-+		calls := []string{}; d := routeLegacyDependencies(t, routeLegacyContainer(), &calls)
++		calls := []string{}
++		d := routeLegacyDependencies(t, routeLegacyContainer(), &calls)
 +		rec := routeLegacyCall(t, endpoint, "{", d, false)
-+		if rec.Code != 400 || !reflect.DeepEqual(calls, []string{"inspect", "check"}) { t.Fatal(rec.Code, calls) }
++		if rec.Code != 400 || !reflect.DeepEqual(calls, []string{"inspect", "check"}) {
++			t.Fatal(rec.Code, calls)
++		}
 +	}
-+	calls := []string{}; d := routeLegacyDependencies(t, routeLegacyContainer(), &calls)
-+	d.create = func(m model.CustomizationPostData, id string) (string, error) { calls = append(calls, "create:"+id); return "", errors.New("injected create failure") }
++	calls := []string{}
++	d := routeLegacyDependencies(t, routeLegacyContainer(), &calls)
++	d.create = func(m model.CustomizationPostData, id string) (string, error) {
++		calls = append(calls, "create:"+id)
++		return "", errors.New("injected create failure")
++	}
 +	rec := routeLegacyCall(t, "update", `{"container_name":"renamed","label":"ordinary"}`, d, false)
-+	if rec.Code != 500 || calls[len(calls)-1] != "start:"+resolvedLegacyID { t.Fatal(rec.Code, calls) }
-+	for _, call := range calls { if strings.HasPrefix(call, "remove:") { t.Fatal("removed original after create failure") } }
++	if rec.Code != 500 || calls[len(calls)-1] != "start:"+resolvedLegacyID {
++		t.Fatal(rec.Code, calls)
++	}
++	for _, call := range calls {
++		if strings.HasPrefix(call, "remove:") {
++			t.Fatal("removed original after create failure")
++		}
++	}
 +}
 --- a/route/v2/compose_app.go
 +++ b/route/v2/compose_app.go
@@ -602,7 +716,7 @@
  	eventProperties[common.PropertyTypeAppName.Name] = composeApp.Name
 --- /dev/null
 +++ b/service/syncthing_legacy.go
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,153 @@
 +package service
 +
 +import (
@@ -641,7 +755,9 @@
 +				return nil, errSyncthingPolicy
 +			}
 +			names = append(names, value)
-+			if value != containerName { services = append(services, value) }
++			if value != containerName {
++				services = append(services, value)
++			}
 +		}
 +	}
 +	if value, present := labels["com.docker.compose.service"]; present {
@@ -654,22 +770,36 @@
 +	unique := []string{}
 +	for _, value := range services {
 +		found := false
-+		for _, previous := range unique { if value == previous { found = true } }
-+		if !found { unique = append(unique, value) }
++		for _, previous := range unique {
++			if value == previous {
++				found = true
++			}
++		}
++		if !found {
++			unique = append(unique, value)
++		}
 +	}
 +	working := ""
 +	if value, present := labels["com.docker.compose.project.working_dir"]; present {
-+		if !legacyPath(value) || labels["com.docker.compose.project"] == "" { return nil, errSyncthingPolicy }
++		if !legacyPath(value) || labels["com.docker.compose.project"] == "" {
++			return nil, errSyncthingPolicy
++		}
 +		working = value
 +	}
 +	files := []string{}
 +	if value, present := labels["com.docker.compose.project.config_files"]; present {
-+		if len(value) == 0 || len(value) > 16384 || labels["com.docker.compose.project"] == "" { return nil, errSyncthingPolicy }
++		if len(value) == 0 || len(value) > 16384 || labels["com.docker.compose.project"] == "" {
++			return nil, errSyncthingPolicy
++		}
 +		files = strings.Split(value, ",")
-+		if len(files) > 128 { return nil, errSyncthingPolicy }
++		if len(files) > 128 {
++			return nil, errSyncthingPolicy
++		}
 +		seen := map[string]bool{}
 +		for _, filename := range files {
-+			if !legacyPath(filename) || seen[filename] { return nil, errSyncthingPolicy }
++			if !legacyPath(filename) || seen[filename] {
++				return nil, errSyncthingPolicy
++			}
 +			seen[filename] = true
 +		}
 +	}
@@ -681,8 +811,14 @@
 +}
 +
 +func legacyPath(value string) bool {
-+	if len(value) == 0 || len(value) > 4096 || !strings.HasPrefix(value, "/") || filepath.Clean(value) != value || strings.ContainsAny(value, "\\,") { return false }
-+	for _, c := range value { if c < 32 || c > 126 { return false } }
++	if len(value) == 0 || len(value) > 4096 || !strings.HasPrefix(value, "/") || filepath.Clean(value) != value || strings.ContainsAny(value, "\\,") {
++		return false
++	}
++	for _, c := range value {
++		if c < 32 || c > 126 {
++			return false
++		}
++	}
 +	return true
 +}
 +
@@ -692,35 +828,51 @@
 +	default:
 +		return errSyncthingPolicy
 +	}
-+	if ctx.Err() != nil || (candidate != nil && operation != "legacy-update") { return errSyncthingPolicy }
-+	current, err := legacyIdentities(inspected)
-+	if err != nil { return errSyncthingPolicy }
-+	for _, identity := range current {
-+		if check(ctx, operation, identity, nil) != nil { return errSyncthingPolicy }
++	if ctx.Err() != nil || (candidate != nil && operation != "legacy-update") {
++		return errSyncthingPolicy
 +	}
-+	if candidate == nil { return nil }
++	current, err := legacyIdentities(inspected)
++	if err != nil {
++		return errSyncthingPolicy
++	}
++	for _, identity := range current {
++		if check(ctx, operation, identity, nil) != nil {
++			return errSyncthingPolicy
++		}
++	}
++	if candidate == nil {
++		return nil
++	}
 +	// CreateContainer inherits Config/HostConfig and compose labels, overwrites
 +	// legacy label "name", and uses ContainerName as the new Docker name.
-+	if !legacyName.MatchString(candidate.ContainerName) || !legacyName.MatchString(candidate.Label) { return errSyncthingPolicy }
++	if !legacyName.MatchString(candidate.ContainerName) || !legacyName.MatchString(candidate.Label) {
++		return errSyncthingPolicy
++	}
 +	base := *inspected.ContainerJSONBase
 +	base.Name = "/" + candidate.ContainerName
 +	config := *inspected.Config
 +	config.Labels = map[string]string{}
 +	for _, key := range []string{"com.docker.compose.project", "com.docker.compose.service", "com.docker.compose.project.working_dir", "com.docker.compose.project.config_files"} {
-+		if value, present := inspected.Config.Labels[key]; present { config.Labels[key] = value }
++		if value, present := inspected.Config.Labels[key]; present {
++			config.Labels[key] = value
++		}
 +	}
 +	config.Labels["name"] = candidate.Label
 +	effective := &types.ContainerJSON{ContainerJSONBase: &base, Config: &config}
 +	projected, err := legacyIdentities(effective)
-+	if err != nil { return errSyncthingPolicy }
++	if err != nil {
++		return errSyncthingPolicy
++	}
 +	for _, identity := range projected {
-+		if check(ctx, operation, current[0], identity) != nil { return errSyncthingPolicy }
++		if check(ctx, operation, current[0], identity) != nil {
++			return errSyncthingPolicy
++		}
 +	}
 +	return nil
 +}
 --- /dev/null
 +++ b/service/syncthing_legacy_test.go
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,120 @@
 +package service
 +
 +import (
@@ -744,64 +896,101 @@
 +	ctx := context.Background()
 +	for _, operation := range []string{"legacy-update", "legacy-uninstall", "legacy-archive", "legacy-terminal"} {
 +		t.Run(operation, func(t *testing.T) {
-+			if err := CheckLegacyContainerMutation(ctx, operation, legacyFixture(), nil); err != nil { t.Fatal(err) }
++			if err := CheckLegacyContainerMutation(ctx, operation, legacyFixture(), nil); err != nil {
++				t.Fatal(err)
++			}
 +			controls := map[string]func(*types.ContainerJSON){
 +				"container-project": func(c *types.ContainerJSON) { c.Name = "/LOCAL-SYNCTHING" },
 +				"container-service": func(c *types.ContainerJSON) { c.Name = "/big-bear-syncthing" },
-+				"project": func(c *types.ContainerJSON) { c.Config.Labels["com.docker.compose.project"] = "local-syncthing" },
-+				"legacy-name": func(c *types.ContainerJSON) { c.Config.Labels["name"] = "local-syncthing" },
-+				"service": func(c *types.ContainerJSON) { c.Config.Labels["com.docker.compose.project"] = "ordinary"; c.Config.Labels["com.docker.compose.service"] = "BIG-BEAR-SYNCTHING" },
-+				"directory": func(c *types.ContainerJSON) { c.Config.Labels["com.docker.compose.project"] = "ordinary"; c.Config.Labels["com.docker.compose.project.working_dir"] = "/var/lib/casaos/apps/LOCAL-SYNCTHING/sub" },
-+				"files": func(c *types.ContainerJSON) { c.Config.Labels["com.docker.compose.project"] = "ordinary"; c.Config.Labels["com.docker.compose.project.config_files"] = "/ordinary.yml,/var/lib/casaos/apps/local-syncthing/docker-compose.yml" },
++				"project":           func(c *types.ContainerJSON) { c.Config.Labels["com.docker.compose.project"] = "local-syncthing" },
++				"legacy-name":       func(c *types.ContainerJSON) { c.Config.Labels["name"] = "local-syncthing" },
++				"service": func(c *types.ContainerJSON) {
++					c.Config.Labels["com.docker.compose.project"] = "ordinary"
++					c.Config.Labels["com.docker.compose.service"] = "BIG-BEAR-SYNCTHING"
++				},
++				"directory": func(c *types.ContainerJSON) {
++					c.Config.Labels["com.docker.compose.project"] = "ordinary"
++					c.Config.Labels["com.docker.compose.project.working_dir"] = "/var/lib/casaos/apps/LOCAL-SYNCTHING/sub"
++				},
++				"files": func(c *types.ContainerJSON) {
++					c.Config.Labels["com.docker.compose.project"] = "ordinary"
++					c.Config.Labels["com.docker.compose.project.config_files"] = "/ordinary.yml,/var/lib/casaos/apps/local-syncthing/docker-compose.yml"
++				},
 +			}
 +			for name, alter := range controls {
 +				t.Run(name, func(t *testing.T) {
-+					c := legacyFixture(); alter(c)
++					c := legacyFixture()
++					alter(c)
 +					requirePolicyRefusal(t, CheckLegacyContainerMutation(ctx, operation, c, nil))
-+					if operation == "legacy-update" { requirePolicyRefusal(t, CheckLegacyContainerMutation(ctx, operation, c, &model.CustomizationPostData{ContainerName: "ordinary", Label: "ordinary"})) }
++					if operation == "legacy-update" {
++						requirePolicyRefusal(t, CheckLegacyContainerMutation(ctx, operation, c, &model.CustomizationPostData{ContainerName: "ordinary", Label: "ordinary"}))
++					}
 +				})
 +			}
-+			prefix := legacyFixture(); prefix.Name = "/local-syncthing-extra"
++			prefix := legacyFixture()
++			prefix.Name = "/local-syncthing-extra"
 +			prefix.Config.Labels["com.docker.compose.project"] = "local-syncthing-extra"
 +			prefix.Config.Labels["com.docker.compose.service"] = "big-bear-syncthing-extra"
 +			prefix.Config.Labels["com.docker.compose.project.working_dir"] = "/var/lib/casaos/apps/local-syncthing-extra"
-+			if err := CheckLegacyContainerMutation(ctx, operation, prefix, nil); err != nil { t.Fatal(err) }
++			if err := CheckLegacyContainerMutation(ctx, operation, prefix, nil); err != nil {
++				t.Fatal(err)
++			}
 +		})
 +	}
 +	for _, candidate := range []*model.CustomizationPostData{{ContainerName: "local-syncthing", Label: "ordinary"}, {ContainerName: "ordinary", Label: "LOCAL-SYNCTHING"}, {ContainerName: "big-bear-syncthing", Label: "ordinary"}} {
 +		requirePolicyRefusal(t, CheckLegacyContainerMutation(ctx, "legacy-update", legacyFixture(), candidate))
 +	}
-+	c := legacyFixture(); c.Config.Labels["com.docker.compose.project"] = "ordinary"; c.Config.Labels["com.docker.compose.project.config_files"] = "/synthetic/ordinary.yml"
-+	if err := CheckLegacyContainerMutation(ctx, "legacy-update", c, &model.CustomizationPostData{ContainerName: "renamed", Label: "ordinary"}); err != nil { t.Fatal(err) }
++	c := legacyFixture()
++	c.Config.Labels["com.docker.compose.project"] = "ordinary"
++	c.Config.Labels["com.docker.compose.project.config_files"] = "/synthetic/ordinary.yml"
++	if err := CheckLegacyContainerMutation(ctx, "legacy-update", c, &model.CustomizationPostData{ContainerName: "renamed", Label: "ordinary"}); err != nil {
++		t.Fatal(err)
++	}
 +}
 +
 +func TestSyncthingLegacyInvalidProjection(t *testing.T) {
 +	policyFixture(t)
 +	for name, alter := range map[string]func(*types.ContainerJSON){
-+		"empty-id": func(c *types.ContainerJSON) { c.ID = "" },
++		"empty-id":        func(c *types.ContainerJSON) { c.ID = "" },
 +		"selector-not-id": func(c *types.ContainerJSON) { c.ID = "ordinary" },
-+		"name-path": func(c *types.ContainerJSON) { c.Name = "/ordinary/other" },
-+		"double-slash": func(c *types.ContainerJSON) { c.Name = "//ordinary" },
-+		"no-slash": func(c *types.ContainerJSON) { c.Name = "ordinary" },
-+		"empty-name": func(c *types.ContainerJSON) { c.Name = "" },
-+		"nil-config": func(c *types.ContainerJSON) { c.Config = nil },
-+		"nil-base": func(c *types.ContainerJSON) { c.ContainerJSONBase = nil },
-+		"empty-label": func(c *types.ContainerJSON) { c.Config.Labels["name"] = "" },
-+		"invalid-label": func(c *types.ContainerJSON) { c.Config.Labels["name"] = "local-syncthing/../ordinary" },
-+		"orphan-service": func(c *types.ContainerJSON) { c.Config.Labels["com.docker.compose.service"] = "ordinary" },
-+		"orphan-path": func(c *types.ContainerJSON) { c.Config.Labels["com.docker.compose.project.working_dir"] = "/ordinary" },
-+		"file-list-empty": func(c *types.ContainerJSON) { c.Config.Labels["com.docker.compose.project"] = "ordinary"; c.Config.Labels["com.docker.compose.project.config_files"] = "/ordinary.yml," },
-+		"file-list-duplicate": func(c *types.ContainerJSON) { c.Config.Labels["com.docker.compose.project"] = "ordinary"; c.Config.Labels["com.docker.compose.project.config_files"] = "/ordinary.yml,/ordinary.yml" },
-+		"path-escape": func(c *types.ContainerJSON) { c.Config.Labels["com.docker.compose.project"] = "ordinary"; c.Config.Labels["com.docker.compose.project.working_dir"] = "/var/lib/casaos/apps/local-syncthing/../ordinary" },
++		"name-path":       func(c *types.ContainerJSON) { c.Name = "/ordinary/other" },
++		"double-slash":    func(c *types.ContainerJSON) { c.Name = "//ordinary" },
++		"no-slash":        func(c *types.ContainerJSON) { c.Name = "ordinary" },
++		"empty-name":      func(c *types.ContainerJSON) { c.Name = "" },
++		"nil-config":      func(c *types.ContainerJSON) { c.Config = nil },
++		"nil-base":        func(c *types.ContainerJSON) { c.ContainerJSONBase = nil },
++		"empty-label":     func(c *types.ContainerJSON) { c.Config.Labels["name"] = "" },
++		"invalid-label":   func(c *types.ContainerJSON) { c.Config.Labels["name"] = "local-syncthing/../ordinary" },
++		"orphan-service":  func(c *types.ContainerJSON) { c.Config.Labels["com.docker.compose.service"] = "ordinary" },
++		"orphan-path":     func(c *types.ContainerJSON) { c.Config.Labels["com.docker.compose.project.working_dir"] = "/ordinary" },
++		"file-list-empty": func(c *types.ContainerJSON) {
++			c.Config.Labels["com.docker.compose.project"] = "ordinary"
++			c.Config.Labels["com.docker.compose.project.config_files"] = "/ordinary.yml,"
++		},
++		"file-list-duplicate": func(c *types.ContainerJSON) {
++			c.Config.Labels["com.docker.compose.project"] = "ordinary"
++			c.Config.Labels["com.docker.compose.project.config_files"] = "/ordinary.yml,/ordinary.yml"
++		},
++		"path-escape": func(c *types.ContainerJSON) {
++			c.Config.Labels["com.docker.compose.project"] = "ordinary"
++			c.Config.Labels["com.docker.compose.project.working_dir"] = "/var/lib/casaos/apps/local-syncthing/../ordinary"
++		},
 +	} {
-+		t.Run(name, func(t *testing.T) { c := legacyFixture(); alter(c); requirePolicyRefusal(t, CheckLegacyContainerMutation(context.Background(), "legacy-update", c, nil)) })
++		t.Run(name, func(t *testing.T) {
++			c := legacyFixture()
++			alter(c)
++			requirePolicyRefusal(t, CheckLegacyContainerMutation(context.Background(), "legacy-update", c, nil))
++		})
 +	}
 +	requirePolicyRefusal(t, CheckLegacyContainerMutation(context.Background(), "legacy-update", nil, nil))
 +	requirePolicyRefusal(t, CheckLegacyContainerMutation(context.Background(), "apply", legacyFixture(), nil))
 +	requirePolicyRefusal(t, CheckLegacyContainerMutation(context.Background(), "legacy-terminal", legacyFixture(), &model.CustomizationPostData{}))
-+	ctx, cancel := context.WithCancel(context.Background()); cancel()
++	ctx, cancel := context.WithCancel(context.Background())
++	cancel()
 +	requirePolicyRefusal(t, CheckLegacyContainerMutation(ctx, "legacy-update", legacyFixture(), nil))
-+	failure := func(context.Context, string, *syncthingIdentity, *syncthingIdentity) error { return errors.New("SECRET-SENTINEL") }
++	failure := func(context.Context, string, *syncthingIdentity, *syncthingIdentity) error {
++		return errors.New("SECRET-SENTINEL")
++	}
 +	requirePolicyRefusal(t, checkLegacyContainerMutation(context.Background(), "legacy-update", legacyFixture(), nil, failure))
 +}
 --- /dev/null
