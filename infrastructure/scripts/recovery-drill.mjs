@@ -383,6 +383,33 @@ async function restore(fixture) {
                     (_, i) => expected.filter((r, index) => r[i] !== observed[index]?.[i]).length,
                   ),
                 });
+                if (field === 'constraints') {
+                  // Diagnosis ONLY. Never replace the strict oracle or use these
+                  // probes to accept a mismatching target fingerprint.
+                  const different = expected
+                    .map((r, i) => [r, observed[i]])
+                    .filter(([a, b]) => a[4] !== b[4]);
+                  const casts = (s) => (s.match(/\([0-9]+\)::numeric/g) ?? []).length;
+                  const simplify = (s) =>
+                    s
+                      .replace(/\(([0-9]+)\)::numeric/g, '$1::numeric')
+                      .replace(/'([0-9]+)'::numeric/g, '$1::numeric');
+                  mark('native_constraint_roundtrip_diagnosis', {
+                    differences: different.length,
+                    allCheckConstraints: different.every(([a, b]) => a[3] === 'c' && b[3] === 'c'),
+                    sourceParenthesizedNumericCasts: different.reduce(
+                      (sum, [a]) => sum + casts(a[4]),
+                      0,
+                    ),
+                    targetParenthesizedNumericCasts: different.reduce(
+                      (sum, [, b]) => sum + casts(b[4]),
+                      0,
+                    ),
+                    numericCastSpellingProbeMatches: different.every(
+                      ([a, b]) => simplify(a[4]) === simplify(b[4]),
+                    ),
+                  });
+                }
               }
             }
           }
@@ -406,6 +433,18 @@ async function restore(fixture) {
         },
       };
     },
+  }).catch(async (error) => {
+    // Read-only reconciliation of the preserved failed target; no retry,
+    // expectation rewrite, lock removal or application mutation follows.
+    const observed = await snapshot(target),
+      original = read('original-source.json');
+    mark('failed_target_readonly_reconciliation', {
+      allTableValuesExact: JSON.stringify(observed.rows) === JSON.stringify(original.rows),
+      allTenCountsExact: JSON.stringify(observed.rowCounts) === JSON.stringify(original.rowCounts),
+      historySequenceExact: JSON.stringify(observed.sequence) === JSON.stringify(original.sequence),
+      catalogFingerprintExact: observed.catalogSha256 === original.catalogSha256,
+    });
+    throw error;
   });
   assert.equal(receipt.status, 'structural_checks_passed');
   assert.equal(receipt.recoveryVerified, false);
