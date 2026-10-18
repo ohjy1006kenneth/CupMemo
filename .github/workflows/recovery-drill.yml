@@ -64,5 +64,7 @@ jobs:
             ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/restore.json
             ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/application.json
             ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/persistence.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/negative.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/negative-verifier.json
             ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/summary.json
             ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/cleanup.json

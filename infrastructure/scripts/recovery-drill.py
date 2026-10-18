@@ -191,6 +191,9 @@ def drill():
         start_db()
         phase = 'persistence'
         node('persistence')
+        phase = 'negative'
+        node('negative')
+        record(root, 'negative-verifier.json', json.loads((private / 'result-negative-verifier.json').read_text()))
         status = 'synthetic_recovery_checks_passed'
     except Exception:
         # Intentional fixed phase only: exceptions/child output may contain rows.

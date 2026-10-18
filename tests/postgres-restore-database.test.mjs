@@ -64,6 +64,9 @@ test('postchecks compare trusted catalog, all exact counts, journal and eight ze
     ),
   };
   await verifyRestored(f.query, f.identity, oracle, directory);
+  expect(f.seen.find((s) => s.includes('restore:catalog:constraints'))).toContain(
+    'pg_catalog.pg_get_constraintdef(k.oid,true)',
+  );
   expect(f.seen.filter((s) => s.includes('restore:count:'))).toHaveLength(10);
   expect(f.seen.filter((s) => s.includes('restore:orphan:'))).toHaveLength(8);
   expect(f.seen.every((s) => !/^(DROP|DELETE|INSERT|UPDATE|CREATE|ALTER|TRUNCATE)/i.test(s))).toBe(
@@ -79,5 +82,27 @@ test('postchecks compare trusted catalog, all exact counts, journal and eight ze
   ]) {
     const bad = await databaseFixture(overrides);
     await expect(verifyRestored(bad.query, f.identity, oracle, directory)).rejects.toThrow();
+  }
+  for (const [section, field, value] of [
+    ['constraints', 4, 'CHECK (id > 1)'],
+    ['constraints', 5, false],
+    ['constraints', 6, true],
+    ['constraints', 7, true],
+    ['indexes', 3, 'CREATE INDEX changed'],
+    ['columns', 4, 'integer'],
+  ]) {
+    const catalog = globalThis.structuredClone(f.catalog);
+    catalog[section][0][field] = value;
+    const mutated = await databaseFixture({
+      catalog,
+      inventory: {
+        schemas: ['public', 'cupmemo', 'drizzle'],
+        sequences: [['drizzle', '__drizzle_migrations_id_seq', true]],
+      },
+    });
+    await expect(verifyRestored(mutated.query, f.identity, oracle, directory)).rejects.toThrow(
+      'restore refused',
+    );
+    expect(mutated.seen.some((sql) => sql.includes('restore:count:'))).toBe(false);
   }
 });

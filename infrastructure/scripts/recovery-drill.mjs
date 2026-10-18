@@ -5,18 +5,26 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { createRequire } from 'node:module';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { createDatabase } from '../../packages/database/dist/index.js';
 import { createAuth } from '../../apps/api/dist/auth.js';
 import { createApp } from '../../apps/api/dist/app.js';
 import { runBackup } from './postgres-backup.mjs';
 import { runRestore } from './postgres-restore.mjs';
-import { preflight, connectTarget } from './postgres-restore-database.mjs';
+import { preflight, connectTarget, verifyRestored } from './postgres-restore-database.mjs';
 import { canonicalCatalog, sha256, tableNames } from './postgres-restore-oracle.mjs';
 
 const root = '/drill';
 const stage = process.argv[2];
-const stages = ['prepare', 'restore', 'application', 'persistence'];
+const stages = [
+  'prepare',
+  'restore',
+  'application',
+  'persistence',
+  'negative',
+  'negative-verifier',
+];
 const origin = 'http://127.0.0.1:4101';
 const directory = '/candidate/packages/database/drizzle';
 const connections = [],
@@ -167,23 +175,14 @@ async function sourceCatalog(query) {
   const statements = {
     tables: `SELECT json_build_array(n.nspname,c.relname,c.relkind,c.relpersistence,c.relrowsecurity,c.relforcerowsecurity) AS tuple ${from} WHERE ${scope} AND c.relkind NOT IN ('i','S')`,
     columns: `SELECT json_build_array(n.nspname,c.relname,a.attnum,a.attname,pg_catalog.format_type(a.atttypid,a.atttypmod),a.attnotnull,pg_catalog.pg_get_expr(d.adbin,d.adrelid),a.attidentity,a.attgenerated) AS tuple ${from} JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum WHERE ${scope} AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped`,
-    constraints: `SELECT json_build_array(n.nspname,c.relname,k.conname,k.contype,pg_catalog.pg_get_constraintdef(k.oid,false),k.convalidated,k.condeferrable,k.condeferred) AS tuple ${from} JOIN pg_catalog.pg_constraint k ON k.conrelid=c.oid WHERE ${scope}`,
+    constraints: `SELECT json_build_array(n.nspname,c.relname,k.conname,k.contype,pg_catalog.pg_get_constraintdef(k.oid,true),k.convalidated,k.condeferrable,k.condeferred) AS tuple ${from} JOIN pg_catalog.pg_constraint k ON k.conrelid=c.oid WHERE ${scope}`,
     indexes: `SELECT json_build_array(n.nspname,c.relname,ic.relname,pg_catalog.pg_get_indexdef(i.indexrelid),i.indisunique,i.indisprimary,i.indisvalid,i.indisready) AS tuple ${from} JOIN pg_catalog.pg_index i ON i.indrelid=c.oid JOIN pg_catalog.pg_class ic ON ic.oid=i.indexrelid WHERE ${scope}`,
   };
-  const catalog = { version: 1 };
+  const catalog = { version: 2 };
   for (const [key, sql] of Object.entries(statements))
     catalog[key] = (await query(sql)).rows.map((r) => r.tuple);
   const canonical = canonicalCatalog(catalog);
-  // An alternate NATIVE deparser probe for owner adjudication only. The strict
-  // oracle still uses pg_get_constraintdef(...,false) exactly as contracted.
-  const prettyConstraints = (
-    await query(`SELECT json_build_array(n.nspname,c.relname,k.conname,k.contype,
-    pg_catalog.pg_get_constraintdef(k.oid,true),k.convalidated,k.condeferrable,k.condeferred) AS tuple
-    ${from} JOIN pg_catalog.pg_constraint k ON k.conrelid=c.oid WHERE ${scope}`)
-  ).rows
-    .map((r) => JSON.stringify(r.tuple))
-    .sort();
-  return { catalogSha256: sha256(canonical), catalog: JSON.parse(canonical), prettyConstraints };
+  return { catalogSha256: sha256(canonical), catalog: JSON.parse(canonical) };
 }
 async function snapshot(connection) {
   const query = (sql) => connection.pool.query(sql);
@@ -316,7 +315,7 @@ async function prepare(fixture) {
   assert.equal(manifest.release.status, 'verified');
   assert.deepEqual(await snapshot(source), before); // source stayed quiescent
   const oracle = {
-    version: 1,
+    version: 2,
     archiveSha256,
     releaseCommit: manifest.release.commit,
     releaseTree: manifest.release.tree,
@@ -363,7 +362,7 @@ async function restore(fixture) {
     // Observe the genuine production connection, never an injected/fake DB.
     connect: async (targetConfig) => {
       const actual = await connectTarget(targetConfig);
-      const observedCatalog = { version: 1 };
+      const observedCatalog = { version: 2 };
       return {
         ...actual,
         query: async (sql) => {
@@ -392,33 +391,6 @@ async function restore(fixture) {
                     (_, i) => expected.filter((r, index) => r[i] !== observed[index]?.[i]).length,
                   ),
                 });
-                if (field === 'constraints') {
-                  // Diagnosis ONLY. Never replace the strict oracle or use these
-                  // probes to accept a mismatching target fingerprint.
-                  const different = expected
-                    .map((r, i) => [r, observed[i]])
-                    .filter(([a, b]) => a[4] !== b[4]);
-                  const casts = (s) => (s.match(/\([0-9]+\)::numeric/g) ?? []).length;
-                  const simplify = (s) =>
-                    s
-                      .replace(/\(([0-9]+)\)::numeric/g, '$1::numeric')
-                      .replace(/'([0-9]+)'::numeric/g, '$1::numeric');
-                  mark('native_constraint_roundtrip_diagnosis', {
-                    differences: different.length,
-                    allCheckConstraints: different.every(([a, b]) => a[3] === 'c' && b[3] === 'c'),
-                    sourceParenthesizedNumericCasts: different.reduce(
-                      (sum, [a]) => sum + casts(a[4]),
-                      0,
-                    ),
-                    targetParenthesizedNumericCasts: different.reduce(
-                      (sum, [, b]) => sum + casts(b[4]),
-                      0,
-                    ),
-                    numericCastSpellingProbeMatches: different.every(
-                      ([a, b]) => simplify(a[4]) === simplify(b[4]),
-                    ),
-                  });
-                }
               }
             }
           }
@@ -452,8 +424,6 @@ async function restore(fixture) {
       allTenCountsExact: JSON.stringify(observed.rowCounts) === JSON.stringify(original.rowCounts),
       historySequenceExact: JSON.stringify(observed.sequence) === JSON.stringify(original.sequence),
       catalogFingerprintExact: observed.catalogSha256 === original.catalogSha256,
-      nativePrettyConstraintsExact:
-        JSON.stringify(observed.prettyConstraints) === JSON.stringify(original.prettyConstraints),
     });
     throw error;
   });
@@ -571,6 +541,86 @@ async function application(fixture, persistence) {
   mark('original_source_unchanged');
 }
 
+async function negative(fixture) {
+  // Only after ALL positive restore/auth/restart checks. Deliberately preserve
+  // this mutated populated target, never reset it or alter the source oracle.
+  for (const positive of ['restore', 'application', 'persistence'])
+    assert.equal(read('result-' + positive + '.json').status, 'passed');
+  const target = connect('restore', fixture);
+  const before = await snapshot(target);
+  const original = read('original-source.json');
+  assert.equal(before.catalogSha256, original.catalogSha256);
+  phase = 'real_check_semantic_mutation';
+  await target.pool.query(`ALTER TABLE cupmemo.brews
+    DROP CONSTRAINT brews_duration_nonnegative,
+    ADD CONSTRAINT brews_duration_nonnegative CHECK (total_brew_time_seconds >= 1)`);
+  const changed = await snapshot(target);
+  assert.deepEqual(changed.rows, before.rows);
+  assert.deepEqual(changed.rowCounts, before.rowCounts);
+  assert.deepEqual(changed.sequence, before.sequence);
+  const differences = before.catalog.constraints
+    .map((tuple, i) => [tuple, changed.catalog.constraints[i]])
+    .filter(([a, b]) => JSON.stringify(a) !== JSON.stringify(b));
+  assert.equal(differences.length, 1);
+  const [a, b] = differences[0];
+  assert.deepEqual(a.slice(0, 4), ['cupmemo', 'brews', 'brews_duration_nonnegative', 'c']);
+  assert.deepEqual(a.slice(0, 4), b.slice(0, 4));
+  assert.deepEqual(a.slice(5), b.slice(5));
+  assert.notEqual(a[4], b[4]);
+  for (const key of ['tables', 'columns', 'indexes'])
+    assert.deepEqual(changed.catalog[key], before.catalog[key]);
+  assert.notEqual(changed.catalogSha256, original.catalogSha256);
+  phase = 'production_verifier_rejects_mutated_check';
+  const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url), 'negative-verifier'], {
+    stdio: 'pipe',
+    timeout: 30000,
+  });
+  assert.equal(child.status, 1);
+  const result = read('result-negative-verifier.json');
+  assert.equal(result.status, 'failed');
+  // Rejection occurred at strict catalog equality, not later history/count checks.
+  assert.equal(result.phase, 'negative_catalog_equality');
+  assert.ok(result.checks.some((c) => c.check === 'native_catalog_queries_completed'));
+  assert.deepEqual(await snapshot(target), changed);
+  assert.deepEqual(await snapshot(connect('source', fixture)), original);
+  mark('real_same_name_type_check_semantic_mutation_refused', {
+    verifierRejected: true,
+    verifierExitCode: child.status,
+    onlyDefinitionChanged: true,
+    allValuesCountsSequencePreserved: true,
+    sourceOracleUnchanged: true,
+    mutatedTargetPreservedWithoutReset: true,
+    sourceCatalogSha256: original.catalogSha256,
+    mutatedCatalogSha256: changed.catalogSha256,
+  });
+}
+
+async function negativeVerifier(fixture) {
+  const target = connect('restore', fixture);
+  phase = 'negative_identity_or_inventory';
+  await verifyRestored(
+    async (sql) => {
+      if (sql.includes('SELECT hash, created_at') || sql.includes('restore:count:'))
+        phase = 'unexpected_later_verification';
+      const result = await target.pool.query(sql);
+      if (sql.includes('restore:catalog:indexes')) {
+        phase = 'negative_catalog_equality';
+        mark('native_catalog_queries_completed');
+      }
+      return result;
+    },
+    {
+      database: 'cupmemo_test_t_b2e9cc04_restore',
+      username: 'drill_restore',
+      address: '127.0.0.1',
+      port: 5432,
+    },
+    read('expectations.json'),
+    directory,
+  );
+  phase = 'unexpected_verifier_success';
+}
+
 if (!stages.includes(stage) || process.argv.length !== 3 || process.getuid() === 0) {
   process.stderr.write('recovery worker refused\n');
   process.exitCode = 1;
@@ -585,6 +635,8 @@ if (!stages.includes(stage) || process.argv.length !== 3 || process.getuid() ===
       fs.mkdirSync('/drill/state', { mode: 0o700 });
       await prepare(fixture);
     } else if (stage === 'restore') await restore(fixture);
+    else if (stage === 'negative') await negative(fixture);
+    else if (stage === 'negative-verifier') await negativeVerifier(fixture);
     else await application(fixture, stage === 'persistence');
     status = 'passed';
   } catch (error) {

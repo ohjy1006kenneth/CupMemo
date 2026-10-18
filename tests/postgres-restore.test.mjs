@@ -94,7 +94,7 @@ async function fixture({ version = '17.9', body = 'return 0;', post = {} } = {})
     ...post,
   });
   const oracle = {
-    version: 1,
+    version: 2,
     archiveSha256: manifest.sha256,
     releaseCommit: manifest.release.commit,
     releaseTree: manifest.release.tree,
@@ -271,6 +271,7 @@ test.each([
   'oracle',
   'oracle-digest',
   'unbound-oracle',
+  'v1-oracle',
   'release-dirty',
   'ignored-migration',
   'release-mismatch',
@@ -295,6 +296,11 @@ test.each([
   if (kind === 'manifest') await fs.writeFile(path.join(f.bundle, 'manifest.json'), '{}');
   if (kind === 'oracle') await fs.writeFile(f.env.CUPMEMO_RESTORE_EXPECTATIONS_FILE, '{}');
   if (kind === 'oracle-digest') f.env.CUPMEMO_RESTORE_EXPECTATIONS_SHA256 = '0'.repeat(64);
+  if (kind === 'v1-oracle') {
+    const legacy = JSON.stringify({ ...f.oracle, version: 1 });
+    await fs.writeFile(f.env.CUPMEMO_RESTORE_EXPECTATIONS_FILE, legacy);
+    f.env.CUPMEMO_RESTORE_EXPECTATIONS_SHA256 = sha256(legacy);
+  }
   if (kind === 'unbound-oracle') {
     f.oracle.archiveSha256 = '0'.repeat(64);
     const text = JSON.stringify(f.oracle);

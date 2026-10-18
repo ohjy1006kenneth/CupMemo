@@ -65,7 +65,7 @@ const fromRelations = `FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n
 const catalogSQL = {
   tables: `SELECT pg_catalog.json_build_array(n.nspname,c.relname,c.relkind,c.relpersistence,c.relrowsecurity,c.relforcerowsecurity) AS tuple ${fromRelations} WHERE ${applicationNamespace} AND c.relkind NOT IN ('i','S') LIMIT 4097`,
   columns: `SELECT pg_catalog.json_build_array(n.nspname,c.relname,a.attnum,a.attname,pg_catalog.format_type(a.atttypid,a.atttypmod),a.attnotnull,pg_catalog.pg_get_expr(d.adbin,d.adrelid),a.attidentity,a.attgenerated) AS tuple ${fromRelations} JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum WHERE ${applicationNamespace} AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped LIMIT 4097`,
-  constraints: `SELECT pg_catalog.json_build_array(n.nspname,c.relname,k.conname,k.contype,pg_catalog.pg_get_constraintdef(k.oid,false),k.convalidated,k.condeferrable,k.condeferred) AS tuple ${fromRelations} JOIN pg_catalog.pg_constraint k ON k.conrelid=c.oid WHERE ${applicationNamespace} LIMIT 4097`,
+  constraints: `SELECT pg_catalog.json_build_array(n.nspname,c.relname,k.conname,k.contype,pg_catalog.pg_get_constraintdef(k.oid,true),k.convalidated,k.condeferrable,k.condeferred) AS tuple ${fromRelations} JOIN pg_catalog.pg_constraint k ON k.conrelid=c.oid WHERE ${applicationNamespace} LIMIT 4097`,
   indexes: `SELECT pg_catalog.json_build_array(n.nspname,c.relname,ic.relname,pg_catalog.pg_get_indexdef(i.indexrelid),i.indisunique,i.indisprimary,i.indisvalid,i.indisready) AS tuple ${fromRelations} JOIN pg_catalog.pg_index i ON i.indrelid=c.oid JOIN pg_catalog.pg_class ic ON ic.oid=i.indexrelid WHERE ${applicationNamespace} LIMIT 4097`,
 };
 const relationships = [
@@ -144,7 +144,7 @@ export async function verifyRestored(query, expected, oracle, directory) {
   return snapshot(query, async () => {
     await identity(query, expected);
     await inventory(query, false);
-    const c = { version: 1 };
+    const c = { version: 2 };
     for (const [key, sql] of Object.entries(catalogSQL))
       c[key] = (await query(`/* restore:catalog:${key} */ ${sql}`)).rows.map((r) => r.tuple);
     if (sha256(canonicalCatalog(c)) !== oracle.catalogSha256) refuse();

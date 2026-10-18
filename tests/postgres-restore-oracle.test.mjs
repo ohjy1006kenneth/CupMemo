@@ -21,7 +21,7 @@ const binding = {
 };
 function oracle() {
   return {
-    version: 1,
+    version: 2,
     ...binding,
     catalogSha256: 'd'.repeat(64),
     rowCounts: Object.fromEntries(names.map((n) => [n, '0'])),
@@ -83,7 +83,7 @@ test('external oracle preserves explicit zeros and full uint64 precision, refuse
 
 function catalog() {
   return {
-    version: 1,
+    version: 2,
     tables: names.map((n) => [...n.split('.'), 'r', 'p', false, false]),
     columns: names.map((n) => [...n.split('.'), 1, 'id', 'text', true, null, '', '']),
     constraints: names.map((n) => [
@@ -156,5 +156,44 @@ test('canonical catalog ordering is stable and typed; oracle detects any definit
     const invalid = catalog();
     mutate(invalid);
     expect(() => canonicalCatalog(invalid)).toThrow();
+  }
+});
+
+test('v2 refuses original v1 expectations and catalog rather than reinterpreting their bytes', async () => {
+  const { parseExpectations, canonicalCatalog } =
+    await import('../infrastructure/scripts/postgres-restore-oracle.mjs');
+  const legacy = JSON.stringify({ ...oracle(), version: 1 });
+  expect(() => parseExpectations(legacy, sha(legacy), binding)).toThrow('restore refused');
+  expect(() => canonicalCatalog({ ...catalog(), version: 1 })).toThrow('restore refused');
+  expect(JSON.parse(canonicalCatalog(catalog())).version).toBe(2);
+});
+
+test('v2 fingerprints native CHECK semantics exactly and retains every constraint metadata field', async () => {
+  const { canonicalCatalog } =
+    await import('../infrastructure/scripts/postgres-restore-oracle.mjs');
+  const source = catalog();
+  source.constraints.push([
+    'cupmemo',
+    'brews',
+    'same_check',
+    'c',
+    'CHECK (dose_grams > 0::numeric)',
+    true,
+    false,
+    false,
+  ]);
+  const baseline = canonicalCatalog(source);
+  expect(JSON.parse(baseline).constraints).toContainEqual(source.constraints.at(-1));
+  const mutated = globalThis.structuredClone(source);
+  mutated.constraints.at(-1)[4] = 'CHECK (dose_grams > 1::numeric)';
+  expect(sha(canonicalCatalog(mutated))).not.toBe(sha(baseline));
+  for (const [field, value] of [
+    [5, false],
+    [6, true],
+    [7, true],
+  ]) {
+    const invalid = globalThis.structuredClone(source);
+    invalid.constraints.at(-1)[field] = value;
+    expect(() => canonicalCatalog(invalid)).toThrow('restore refused');
   }
 });
