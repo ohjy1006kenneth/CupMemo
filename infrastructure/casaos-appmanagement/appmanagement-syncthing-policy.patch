@@ -796,7 +796,7 @@
 +				os.Remove(syncthingPolicyPath)
 +				os.Symlink("/SECRET-SENTINEL", syncthingPolicyPath)
 +			case "multilink":
-+				link := filepath.Join(t.TempDir(), "link")
++				link := filepath.Join(filepath.Dir(syncthingPolicyPath), "synthetic-hardlink")
 +				if err := os.Link(syncthingPolicyPath, link); err != nil {
 +					t.Fatal(err)
 +				}
