@@ -1,4 +1,4 @@
-// Bounded restore oracle v1. Pure validation; import never performs I/O.
+// Bounded restore oracle v2. Pure validation; import never performs I/O.
 import { createHash } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 
@@ -63,7 +63,7 @@ export function parseExpectations(bytes, expectedHash, binding) {
     'observedAt',
   ]);
   if (
-    o.version !== 1 ||
+    o.version !== 2 ||
     !hex(o.archiveSha256, 64) ||
     !hex(o.releaseCommit, 40) ||
     !hex(o.releaseTree, 40) ||
@@ -89,14 +89,14 @@ function compare(a, b) {
 }
 export function canonicalCatalog(c) {
   exactKeys(c, ['version', 'tables', 'columns', 'constraints', 'indexes']);
-  if (c.version !== 1) refuse();
+  if (c.version !== 2) refuse();
   const shapes = {
     tables: ['s', 's', 's', 's', 'b', 'b'],
     columns: ['s', 's', 'n', 's', 's', 'b', '?', 's', 's'],
     constraints: ['s', 's', 's', 's', 's', 'b', 'b', 'b'],
     indexes: ['s', 's', 's', 's', 'b', 'b', 'b', 'b'],
   };
-  const out = { version: 1 };
+  const out = { version: 2 };
   for (const [key, shape] of Object.entries(shapes)) {
     const rows = c[key];
     if (!Array.isArray(rows) || rows.length === 0 || rows.length > 4096) refuse();

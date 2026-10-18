@@ -19,7 +19,7 @@ export const names = [
 ];
 export function syntheticCatalog() {
   return {
-    version: 1,
+    version: 2,
     tables: names.map((n) => [...n.split('.'), 'r', 'p', false, false]),
     columns: names.map((n) => [...n.split('.'), 1, 'id', 'text', true, null, '', '']),
     constraints: names.map((n) => [

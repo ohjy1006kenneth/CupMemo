@@ -1,0 +1,70 @@
+name: Synthetic recovery drill
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/recovery-drill.yml'
+      - 'infrastructure/scripts/recovery-drill.*'
+      - 'infrastructure/scripts/postgres-restore*.mjs'
+      - 'infrastructure/scripts/postgres-backup.mjs'
+      - 'tests/recovery-drill.test.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    name: real-synthetic-pg17-recovery
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    env:
+      DRILL_CANDIDATE: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Check out exact PR candidate without credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Set up pinned Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.15.0
+      - name: Bootstrap pinned package manager
+        run: |
+          npm install --global corepack@0.36.0
+          corepack enable
+          test "$(corepack pnpm --version)" = "10.34.6"
+      - name: Install frozen workspace and build only backend prerequisites
+        run: |
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm --filter @cupmemo/contracts build
+          corepack pnpm --filter @cupmemo/database build
+          corepack pnpm --filter @cupmemo/api build
+      - name: Real original-source backup, guarded restore and application persistence
+        timeout-minutes: 30
+        run: python3 infrastructure/scripts/recovery-drill.py
+      - name: Reconcile and remove only exact labelled hosted fixture
+        if: always()
+        run: python3 infrastructure/scripts/recovery-drill.py --cleanup
+      - name: Retain only sanitized allowlisted evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: synthetic-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/identity.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/image.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/caps-before.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/caps-after.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/prepare.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/restore.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/application.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/persistence.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/negative.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/negative-verifier.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/summary.json
+            ${{ runner.temp }}/cupmemo-recovery-${{ github.run_id }}-${{ github.run_attempt }}/cleanup.json

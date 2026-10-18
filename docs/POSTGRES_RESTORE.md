@@ -17,6 +17,11 @@ exact-resource owner authorization and independent exact-head review. Preserve
 [storage/privacy gates](PRIVATE_COMPOSE.md) and [backup custody](POSTGRES_BACKUPS.md).
 There is no scheduler, automatic retry, database creation or target reset.
 
+The separately authorized [disposable hosted synthetic drill](RECOVERY_DRILL.md)
+exercises actual PG17 backup/restore and restored application behavior using only
+throwaway generated data. Its exact-head artifacts and independent owner acceptance
+are distinct from the source/fixture tests above; production holds are unchanged.
+
 ## Future explicit interface
 
 Use Node24 and the frozen pnpm workspace. Offline build and source checks are
@@ -95,7 +100,7 @@ restored history is checked independently after restore.
 
 The strict UTF-8 JSON expectation object has exactly these fields:
 
-- `version`: integer1.
+- `version`: integer2 (expectations/catalog only; backup bundle remains version1).
 - `archiveSha256`: lowercase64hex, equal to external/archive/manifest hash.
 - `releaseCommit`, `releaseTree`: lowercase40hex, equal to manifest/trusted checkout.
 - `catalogSha256`: lowercase64hex of the canonical PG17 catalog below.
@@ -114,7 +119,7 @@ A future authorized source capture must reproduce native PG17 formatting and a
 consistent snapshot privately; no capture job or real counts are delivered here.
 
 Canonical catalog bytes are UTF-8 `JSON.stringify` with no indentation/newline,
-object property order `{version:1,tables:[...],columns:[...],constraints:[...],indexes:[...]}`.
+object property order `{version:2,tables:[...],columns:[...],constraints:[...],indexes:[...]}`.
 Each array sorts tuples lexicographically by fields (ordinal/code-point, not
 locale; column ordinal numeric). Only `public`/`cupmemo`/`drizzle` objects enter:
 
@@ -124,8 +129,14 @@ locale; column ordinal numeric). Only `public`/`cupmemo`/`drizzle` objects enter
 - indexes: `[schema,table,indexName,indexDefinition,uniqueBoolean,primaryBoolean,validBoolean,readyBoolean]`
 
 Definitions come from namespaced PG17 `format_type`, `pg_get_expr`,
-`pg_get_constraintdef(oid,false)`, `pg_get_indexdef`, with `search_path=pg_catalog`.
-Do not normalize SQL. No OIDs/owners/roles/ACLs/paths enter the digest. Columns omit
+`pg_get_constraintdef(oid,true)`, `pg_get_indexdef`, with `search_path=pg_catalog`.
+Version2 uses the native pretty constraint representation on BOTH original source
+capture and target: PG17 dump/restore can change native false-mode CHECK spelling
+for this profile. Version1 expectations/catalog refuse, never silently relabel or
+rehash retained v1 artifacts. Capture fresh independently trusted source-v2 bytes.
+This is bounded to the hash-pinned migration profile, not arbitrary schemas.
+Compare native output exactly: no regex, SQL normalization or ignored CHECKs.
+All constraint metadata remains in the digest. No OIDs/owners/roles/ACLs/paths enter the digest. Columns omit
 dropped/system attributes. Null is allowed only for a missing column default.
 Exactly ten ordinary permanent non-RLS tables, supported validated constraints
 and valid/ready indexes are required. History's sole integer serial sequence is
