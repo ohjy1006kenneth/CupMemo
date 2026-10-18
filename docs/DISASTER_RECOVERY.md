@@ -10,6 +10,11 @@ non-production restore (Issue #48) remains **unperformed**. Writing a dump,
 checking its size or obtaining a successful job exit does not prove recovery.
 Off-site copies are future work, not an available recovery source.
 
+The [guarded isolated-restore tool](POSTGRES_RESTORE.md) supplies executable
+test-only source guards and synthetic transport/query tests. Its structural
+receipt explicitly says `recoveryVerified=false`; no real restore or application
+acceptance follows from source integration. All operational holds below remain.
+
 PGDATA provisioning, database startup, migrations/restores and public deployment
 remain held. Every operational step below requires separate explicit authority
 for the exact incident, resources and actions; this document grants none. Do not

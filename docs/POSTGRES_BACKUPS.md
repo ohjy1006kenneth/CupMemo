@@ -9,6 +9,10 @@ process/archive transport and refusal boundaries, not a real PostgreSQL dump,
 archive readability, recovery or a running schedule. Issue #47/card stay open for
 actual scheduled production-dump acceptance. Issue #48 restore remains unperformed.
 
+The separate [guarded isolated-restore runner](POSTGRES_RESTORE.md) consumes the
+unchanged backup-v1 bundle with external trusted archive/expectation hashes and a
+matching historical release. Source/fixture checks are not actual restore proof.
+
 PGDATA provisioning, database startup/connections, live NAS/HDD/private-backup
 inspection, service installation/reload/enablement and public deployment remain
 held. Nothing here grants activation authority or selects an endpoint, destination,
