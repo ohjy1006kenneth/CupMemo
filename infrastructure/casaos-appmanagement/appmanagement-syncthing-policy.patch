@@ -1,0 +1,793 @@
+--- a/route/v2/compose_app.go
++++ b/route/v2/compose_app.go
+@@ -160,6 +160,10 @@
+ 		return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
+ 	}
+ 
++	if err := composeApp.CheckMutation(ctx.Request().Context(), "apply", nil); err != nil {
++		message := err.Error()
++		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
++	}
+ 	buf, err := YAMLfromRequest(ctx)
+ 	if err != nil {
+ 		message := err.Error()
+@@ -177,6 +181,10 @@
+ 		})
+ 	}
+ 
++	if err := composeApp.CheckMutation(ctx.Request().Context(), "apply", newComposeApp); err != nil {
++		message := err.Error()
++		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
++	}
+ 	uncontrolled, err := a.IsNewComposeUncontrolled(newComposeApp)
+ 	if err != nil {
+ 		message := err.Error()
+@@ -290,6 +298,10 @@
+ 		})
+ 	}
+ 
++	if err := service.MyService.Compose().CheckInstall(ctx.Request().Context(), composeApp); err != nil {
++		message := err.Error()
++		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
++	}
+ 	uncontrolled, err := a.IsNewComposeUncontrolled(composeApp)
+ 	if err != nil {
+ 		message := err.Error()
+@@ -416,6 +428,10 @@
+ 		return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
+ 	}
+ 
++	if err := composeApp.CheckMutation(ctx.Request().Context(), "update", nil); err != nil {
++		message := err.Error()
++		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
++	}
+ 	if params.Force != nil && !*params.Force {
+ 		// check if updateAvailable
+ 		if !service.MyService.AppStoreManagement().IsUpdateAvailable(composeApp) {
+--- a/service/compose_app.go
++++ b/service/compose_app.go
+@@ -169,6 +169,9 @@
+ }
+ 
+ func (a *ComposeApp) Update(ctx context.Context) error {
++	if err := a.CheckMutation(ctx, "update", nil); err != nil {
++		return err
++	}
+ 	if len(a.ComposeFiles) <= 0 {
+ 		return ErrComposeFileNotFound
+ 	}
+@@ -228,6 +231,9 @@
+ 	if err != nil {
+ 		return err
+ 	}
++	if err := a.CheckReplacement(ctx, "update", newComposeYAML); err != nil {
++		return err
++	}
+ 
+ 	// prepare for message bus events
+ 	eventProperties := common.PropertiesFromContext(ctx)
+@@ -327,6 +333,9 @@
+ }
+ 
+ func (a *ComposeApp) Pull(ctx context.Context) error {
++	if err := a.CheckMutation(ctx, "pull", nil); err != nil {
++		return err
++	}
+ 	// pull
+ 	serviceNum := len(a.Services)
+ 
+@@ -371,6 +380,9 @@
+ }
+ 
+ func (a *ComposeApp) Up(ctx context.Context, service api.Service) error {
++	if err := a.CheckMutation(ctx, "up", nil); err != nil {
++		return err
++	}
+ 	a.injectEnvVariableToComposeApp()
+ 
+ 	if err := service.Up(ctx, (*codegen.ComposeApp)(a), api.UpOptions{
+@@ -386,6 +398,9 @@
+ }
+ 
+ func (a *ComposeApp) UpWithCheckRequire(ctx context.Context, service api.Service) error {
++	if err := a.CheckMutation(ctx, "up", nil); err != nil {
++		return err
++	}
+ 	// prepare source path for volumes if not exist
+ 	for i, app := range a.Services {
+ 		for _, volume := range app.Volumes {
+@@ -426,6 +441,12 @@
+ }
+ 
+ func (a *ComposeApp) PullAndApply(ctx context.Context, newComposeYAML []byte) error {
++	if err := a.CheckReplacement(ctx, "pull-and-apply", newComposeYAML); err != nil {
++		return err
++	}
++	if len(a.ComposeFiles) == 0 {
++		return ErrComposeFileNotFound
++	}
+ 	// backup current compose file
+ 	currentComposeFile := a.ComposeFiles[0]
+ 
+@@ -484,11 +505,17 @@
+ }
+ 
+ func (a *ComposeApp) Create(ctx context.Context, options api.CreateOptions, service api.Service) error {
++	if err := a.CheckMutation(ctx, "create", nil); err != nil {
++		return err
++	}
+ 	a.injectEnvVariableToComposeApp()
+ 	return service.Create(ctx, (*codegen.ComposeApp)(a), api.CreateOptions{})
+ }
+ 
+ func (a *ComposeApp) PullAndInstall(ctx context.Context) error {
++	if err := a.CheckMutation(ctx, "pull-and-install", nil); err != nil {
++		return err
++	}
+ 	service, dockerClient, err := apiService()
+ 	if err != nil {
+ 		return err
+@@ -566,6 +593,9 @@
+ }
+ 
+ func (a *ComposeApp) Uninstall(ctx context.Context, deleteConfigFolder bool) error {
++	if err := a.CheckMutation(ctx, "uninstall", nil); err != nil {
++		return err
++	}
+ 	service, dockerClient, err := apiService()
+ 	if err != nil {
+ 		return err
+@@ -637,6 +667,9 @@
+ }
+ 
+ func (a *ComposeApp) Apply(ctx context.Context, newComposeYAML []byte) error {
++	if err := a.CheckReplacement(ctx, "apply", newComposeYAML); err != nil {
++		return err
++	}
+ 	// compare new ComposeApp with current ComposeApp
+ 	if getNameFrom(newComposeYAML) != a.Name {
+ 		return ErrComposeAppNotMatch
+--- a/service/compose_service.go
++++ b/service/compose_service.go
+@@ -28,6 +28,10 @@
+ 
+ func (s *ComposeService) PrepareWorkingDirectory(name string) (string, error) {
+ 	workingDirectory := filepath.Join(config.AppInfo.AppsPath, name)
++	identity := &syncthingIdentity{name, workingDirectory, []string{filepath.Join(workingDirectory, common.ComposeYAMLFileName)}, []string{}}
++	if err := checkSyncthingDestination(context.Background(), "prepare-directory", identity, nil); err != nil {
++		return "", err
++	}
+ 
+ 	if err := file.IsNotExistMkDir(workingDirectory); err != nil {
+ 		logger.Error("failed to create working dir", zap.Error(err), zap.String("path", workingDirectory))
+@@ -43,6 +47,9 @@
+ }
+ 
+ func (s *ComposeService) Install(ctx context.Context, composeApp *ComposeApp) error {
++	if err := s.CheckInstall(ctx, composeApp); err != nil {
++		return err
++	}
+ 	// set store_app_id (by convention is the same as app name at install time if it does not exist)
+ 	_, isStoreApp := composeApp.SetStoreAppID(composeApp.Name)
+ 	if !isStoreApp {
+@@ -112,6 +119,9 @@
+ }
+ 
+ func (s *ComposeService) Uninstall(ctx context.Context, composeApp *ComposeApp, deleteConfigFolder bool) error {
++	if err := composeApp.CheckMutation(ctx, "uninstall", nil); err != nil {
++		return err
++	}
+ 	// prepare for message bus events
+ 	eventProperties := common.PropertiesFromContext(ctx)
+ 	eventProperties[common.PropertyTypeAppName.Name] = composeApp.Name
+--- /dev/null
++++ b/service/syncthing_policy.go
+@@ -0,0 +1,238 @@
++package service
++
++// Admission adapter. Production always binds the fixed helper and real dependencies.
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"errors"
++	"io"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"strings"
++	"syscall"
++	"time"
++
++	"github.com/IceWhaleTech/CasaOS-AppManagement/common"
++	"github.com/IceWhaleTech/CasaOS-AppManagement/pkg/config"
++)
++
++const syncthingPolicyPath = "/usr/local/lib/cupmemo/syncthing-manager-policy.mjs"
++const syncthingPolicyLimit = 64 * 1024
++
++var errSyncthingPolicy = errors.New("Syncthing manager policy refused")
++
++type syncthingIdentity struct {
++	Name         string   `json:"name"`
++	WorkingDir   string   `json:"workingDir"`
++	ComposeFiles []string `json:"composeFiles"`
++	ServiceNames []string `json:"serviceNames"`
++}
++
++type syncthingRequest struct {
++	Version   int                `json:"version"`
++	Operation string             `json:"operation"`
++	Current   *syncthingIdentity `json:"current"`
++	Candidate *syncthingIdentity `json:"candidate"`
++}
++
++func projectSyncthingIdentity(a *ComposeApp) *syncthingIdentity {
++	if a == nil {
++		return nil
++	}
++	i := &syncthingIdentity{a.Name, a.WorkingDir, append([]string{}, a.ComposeFiles...), []string{}}
++	for _, service := range a.Services {
++		i.ServiceNames = append(i.ServiceNames, service.Name)
++	}
++	return i
++}
++
++// No embedded bytes.Buffer: io.Copy must not discover an uncapped promoted ReadFrom.
++type syncthingCappedOutput struct {
++	data    []byte
++	size    int
++	discard bool
++}
++
++func (w *syncthingCappedOutput) Write(p []byte) (int, error) {
++	if len(p) > syncthingPolicyLimit-w.size {
++		return 0, errSyncthingPolicy
++	}
++	w.size += len(p)
++	if !w.discard {
++		w.data = append(w.data, p...)
++	}
++	return len(p), nil
++}
++
++// Walk from an open root using openat, never following a link. All components must
++// remain root-owned and not group/world writable; the helper is a single-link regular file.
++// Descriptors pin validation, but root can still replace trusted paths; not a root sandbox.
++func openTrustedSyncthingPolicy(path string) (*os.File, error) {
++	if path != syncthingPolicyPath {
++		return nil, errSyncthingPolicy
++	}
++	fd, err := syscall.Open("/", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
++	if err != nil {
++		return nil, errSyncthingPolicy
++	}
++	f := os.NewFile(uintptr(fd), "/")
++	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
++	for index := -1; index < len(parts); index++ {
++		if index >= 0 {
++			flags := syscall.O_RDONLY | syscall.O_CLOEXEC | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
++			if index < len(parts)-1 {
++				flags |= syscall.O_DIRECTORY
++			}
++			next, openErr := syscall.Openat(int(f.Fd()), parts[index], flags, 0)
++			f.Close()
++			if openErr != nil {
++				return nil, errSyncthingPolicy
++			}
++			f = os.NewFile(uintptr(next), parts[index])
++		}
++		info, statErr := f.Stat()
++		if statErr != nil {
++			f.Close()
++			return nil, errSyncthingPolicy
++		}
++		stat, ok := info.Sys().(*syscall.Stat_t)
++		if !ok || stat.Uid != 0 || info.Mode().Perm()&0022 != 0 || info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
++			f.Close()
++			return nil, errSyncthingPolicy
++		}
++		if index == len(parts)-1 {
++			if !info.Mode().IsRegular() || stat.Nlink != 1 || info.Size() <= 0 || info.Size() > syncthingPolicyLimit {
++				f.Close()
++				return nil, errSyncthingPolicy
++			}
++		} else if !info.IsDir() {
++			f.Close()
++			return nil, errSyncthingPolicy
++		}
++	}
++	return f, nil
++}
++
++func checkSyncthingPolicy(ctx context.Context, operation string, current, candidate *syncthingIdentity) error {
++	return runSyncthingPolicy(ctx, operation, current, candidate, openTrustedSyncthingPolicy, func(cmd *exec.Cmd) error { return cmd.Run() })
++}
++
++// Explicit package-private dependencies permit transport tests without runtime hooks.
++func runSyncthingPolicy(ctx context.Context, operation string, current, candidate *syncthingIdentity, open func(string) (*os.File, error), run func(*exec.Cmd) error) error {
++	input, err := json.Marshal(syncthingRequest{1, operation, current, candidate})
++	if err != nil || len(input) > syncthingPolicyLimit {
++		return errSyncthingPolicy
++	}
++	helper, err := open(syncthingPolicyPath)
++	if err != nil {
++		return errSyncthingPolicy
++	}
++	defer helper.Close()
++	boundedCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
++	defer cancel()
++	cmd := exec.CommandContext(boundedCtx, "/usr/bin/node", syncthingPolicyPath, "--check")
++	cmd.Env = []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8"}
++	cmd.Stdin = bytes.NewReader(input)
++	stdout := &syncthingCappedOutput{}
++	stderr := &syncthingCappedOutput{discard: true}
++	cmd.Stdout, cmd.Stderr = stdout, stderr
++	cmd.WaitDelay = 250 * time.Millisecond
++	if err := run(cmd); err != nil || boundedCtx.Err() != nil || !bytes.Equal(stdout.data, []byte("{\"version\":1,\"allowed\":true}\n")) {
++		return errSyncthingPolicy
++	}
++	return nil
++}
++
++// CheckMutation is the safe route-level admission; no bypass flag or injected runtime.
++// CURRENT always comes from the resolved ComposeApp, not the caller's request id.
++func (a *ComposeApp) CheckMutation(ctx context.Context, operation string, candidate *ComposeApp) error {
++	return checkSyncthingPolicy(ctx, operation, projectSyncthingIdentity(a), projectSyncthingIdentity(candidate))
++}
++
++// CURRENT refuses before the upstream parser (which may allocate temporary parser state).
++// The candidate is the existing effective parser model, projected onto its final paths,
++// never a declaration loaded only AFTER overwriting the persistent config.
++func (a *ComposeApp) CheckReplacement(ctx context.Context, operation string, content []byte) error {
++	return checkSyncthingReplacement(ctx, operation, a, content, productionSyncthingDependencies())
++}
++
++type syncthingDependencies struct {
++	check func(context.Context, string, *syncthingIdentity, *syncthingIdentity) error
++	parse func([]byte, bool, bool) (*ComposeApp, error)
++	lstat func(string) (os.FileInfo, error)
++	load func(string, string) (*ComposeApp, error)
++}
++
++func productionSyncthingDependencies() syncthingDependencies {
++	return syncthingDependencies{checkSyncthingPolicy, NewComposeAppFromYAML, os.Lstat, LoadComposeAppFromConfigFile}
++}
++
++func checkSyncthingReplacement(ctx context.Context, operation string, a *ComposeApp, content []byte, d syncthingDependencies) error {
++	if err := d.check(ctx, operation, projectSyncthingIdentity(a), nil); err != nil {
++		return err
++	}
++	candidate, err := d.parse(content, true, true)
++	if err != nil || candidate == nil || a == nil {
++		return errSyncthingPolicy
++	}
++	candidate.WorkingDir = a.WorkingDir
++	candidate.ComposeFiles = append([]string{}, a.ComposeFiles...)
++	return d.check(ctx, operation, projectSyncthingIdentity(a), projectSyncthingIdentity(candidate))
++}
++
++// Admission before any install mkdir/write/async work. Candidate first; then
++// resolve installed CURRENT at the actual overwrite destination without Docker.
++// Unknown load state cannot silently become permission to overwrite.
++func (s *ComposeService) CheckInstall(ctx context.Context, candidate *ComposeApp) error {
++	return checkSyncthingInstall(ctx, candidate, config.AppInfo.AppsPath, productionSyncthingDependencies())
++}
++
++func checkSyncthingInstall(ctx context.Context, candidate *ComposeApp, appsPath string, d syncthingDependencies) error {
++	if candidate == nil {
++		return errSyncthingPolicy
++	}
++	projected := *candidate
++	projected.WorkingDir = filepath.Join(appsPath, candidate.Name)
++	projected.ComposeFiles = []string{filepath.Join(projected.WorkingDir, common.ComposeYAMLFileName)}
++	if err := d.check(ctx, "install", projectSyncthingIdentity(&projected), projectSyncthingIdentity(candidate)); err != nil {
++		return err
++	}
++	return resolveSyncthingDestination(ctx, "install", projectSyncthingIdentity(&projected), projectSyncthingIdentity(&projected), d)
++}
++
++// PrepareWorkingDirectory has no model argument; resolve any existing CURRENT
++// declaration as well, rather than reducing protected identity to a request name.
++func checkSyncthingDestination(ctx context.Context, operation string, projected, candidate *syncthingIdentity) error {
++	return resolveSyncthingDestination(ctx, operation, projected, candidate, productionSyncthingDependencies())
++}
++
++func resolveSyncthingDestination(ctx context.Context, operation string, projected, candidate *syncthingIdentity, d syncthingDependencies) error {
++	if err := d.check(ctx, operation, projected, candidate); err != nil {
++		return err
++	}
++	if projected == nil || len(projected.ComposeFiles) != 1 {
++		return errSyncthingPolicy
++	}
++	// Do not use List: it silently skips malformed installed declarations.
++	// Resolve an existing declaration at the actual overwrite destination directly.
++	info, err := d.lstat(projected.ComposeFiles[0])
++	if err == nil {
++		if !info.Mode().IsRegular() {
++			return errSyncthingPolicy
++		}
++		current, loadErr := d.load(projected.Name, projected.ComposeFiles[0])
++		if loadErr != nil {
++			return errSyncthingPolicy
++		}
++		return d.check(ctx, operation, projectSyncthingIdentity(current), candidate)
++	}
++	if !os.IsNotExist(err) {
++		return errSyncthingPolicy
++	}
++	return nil
++}
++
++// Compile-time writer-interface check, not evidence of package compilation.
++var _ io.Writer = (*syncthingCappedOutput)(nil)
+--- /dev/null
++++ b/service/syncthing_policy_test.go
+@@ -0,0 +1,162 @@
++package service
++
++import (
++ "bytes"
++ "context"
++ "errors"
++ "io"
++ "os"
++ "os/exec"
++ "path/filepath"
++ "reflect"
++ "strings"
++ "testing"
++ "time"
++
++
++ "github.com/compose-spec/compose-go/types"
++ "github.com/docker/compose/v2/pkg/api"
++)
++
++func policyFixture(t *testing.T) {
++ t.Helper()
++ // Fixed-path custody fixtures are permitted ONLY inside the disposable root container.
++ if os.Geteuid()!=0 { t.Fatal("requires disposable root container") }
++ if _,err:=os.Stat("/.dockerenv"); err!=nil { t.Fatal("requires disposable container") }
++ b,err:=os.ReadFile("testdata/syncthing-manager-policy.mjs"); if err!=nil { t.Fatal(err) }
++ if err=os.MkdirAll(filepath.Dir(syncthingPolicyPath),0755); err!=nil { t.Fatal(err) }
++ if err=os.WriteFile(syncthingPolicyPath,b,0644); err!=nil { t.Fatal(err) }
++ t.Cleanup(func(){os.Remove(syncthingPolicyPath)})
++}
++func ordinaryPolicyApp() *ComposeApp {
++ return &ComposeApp{Name:"ordinary",WorkingDir:"/synthetic/ordinary",ComposeFiles:[]string{"/synthetic/ordinary/docker-compose.yml"},Services:[]types.ServiceConfig{{Name:"ordinary"}}}
++}
++func requirePolicyRefusal(t *testing.T,err error) { t.Helper(); if err!=errSyncthingPolicy {t.Fatalf("expected sanitized refusal, got %v",err)} }
++
++func TestSyncthingPolicyProjection(t *testing.T) {
++ a:=ordinaryPolicyApp(); i:=projectSyncthingIdentity(a)
++ if i.Name!=a.Name || i.WorkingDir!=a.WorkingDir || !reflect.DeepEqual(i.ServiceNames,[]string{"ordinary"}) {t.Fatal(i)}
++ i.ComposeFiles[0]="changed"; if a.ComposeFiles[0]=="changed" {t.Fatal("aliased compose paths")}
++ if projectSyncthingIdentity(nil)!=nil {t.Fatal("nil projection")}
++}
++
++func TestSyncthingPolicyRealNodeAndGuardedMethods(t *testing.T) {
++ policyFixture(t)
++ ctx:=context.Background(); a:=ordinaryPolicyApp()
++ // Poisoning the inherited Node environment must not enter the real fixed command.
++ t.Setenv("NODE_OPTIONS","--import=/SECRET-SENTINEL-NOT-LOADED")
++ if err:=a.CheckMutation(ctx,"create",nil); err!=nil {t.Fatal(err)}
++ candidate:=ordinaryPolicyApp(); candidate.Services[0].Name="big-bear-syncthing"
++ requirePolicyRefusal(t,a.CheckMutation(ctx,"apply",candidate))
++ protected:=ordinaryPolicyApp(); protected.Name="local-syncthing"; protected.ComposeFiles=nil
++ s:=NewComposeService()
++ methods:=map[string]func()error{
++ "update":func()error{return protected.Update(ctx)},
++ "apply":func()error{return protected.Apply(ctx,[]byte("SECRET-SENTINEL invalid YAML"))},
++ "pull-and-apply-empty":func()error{return protected.PullAndApply(ctx,nil)},
++ "pull":func()error{return protected.Pull(ctx)},
++ "up":func()error{return protected.Up(ctx,nil)},
++ "up-with-requirements":func()error{return protected.UpWithCheckRequire(ctx,nil)},
++ "create":func()error{return protected.Create(ctx,api.CreateOptions{},nil)},
++ "pull-install":func()error{return protected.PullAndInstall(ctx)},
++ "uninstall":func()error{return protected.Uninstall(ctx,true)},
++ "service-install":func()error{return s.Install(ctx,protected)},
++ "service-uninstall-before-scheduling":func()error{return s.Uninstall(ctx,protected,true)},
++ "prepare-before-mkdir":func()error{_,err:=s.PrepareWorkingDirectory("local-syncthing");return err},
++ }
++ // Nil Docker dependencies and invalid YAML/empty ComposeFiles make any pre-admission
++ // parser/index/client/scheduling regression fail, rather than touching real services.
++ for name,f:=range methods {t.Run(name,func(t *testing.T){requirePolicyRefusal(t,f())})}
++ prefix:=ordinaryPolicyApp(); prefix.Name="local-syncthing-extra"; prefix.WorkingDir="/var/lib/casaos/apps/local-syncthing-extra"
++ if err:=prefix.CheckMutation(ctx,"create",nil);err!=nil {t.Fatal(err)}
++}
++
++type policyComposeService struct { api.Service; calls *[]string; fail error }
++func (s policyComposeService) Create(context.Context,*types.Project,api.CreateOptions) error {*s.calls=append(*s.calls,"create");return s.fail}
++func (s policyComposeService) Up(context.Context,*types.Project,api.UpOptions) error {*s.calls=append(*s.calls,"up");return s.fail}
++func TestSyncthingPolicyOrdinaryWriterOrdering(t *testing.T) {
++ policyFixture(t); ctx:=context.Background(); calls:=[]string{}; failure:=errors.New("injected writer failure")
++ s:=policyComposeService{calls:&calls}
++ a:=ordinaryPolicyApp()
++ if err:=a.Create(ctx,api.CreateOptions{},s);err!=nil {t.Fatal(err)}
++ if err:=a.UpWithCheckRequire(ctx,s);err!=nil {t.Fatal(err)}
++ s.fail=failure
++ if err:=a.Create(ctx,api.CreateOptions{},s);err!=failure {t.Fatal(err)}
++ protected:=ordinaryPolicyApp(); protected.Name="local-syncthing"
++ requirePolicyRefusal(t,protected.Create(ctx,api.CreateOptions{},s))
++ if !reflect.DeepEqual(calls,[]string{"create","up","create"}) {t.Fatal(calls)}
++}
++
++func TestSyncthingPolicyReplacementOrdering(t *testing.T) {
++ ctx:=context.Background(); a:=ordinaryPolicyApp()
++ for _,mode:=range []string{"ordinary","current-denied","candidate-denied","parser-failure"} {t.Run(mode,func(t *testing.T){
++ calls:=[]string{}; n:=0
++ d:=syncthingDependencies{}
++ d.check=func(_ context.Context,op string,current,candidate *syncthingIdentity)error {
++  n++;calls=append(calls,"check")
++  if op!="apply" || current.Name!="ordinary" {t.Fatal("projection")}
++  if candidate!=nil && (candidate.WorkingDir!=a.WorkingDir || !reflect.DeepEqual(candidate.ComposeFiles,a.ComposeFiles)) {t.Fatal("effective destination")}
++  if mode=="current-denied" || mode=="candidate-denied"&&n==2 {return errSyncthingPolicy};return nil
++ }
++ d.parse=func(_ []byte,skipI,skipV bool)(*ComposeApp,error){calls=append(calls,"parse");if !skipI||!skipV {t.Fatal("parser flags")};if mode=="parser-failure" {return nil,errors.New("SECRET")};return ordinaryPolicyApp(),nil}
++ err:=checkSyncthingReplacement(ctx,"apply",a,nil,d)
++ expected:=[]string{"check","parse","check"}
++ if mode=="ordinary" {if err!=nil {t.Fatal(err)}} else {requirePolicyRefusal(t,err)}
++ if mode=="current-denied" {expected=[]string{"check"}};if mode=="parser-failure" {expected=[]string{"check","parse"}}
++ if !reflect.DeepEqual(calls,expected){t.Fatal(calls)}
++ })}
++}
++
++func TestSyncthingPolicyDestinationOrdering(t *testing.T) {
++ ctx:=context.Background(); p:=filepath.Join(t.TempDir(),"compose.yml");if err:=os.WriteFile(p,[]byte("synthetic fixture"),0600);err!=nil {t.Fatal(err)}
++ info,_:=os.Lstat(p)
++ for _,mode:=range []string{"ordinary","initial-denied","existing-protected","missing","stat-failure","load-failure","nonregular"} {t.Run(mode,func(t *testing.T){
++ calls:=[]string{}; d:=syncthingDependencies{}
++ d.check=func(_ context.Context,_ string,current,candidate *syncthingIdentity)error{calls=append(calls,"check");if mode=="initial-denied"||current.Name=="local-syncthing" {return errSyncthingPolicy};return nil}
++ d.lstat=func(string)(os.FileInfo,error){calls=append(calls,"stat");switch mode {case "missing":return nil,os.ErrNotExist;case "stat-failure":return nil,os.ErrPermission;case "nonregular":return os.Stat(filepath.Dir(p))};return info,nil}
++ d.load=func(string,string)(*ComposeApp,error){calls=append(calls,"load");if mode=="load-failure" {return nil,errors.New("SECRET")};a:=ordinaryPolicyApp();if mode=="existing-protected" {a.Name="local-syncthing"};return a,nil}
++ err:=checkSyncthingInstall(ctx,ordinaryPolicyApp(),"/synthetic",d)
++ expected:=[]string{"check","check","stat","load","check"}
++ switch mode {case "ordinary":if err!=nil {t.Fatal(err)};case "missing":if err!=nil {t.Fatal(err)};expected=[]string{"check","check","stat"};case "initial-denied":requirePolicyRefusal(t,err);expected=[]string{"check"};case "stat-failure","nonregular":requirePolicyRefusal(t,err);expected=[]string{"check","check","stat"};case "load-failure":requirePolicyRefusal(t,err);expected=[]string{"check","check","stat","load"};default:requirePolicyRefusal(t,err)}
++ if !reflect.DeepEqual(calls,expected){t.Fatal(calls)}
++ })}
++ requirePolicyRefusal(t,checkSyncthingInstall(ctx,nil,"/synthetic",syncthingDependencies{}))
++}
++
++func TestSyncthingPolicyTransport(t *testing.T) {
++ ctx:=context.Background(); a:=projectSyncthingIdentity(ordinaryPolicyApp())
++ for _,mode:=range []string{"allow","malformed","trailing","nonzero","stdout-overflow","stderr-overflow","canceled","open-failure"} {t.Run(mode,func(t *testing.T){
++ c,cancel:=context.WithCancel(ctx);defer cancel()
++ open:=func(path string)(*os.File,error){if path!=syncthingPolicyPath {t.Fatal(path)};if mode=="open-failure" {return nil,os.ErrPermission};return os.Open("testdata/syncthing-manager-policy.mjs")}
++ run:=func(cmd *exec.Cmd)error {
++ if cmd.Path!="/usr/bin/node"||!reflect.DeepEqual(cmd.Args,[]string{"/usr/bin/node",syncthingPolicyPath,"--check"})||!reflect.DeepEqual(cmd.Env,[]string{"PATH=/usr/bin:/bin","LANG=C.UTF-8"})||cmd.WaitDelay!=250*time.Millisecond {t.Fatal("unsafe command")}
++ input,err:=io.ReadAll(cmd.Stdin);if err!=nil||!bytes.Contains(input,[]byte(`"operation":"apply"`)){t.Fatal("request")}
++ if mode=="canceled" {cancel()}
++ if mode=="nonzero" {return errors.New("SECRET")}
++ if mode=="stdout-overflow"||mode=="stderr-overflow" {var w io.Writer=cmd.Stdout;if mode=="stderr-overflow" {w=cmd.Stderr};_,err:=io.Copy(w,strings.NewReader(strings.Repeat("x",syncthingPolicyLimit+1)));if err==nil {t.Fatal("uncapped io.Copy")};return err}
++ output:="{\"version\":1,\"allowed\":true}\n";if mode=="malformed" {output="{}"};if mode=="trailing" {output+="SECRET"};_,err=io.WriteString(cmd.Stdout,output);return err
++ }
++ err:=runSyncthingPolicy(c,"apply",a,nil,open,run)
++ if mode=="allow" {if err!=nil {t.Fatal(err)}} else {requirePolicyRefusal(t,err)}
++ })}
++ // Actual canceled CommandContext, not merely a fake runner's error.
++ policyFixture(t);c,cancel:=context.WithCancel(ctx);cancel();requirePolicyRefusal(t,checkSyncthingPolicy(c,"apply",a,nil))
++ expired,stop:=context.WithTimeout(ctx,time.Nanosecond);defer stop();<-expired.Done();requirePolicyRefusal(t,checkSyncthingPolicy(expired,"apply",a,nil))
++}
++
++func TestSyncthingPolicyCustody(t *testing.T) {
++ policyFixture(t); original,err:=os.ReadFile(syncthingPolicyPath);if err!=nil {t.Fatal(err)}
++ restore:=func(){os.Remove(syncthingPolicyPath);if err:=os.WriteFile(syncthingPolicyPath,original,0644);err!=nil {t.Fatal(err)}}
++ for _,mode:=range []string{"missing","writable","symlink","multilink","empty","directory"} {t.Run(mode,func(t *testing.T){
++ restore();defer restore()
++ switch mode {
++ case "missing":os.Remove(syncthingPolicyPath)
++ case "writable":os.Chmod(syncthingPolicyPath,0666);defer os.Chmod(syncthingPolicyPath,0644)
++ case "symlink":os.Remove(syncthingPolicyPath);os.Symlink("/SECRET-SENTINEL",syncthingPolicyPath)
++ case "multilink":link:=filepath.Join(t.TempDir(),"link");if err:=os.Link(syncthingPolicyPath,link);err!=nil {t.Fatal(err)};defer os.Remove(link)
++ case "empty":os.WriteFile(syncthingPolicyPath,nil,0644)
++ case "directory":os.Remove(syncthingPolicyPath);os.Mkdir(syncthingPolicyPath,0755)
++ }
++ f,err:=openTrustedSyncthingPolicy(syncthingPolicyPath);if f!=nil {f.Close();t.Fatal("unsafe helper accepted")};requirePolicyRefusal(t,err)
++ })}
++}
+--- /dev/null
++++ b/service/testdata/syncthing-manager-policy.mjs
+@@ -0,0 +1,202 @@
++import { posix } from 'node:path';
++import { pathToFileURL } from 'node:url';
++
++const operations = new Set([
++  'update',
++  'apply',
++  'pull-and-apply',
++  'pull',
++  'install',
++  'pull-and-install',
++  'uninstall',
++  'up',
++  'create',
++  'prepare-directory',
++]);
++const root = '/var/lib/casaos/apps/local-syncthing';
++const limit = 65536;
++const refusal = 'Syncthing manager policy refused\n';
++function exact(object, keys) {
++  return (
++    object !== null &&
++    typeof object === 'object' &&
++    !Array.isArray(object) &&
++    Object.keys(object).length === keys.length &&
++    keys.every((k) => Object.hasOwn(object, k))
++  );
++}
++function name(value) {
++  return (
++    typeof value === 'string' && value.length <= 255 && /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(value)
++  );
++}
++function path(value) {
++  return (
++    typeof value === 'string' &&
++    value.length <= 4096 &&
++    value.startsWith('/') &&
++    /^[\x20-\x7e]+$/.test(value) &&
++    !value.includes('\\') &&
++    posix.normalize(value) === value &&
++    (value === '/' || !value.endsWith('/'))
++  );
++}
++function list(values, validate) {
++  return (
++    Array.isArray(values) &&
++    values.length <= 128 &&
++    new Set(values).size === values.length &&
++    values.every(validate)
++  );
++}
++function identity(value) {
++  return (
++    exact(value, ['name', 'workingDir', 'composeFiles', 'serviceNames']) &&
++    name(value.name) &&
++    (value.workingDir === '' || path(value.workingDir)) &&
++    list(value.composeFiles, path) &&
++    list(value.serviceNames, name)
++  );
++}
++function protectedIdentity(value) {
++  const protectedPath = (p) => p.toLowerCase() === root || p.toLowerCase().startsWith(root + '/');
++  return (
++    value.name.toLowerCase() === 'local-syncthing' ||
++    protectedPath(value.workingDir) ||
++    value.composeFiles.some(protectedPath) ||
++    value.serviceNames.some((s) => s.toLowerCase() === 'big-bear-syncthing')
++  );
++}
++export function allowed(request) {
++  return (
++    exact(request, ['version', 'operation', 'current', 'candidate']) &&
++    request.version === 1 &&
++    operations.has(request.operation) &&
++    identity(request.current) &&
++    (request.candidate === null || identity(request.candidate)) &&
++    !protectedIdentity(request.current) &&
++    (request.candidate === null || !protectedIdentity(request.candidate))
++  );
++}
++
++// JSON.parse discards duplicate keys. Parse the bounded protocol with explicit key sets instead.
++export function parseRequest(text) {
++  if (typeof text !== 'string' || Buffer.byteLength(text) > limit) throw new Error('invalid');
++  let i = 0;
++  const ws = () => {
++    while (/[\x20\t\r\n]/.test(text[i] ?? '\0')) i++;
++  };
++  function string() {
++    const start = i++;
++    while (i < text.length) {
++      const ch = text[i++];
++      if (ch === '\\') {
++        i++;
++        continue;
++      }
++      if (ch === '"') return JSON.parse(text.slice(start, i));
++    }
++    throw new Error('invalid');
++  }
++  function value(depth) {
++    if (depth > 8) throw new Error('invalid');
++    ws();
++    if (text[i] === '"') return string();
++    if (text[i] === '{') {
++      i++;
++      ws();
++      const result = Object.create(null);
++      if (text[i] === '}') {
++        i++;
++        return result;
++      }
++      while (true) {
++        ws();
++        if (text[i] !== '"') throw new Error('invalid');
++        const key = string();
++        if (Object.hasOwn(result, key)) throw new Error('invalid');
++        ws();
++        if (text[i++] !== ':') throw new Error('invalid');
++        result[key] = value(depth + 1);
++        ws();
++        if (text[i] === '}') {
++          i++;
++          return result;
++        }
++        if (text[i++] !== ',') throw new Error('invalid');
++      }
++    }
++    if (text[i] === '[') {
++      i++;
++      ws();
++      const result = [];
++      if (text[i] === ']') {
++        i++;
++        return result;
++      }
++      while (true) {
++        result.push(value(depth + 1));
++        ws();
++        if (text[i] === ']') {
++          i++;
++          return result;
++        }
++        if (text[i++] !== ',') throw new Error('invalid');
++      }
++    }
++    const match = /^(?:null|true|false|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(
++      text.slice(i),
++    );
++    if (!match) throw new Error('invalid');
++    i += match[0].length;
++    return JSON.parse(match[0]);
++  }
++  const result = value(0);
++  ws();
++  if (i !== text.length) throw new Error('invalid');
++  return result;
++}
++function main() {
++  if (process.argv.length !== 3 || process.argv[2] !== '--check') {
++    process.stderr.write(refusal);
++    process.exitCode = 2;
++    return;
++  }
++  let chunks = [],
++    size = 0,
++    finished = false;
++  const finish = (ok) => {
++    if (finished) return;
++    finished = true;
++    clearTimeout(timer);
++    chunks = [];
++    process.stdin.destroy();
++    if (ok) process.stdout.write('{"version":1,"allowed":true}\n');
++    else process.stderr.write(refusal);
++    process.exitCode = ok ? 0 : 1;
++  };
++  const timer = setTimeout(() => finish(false), 1500);
++  process.stdin.on('data', (chunk) => {
++    size += chunk.length;
++    if (size > limit) finish(false);
++    else chunks.push(chunk);
++  });
++  process.stdin.on('error', () => finish(false));
++  process.stdin.on('end', () => {
++    if (finished) return;
++    try {
++      finish(
++        allowed(
++          parseRequest(
++            new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
++              Buffer.concat(chunks),
++            ),
++          ),
++        ),
++      );
++    } catch {
++      finish(false);
++    }
++  });
++}
++if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

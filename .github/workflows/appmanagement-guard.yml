@@ -1,0 +1,71 @@
+name: AppManagement policy build
+
+on:
+  pull_request:
+    paths:
+      - infrastructure/casaos-appmanagement/**
+      - tests/casaos-appmanagement-source.test.mjs
+      - .github/workflows/appmanagement-guard.yml
+      - docs/DEPLOYMENT.md
+  push:
+    branches: [main]
+    paths:
+      - infrastructure/casaos-appmanagement/**
+      - tests/casaos-appmanagement-source.test.mjs
+      - .github/workflows/appmanagement-guard.yml
+      - docs/DEPLOYMENT.md
+
+permissions:
+  contents: read
+
+jobs:
+  appmanagement-guard:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      EVIDENCE: ${{ runner.temp }}/appmanagement-evidence
+    steps:
+      - name: Check out exact publication head without credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify effective hard fences, generate, compile and test offline
+        timeout-minutes: 40
+        run: python3 -B -u infrastructure/casaos-appmanagement/hosted-build.py
+      - name: Prove exact task containers gone even after interruption
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          prefix = 'appmanagement-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT']
+          evidence = Path(os.environ['EVIDENCE'])
+          evidence.mkdir(exist_ok=True)
+          def run(args):
+              return subprocess.check_output(args, text=True, timeout=30).strip()
+          ids = run(['docker','ps','-aq','--filter','label=cupmemo.issue11='+prefix]).split()
+          receipts = []
+          for cid in ids:
+              state = json.loads(run(['docker','inspect',cid]))[0]
+              assert state['Config']['Labels']['cupmemo.issue11'] == prefix
+              assert state['Name'] in ['/'+prefix+'-build','/'+prefix+'-test']
+              receipts.append(state)
+              run(['docker','rm','--force',cid])
+          remaining = run(['docker','ps','-aq','--filter','label=cupmemo.issue11='+prefix])
+          (evidence/'final-cleanup.json').write_text(json.dumps({'reconciled':receipts,'remaining':remaining},indent=2)+'\n')
+          assert not remaining
+          PY
+      - name: Retain actual source, original failures and bounded artifact evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: issue11-appmanagement-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/appmanagement-evidence/
+          retention-days: 14
+          if-no-files-found: error
+          include-hidden-files: false
+          overwrite: false
+          compression-level: 6
+          archive: true

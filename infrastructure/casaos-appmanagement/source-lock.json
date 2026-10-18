@@ -1,0 +1,657 @@
+{
+  "version": 1,
+  "upstream_commit": "cc80b3313113d946f7216ff4b95c3c4b83381149",
+  "archive": {
+    "url": "https://codeload.github.com/IceWhaleTech/CasaOS-AppManagement/tar.gz/cc80b3313113d946f7216ff4b95c3c4b83381149",
+    "bytes": 156395,
+    "sha256": "053323cd842bc6fcac408d072d7ce8f3c8f7ef7fddcd9a8cce41c065477d4d90"
+  },
+  "omitted_symlinks": [
+    "build/scripts/setup/service.d/app-management/debian/bullseye/setup-app-management.sh",
+    "build/scripts/setup/service.d/app-management/ubuntu/jammy/setup-app-management.sh",
+    "build/scripts/setup/service.d/app-management/ubuntu/setup-app-management.sh",
+    "build/sysroot/usr/share/casaos/cleanup/service.d/app-management/debian/bullseye/cleanup-app-management.sh",
+    "build/sysroot/usr/share/casaos/cleanup/service.d/app-management/ubuntu/cleanup-app-management.sh",
+    "build/sysroot/usr/share/casaos/cleanup/service.d/app-management/ubuntu/jammy/cleanup-app-management.sh"
+  ],
+  "patch": {
+    "path": "appmanagement-syncthing-policy.patch",
+    "bytes": 32331,
+    "sha256": "80fcb9fa8b42eb5402489fdacc83e39830eaef3c2b3ab6aaa97361a0ad5440e9"
+  },
+  "upstream_files": [
+    {
+      "path": "route/v2/compose_app.go",
+      "bytes": 24059,
+      "sha256": "0878fc3989329e10fc093d0b570fc293f63bbd54ed95e12b744b622883dcb838"
+    },
+    {
+      "path": "service/compose_app.go",
+      "bytes": 30822,
+      "sha256": "7554188bad5daf6a527491c8f1d10ab742cc1fb51ca97ac5805c6beac0893205"
+    },
+    {
+      "path": "service/compose_service.go",
+      "bytes": 6689,
+      "sha256": "fc11f662a5f0b3242ca1ba28d940891fa498977ee22f11fe7596ca621a5aaf01"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    }
+  ],
+  "patched_files": [
+    {
+      "path": "route/v2/compose_app.go",
+      "bytes": 24976,
+      "sha256": "9de0c925b54072ad3ae861ed6b17941cf8fdeaeb732645436fd9ea17d01976ec"
+    },
+    {
+      "path": "service/compose_app.go",
+      "bytes": 31710,
+      "sha256": "62d079c08dbe0cd4b4301fdf86b0b3f5a9cee70f13bd55b2194c69d060f1e78b"
+    },
+    {
+      "path": "service/compose_service.go",
+      "bytes": 7119,
+      "sha256": "753b2c2f23489bab3e71d3b9aa6a209bab630b61795708a8637e95d4c3180903"
+    },
+    {
+      "path": "service/syncthing_policy.go",
+      "bytes": 9106,
+      "sha256": "dd897ce78d3446cda059532b19f2ef3ad075ca6586352dcdc96f71a46a87aa6b"
+    },
+    {
+      "path": "service/syncthing_policy_test.go",
+      "bytes": 10856,
+      "sha256": "2f17b1159f3e2e61a9adbd7a40dbe559c6fb66072c0f7756470d4bf6a55a11d7"
+    },
+    {
+      "path": "service/testdata/syncthing-manager-policy.mjs",
+      "bytes": 5525,
+      "sha256": "7cae1cbf31a9ae9722d9d1cfda40dc342256680e1bd16f2e2675f5804058497f"
+    }
+  ],
+  "module_files": [
+    {
+      "path": "go.mod",
+      "bytes": 13159,
+      "sha256": "c1a586e7ed8e3c0993b0630690fadbd27a4bd3cf2d2f0561bf73b8b79d16f6e6"
+    },
+    {
+      "path": "go.sum",
+      "bytes": 155571,
+      "sha256": "6a5f48b2ea1ab3980d39bd1bc301c117a42da1f9c06c148d4e77eea014c7808f"
+    }
+  ],
+  "original_files": [
+    {
+      "path": ".github/workflows/codecov.yml",
+      "bytes": 611,
+      "sha256": "81f451b457843faa72672e63da6d0d4ef0ed3e0b5128fd4ac4862bed1b79f5be"
+    },
+    {
+      "path": ".github/workflows/publish_npm.yaml",
+      "bytes": 963,
+      "sha256": "31694cddc7a913155ddd7895fe40f74571d6c8ca18a8e8dbb8009ff5974dcbe2"
+    },
+    {
+      "path": ".github/workflows/push_test_server.yml",
+      "bytes": 2869,
+      "sha256": "f4efc3b73325ddeb593f0566c91012e6abaa8ddf276eef336cc1d8be066baeca"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "bytes": 499,
+      "sha256": "6fd53518fdb75a157bb04212ee5dc80f86218e15a98bc6f8018d348c6b473137"
+    },
+    {
+      "path": ".github/workflows/sync_openapi.yml",
+      "bytes": 358,
+      "sha256": "c5929cde949324f57f51b153d6ac4b1799e41f2a56a209d5a8a0f00cf3de509e"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 427,
+      "sha256": "dc03dd8a8f6e02b0500d8b1878fd60a80810009ddbb4dba781dfb04187bf7f83"
+    },
+    {
+      "path": ".goreleaser.debug.yaml",
+      "bytes": 4550,
+      "sha256": "b514416d3a99fbd357ea69e7cc11f0355513d6d56e591237a96e12ecee058769"
+    },
+    {
+      "path": ".goreleaser.yaml",
+      "bytes": 6124,
+      "sha256": "deee3861b2fc67959c3c5f8cbf4cb16d8e9767fc00ad44727781f20a673e3d76"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1851,
+      "sha256": "6954f86f9575f180bcb34f2261449acaadfdd02cae7832f14dd159225eef2670"
+    },
+    {
+      "path": "api/app_management/openapi.yaml",
+      "bytes": 51545,
+      "sha256": "e756b7edef6f675aa9ea59bfada0619179d421b67974132ffcb28aacf8d0ece8"
+    },
+    {
+      "path": "api/app_management/openapi_v1.yaml",
+      "bytes": 11748,
+      "sha256": "a869d213d6d57f0ecfeed1347fa25c8ebd539ebfc7ebfee3a0f4af59a139268b"
+    },
+    {
+      "path": "api/index.html",
+      "bytes": 636,
+      "sha256": "cc5407485d28fc9b1ae23171d066597b9f89fa2004884a21df22d96e5a8411bc"
+    },
+    {
+      "path": "api/index_v1.html",
+      "bytes": 639,
+      "sha256": "1321f7e5f2cadb38bf4e4f002a03bbbe34ae911448e3ccd65ecc6a55d2ddd4ac"
+    },
+    {
+      "path": "build/scripts/migration/script.d/06-migrate-app-management.sh",
+      "bytes": 5206,
+      "sha256": "b2d825a21cb3ee656a4d890d0f25b03535fd2808460e4786e19b14fdbb2ad068"
+    },
+    {
+      "path": "build/scripts/migration/service.d/app-management/migration.list",
+      "bytes": 996,
+      "sha256": "7ab319a30c7ec732207a1270b589bf21c3d6071e8271853952098db6d3305e53"
+    },
+    {
+      "path": "build/scripts/setup/script.d/06-setup-app-management.sh",
+      "bytes": 1233,
+      "sha256": "70d9cfcfdbaccbf6e03edaf17d52d22ea65927595f441927f9a3fc188aea5779"
+    },
+    {
+      "path": "build/scripts/setup/service.d/app-management/arch/setup-app-management.sh",
+      "bytes": 562,
+      "sha256": "d1a5ec81c85ec3fe25f8aff74fbdfd67bc214267980fa2968d72f0ffaf288364"
+    },
+    {
+      "path": "build/scripts/setup/service.d/app-management/debian/setup-app-management.sh",
+      "bytes": 562,
+      "sha256": "d1a5ec81c85ec3fe25f8aff74fbdfd67bc214267980fa2968d72f0ffaf288364"
+    },
+    {
+      "path": "build/sysroot/etc/casaos/app-management.conf.sample",
+      "bytes": 338,
+      "sha256": "2fa1b574952145c693a61cd9e48723e7182272e5aa5b93397b5b67b7d1ddf196"
+    },
+    {
+      "path": "build/sysroot/etc/casaos/env",
+      "bytes": 24,
+      "sha256": "9fd27add0182d68f78f598aef7f0b360934d627e31360fbbf8731f80ece24dd6"
+    },
+    {
+      "path": "build/sysroot/usr/lib/systemd/system/casaos-app-management.service",
+      "bytes": 345,
+      "sha256": "43de829e369217ba1cd4c6c138a25084c0713c0d0f29873a6a79b14b50792c9a"
+    },
+    {
+      "path": "build/sysroot/usr/lib/systemd/system/casaos-app-management.service.buildroot",
+      "bytes": 375,
+      "sha256": "36f9f3866a647a0e7fed7c9c2b7856321c5898ec2be8b2352e8b48efdc3f0b30"
+    },
+    {
+      "path": "build/sysroot/usr/share/casaos/cleanup/script.d/06-cleanup-app-management.sh",
+      "bytes": 1042,
+      "sha256": "83bc247f5e392cd1408e6845f6a4583ec0a6d1dd601707899004d76b6b1d6705"
+    },
+    {
+      "path": "build/sysroot/usr/share/casaos/cleanup/service.d/app-management/arch/cleanup-app-management.sh",
+      "bytes": 2201,
+      "sha256": "6d818c457512d27113a06fc17d4702be78c3ff59cf1dc266224519a329d70513"
+    },
+    {
+      "path": "build/sysroot/usr/share/casaos/cleanup/service.d/app-management/debian/cleanup-app-management.sh",
+      "bytes": 2201,
+      "sha256": "6d818c457512d27113a06fc17d4702be78c3ff59cf1dc266224519a329d70513"
+    },
+    {
+      "path": "cmd/appfile2compose/log.go",
+      "bytes": 639,
+      "sha256": "72b77d146eff6fbb7d27b05e19b3a8c267a42b23ddb55c806c3f48ecac78b06d"
+    },
+    {
+      "path": "cmd/appfile2compose/main.go",
+      "bytes": 1194,
+      "sha256": "5cf31858ec7bbff252927a76025c56b6136cc1b8edd57e6a61681d153402519d"
+    },
+    {
+      "path": "cmd/message-bus-docgen/main.go",
+      "bytes": 819,
+      "sha256": "ff41f2fab4c4395d2006b81fac8b1c46d9e1fb92a70ba3ec99e24c987e8561f5"
+    },
+    {
+      "path": "cmd/migration-tool/log.go",
+      "bytes": 647,
+      "sha256": "899a6691db7e30126431f2978b8c227d0d43a978362ec60a2b23297b2f09d77d"
+    },
+    {
+      "path": "cmd/migration-tool/main.go",
+      "bytes": 2315,
+      "sha256": "f4f57ec58065c3e28acb8cd0cf8b411b2d3c12cece1fbd4578878d47c043dc09"
+    },
+    {
+      "path": "cmd/migration-tool/migration_0412_and_older.go",
+      "bytes": 1929,
+      "sha256": "46a891b0e2e5d9e4ebbb1ec8553d85ed9bfb3ae65cadf87afcc67faaa4c60827"
+    },
+    {
+      "path": "cmd/migration-tool/migration_044_and_older.go",
+      "bytes": 2640,
+      "sha256": "70742adba7df733d34d5401e6a96717154bbea788a30b8d9f3cef48467e2e170"
+    },
+    {
+      "path": "cmd/migration-tool/migration_dummy.go",
+      "bytes": 446,
+      "sha256": "230758ad298cf59df53b5c520e220a3ffb9fd2b4ccc6532d3fd0a3bd178c5409"
+    },
+    {
+      "path": "cmd/validator/log.go",
+      "bytes": 639,
+      "sha256": "72b77d146eff6fbb7d27b05e19b3a8c267a42b23ddb55c806c3f48ecac78b06d"
+    },
+    {
+      "path": "cmd/validator/main.go",
+      "bytes": 837,
+      "sha256": "0f2ef1c91d33d90f3a675ca2114311f15407c1b616cb0ed39c99c93e83f8685f"
+    },
+    {
+      "path": "cmd/validator/pkg/validate.go",
+      "bytes": 712,
+      "sha256": "be47a5489c09dc2ae841b9eb5fbb132912687ebe694af86bd4556531aa349e96"
+    },
+    {
+      "path": "cmd/validator/pkg/validator_test.go",
+      "bytes": 19285,
+      "sha256": "4697bb567729d7cfd8ece2e193a7260d04796224172d274342e563d72ecb5484"
+    },
+    {
+      "path": "common/constants.go",
+      "bytes": 1000,
+      "sha256": "e3c072fe5018f66e9770cb77eeab6a9a307a6f006b524614092e8261c7267f6a"
+    },
+    {
+      "path": "common/context_properties.go",
+      "bytes": 953,
+      "sha256": "939fb668214edda77a3c13e8c654deea3e7a8fb916d3d56d04de06501203edf3"
+    },
+    {
+      "path": "common/fixtures/sample-appfile-export.json",
+      "bytes": 1758,
+      "sha256": "a70c06164492e795355752d3523e9bffc579180fcf9d75c0ef53f82db0462707"
+    },
+    {
+      "path": "common/fixtures/sample-category-list.json",
+      "bytes": 2590,
+      "sha256": "9095849d905066d911b060c1fe069fabc26ab9a4b08d92d57eeb463696ca227a"
+    },
+    {
+      "path": "common/fixtures/sample-vanilla.docker-compose.yaml",
+      "bytes": 715,
+      "sha256": "6f3fba153c2df86e025c78fafa92a3d291bf38ccd10cd1f9b80e62756b0a8ae2"
+    },
+    {
+      "path": "common/fixtures/sample.docker-compose.yaml",
+      "bytes": 2550,
+      "sha256": "21811cf6316eecd15efa7a4d97edf430a668e414ffcf16bba62a3b1a4f88b285"
+    },
+    {
+      "path": "common/message.go",
+      "bytes": 14482,
+      "sha256": "09a4485c9da38ba95348addfc51ca9b1726931b23e57fafbbc0d5a3cee8db51b"
+    },
+    {
+      "path": "common/test.go",
+      "bytes": 378,
+      "sha256": "ef1ae8fa92ba24c318e162efbb373836e2ada526c0e3ae464af46a9719cbcee4"
+    },
+    {
+      "path": "go.mod",
+      "bytes": 13159,
+      "sha256": "c1a586e7ed8e3c0993b0630690fadbd27a4bd3cf2d2f0561bf73b8b79d16f6e6"
+    },
+    {
+      "path": "go.sum",
+      "bytes": 155571,
+      "sha256": "6a5f48b2ea1ab3980d39bd1bc301c117a42da1f9c06c148d4e77eea014c7808f"
+    },
+    {
+      "path": "main.go",
+      "bytes": 5717,
+      "sha256": "98c9357da8c80cef0cb713facf35eec08b4d5fa6c9e3e190c8fe18fe752841f1"
+    },
+    {
+      "path": "model/app.go",
+      "bytes": 4575,
+      "sha256": "7889f7b27032b865a59619f162921f03ee1dc1e4143f1b30e7caf4fcdf4c644a"
+    },
+    {
+      "path": "model/category.go",
+      "bytes": 762,
+      "sha256": "ff6f5ad937b1d7215c9f8e9d707573062231fbbf8e8f51d4fbe7973b91f4c594"
+    },
+    {
+      "path": "model/docker.go",
+      "bytes": 694,
+      "sha256": "1a3a00a6bac14d253f87fffe4a6696c15b5bf348f04faea237c3118325c59548"
+    },
+    {
+      "path": "model/manifest.go",
+      "bytes": 3062,
+      "sha256": "a53f4ccab65ca12206628d2aad84d8b29eaa2bd7b707c1dc4cd768ba4a0b508f"
+    },
+    {
+      "path": "model/manifest_adapter.go",
+      "bytes": 4766,
+      "sha256": "4343531f1749adf9663b2721c839145e010c749d334774c7c440f7d7be9f3d0a"
+    },
+    {
+      "path": "model/manifest_adapter_test.go",
+      "bytes": 1040,
+      "sha256": "3dbbb40c56d8e571897f7d7b0fc78cf63ad072bced7d5ac583c500a2908809e6"
+    },
+    {
+      "path": "model/sys_common.go",
+      "bytes": 381,
+      "sha256": "6913b52dba84afe338c1204b74401b1768c6a9e16af9b2424d5d5403093ae5f6"
+    },
+    {
+      "path": "package.json",
+      "bytes": 1225,
+      "sha256": "f9113ed43e4536af4f1bfbadc84e14b192046433bab1a4f6ab5be4333cba4cf6"
+    },
+    {
+      "path": "pkg/config/config.go",
+      "bytes": 335,
+      "sha256": "edc48082998424186bcc8fa2a9058cc3c69c134a982a7f9df897fa285613ad52"
+    },
+    {
+      "path": "pkg/config/init.go",
+      "bytes": 3620,
+      "sha256": "71572bd492abaa6f7f9cfe9f291a6bcc6ffd359e295e3f62376a0861ceb4bca5"
+    },
+    {
+      "path": "pkg/docker/auth.go",
+      "bytes": 4764,
+      "sha256": "4f4836620066108be9cc3e967d4db9ac2d89641ef2e9243d7374410f95d747f8"
+    },
+    {
+      "path": "pkg/docker/container.go",
+      "bytes": 6119,
+      "sha256": "311178cbbb074c1f1070a3b0fb5e64025edce67ed8c2edddecc5f4a8f95bd612"
+    },
+    {
+      "path": "pkg/docker/container_test.go",
+      "bytes": 2751,
+      "sha256": "720ade8291790bee43ce3e91210a4dce191b9148f04e5e59651cda24c9e1b6e9"
+    },
+    {
+      "path": "pkg/docker/daemon.go",
+      "bytes": 620,
+      "sha256": "e7f96491cd92e158f2d687a3a149cc5951aba9049abed32a1b23de01ccf781dc"
+    },
+    {
+      "path": "pkg/docker/daemon_test.go",
+      "bytes": 269,
+      "sha256": "ec8738e3c1ebc9940c21cea21582b55cf8226a438c2e11f02e44892c6b1c1b0d"
+    },
+    {
+      "path": "pkg/docker/digest.go",
+      "bytes": 5126,
+      "sha256": "dc2d45cc790e94ea845ece2964c7afea1dc0f107e7e28068da472aa1a1b334d3"
+    },
+    {
+      "path": "pkg/docker/digest_test.go",
+      "bytes": 4022,
+      "sha256": "73d24797f8afa37397afd896be12422ec7b426152aef4bc0383732116b9d493f"
+    },
+    {
+      "path": "pkg/docker/emum.go",
+      "bytes": 44,
+      "sha256": "8842d9be83b66c417982e80a6f4267b01b03b85df96a342011515a91d4e821ec"
+    },
+    {
+      "path": "pkg/docker/helpers.go",
+      "bytes": 3614,
+      "sha256": "ee587673b3b2804fee9f4818b926f5e944612c806f777455ea6a3c8071620596"
+    },
+    {
+      "path": "pkg/docker/image.go",
+      "bytes": 1604,
+      "sha256": "9a5303f9adf1e21479c31052238b171e36da8cd4cdb0cb69b9adeba1b3b77820"
+    },
+    {
+      "path": "pkg/docker/manifest.go",
+      "bytes": 1194,
+      "sha256": "b8117b7ea68e9e226eecd4c0fdcc29ee55a9319da5825cf694c6db72275d3b12"
+    },
+    {
+      "path": "pkg/docker/registry.go",
+      "bytes": 569,
+      "sha256": "a2b2210c1b0f50edf768ab72111435b1672613ab873381ae1aea26946f3c762c"
+    },
+    {
+      "path": "pkg/docker/trust.go",
+      "bytes": 2909,
+      "sha256": "2a7fd8920bc1308b0cacee9f257160eb922c24c994256e43be22195f9421381f"
+    },
+    {
+      "path": "pkg/docker/volumes.go",
+      "bytes": 205,
+      "sha256": "dc0c3502f301bdb1fbe177dc93f0426301d367586f52627214804a241de937fe"
+    },
+    {
+      "path": "pkg/docker/volumes_test.go",
+      "bytes": 187,
+      "sha256": "f331fae1dc0272f54c942b2f2bda3f3d9d9edd8100fa874af761197ce6abe0a7"
+    },
+    {
+      "path": "pkg/utils/cpu.go",
+      "bytes": 85,
+      "sha256": "81c373f4101b8fa2a6401e3bef6cd60b6c5d7171df0a9158534534b1efebcdb8"
+    },
+    {
+      "path": "pkg/utils/downloadHelper/getter.go",
+      "bytes": 348,
+      "sha256": "78b975829ebae07fdc97a4903ce3e023bf0eb7ae80dec535acde1bb92b3fa320"
+    },
+    {
+      "path": "pkg/utils/downloadHelper/getter_test.go",
+      "bytes": 453,
+      "sha256": "f89574a00c244c049ee6978e52d4f6f909ed6807d45dd68df2039b8392c978b4"
+    },
+    {
+      "path": "pkg/utils/envHelper/env.go",
+      "bytes": 566,
+      "sha256": "3bd0e67ef012307ee4ed9504500439a442014919df34d00fe4b54f596d3f4ed5"
+    },
+    {
+      "path": "route/v1.go",
+      "bytes": 3958,
+      "sha256": "cc1443b3523a4a05074bb072ab7d00a8b35082e0a115956dff956cc6612930c3"
+    },
+    {
+      "path": "route/v1/docker.go",
+      "bytes": 28123,
+      "sha256": "c745cd48cd0aad8ea5fdcafdd72463c6210103f6bae7a8a2424501e9aac67104"
+    },
+    {
+      "path": "route/v1/route.go",
+      "bytes": 288,
+      "sha256": "ba722dcb38f9e425d0ef1afba71bbdfca4b1c6978afc5b8c087bead218a2a92f"
+    },
+    {
+      "path": "route/v2.go",
+      "bytes": 4079,
+      "sha256": "8a9e67bb1635ed3bddfe6c723690bf1f7190ee6b3d164e5ef76ba51cf5007bf8"
+    },
+    {
+      "path": "route/v2/appstore.go",
+      "bytes": 15449,
+      "sha256": "c84874e6b47558ebe560d87dd99d3f518c26939d2724ca4a629b8c5fe337d546"
+    },
+    {
+      "path": "route/v2/appstore_test.go",
+      "bytes": 5487,
+      "sha256": "e8fe5bf29e02dabee012684fdf7f916f26325174eb3ff83644d7150c9a50a1bf"
+    },
+    {
+      "path": "route/v2/compose_app.go",
+      "bytes": 24059,
+      "sha256": "0878fc3989329e10fc093d0b570fc293f63bbd54ed95e12b744b622883dcb838"
+    },
+    {
+      "path": "route/v2/convert.go",
+      "bytes": 1060,
+      "sha256": "578d7467fb2203314ca5069debc5ee919d491011bcf3993444357ebc2730266d"
+    },
+    {
+      "path": "route/v2/docker.go",
+      "bytes": 2722,
+      "sha256": "d352da247e9f8bf13ac89e620d469ba9c97643a062bf2021e67d5b802ad15dcd"
+    },
+    {
+      "path": "route/v2/global.go",
+      "bytes": 4114,
+      "sha256": "6f7bf7e5067d73a873b5a575611b10c9b085f45312c384709122cb8878c68e97"
+    },
+    {
+      "path": "route/v2/image.go",
+      "bytes": 1790,
+      "sha256": "cf6a53c522fc3eeb150f80eb603d40e236c5391585fcaa8e42943217055e67f5"
+    },
+    {
+      "path": "route/v2/info.go",
+      "bytes": 580,
+      "sha256": "348d6bbb84702b632ad3b041bc1bafce287cab3fc9b10ddda1e5e13778cb899c"
+    },
+    {
+      "path": "route/v2/internal_web.go",
+      "bytes": 7009,
+      "sha256": "9f2b731036bae20c4c5f261e450f44fd0581fe1bd54e6fbfffb0d38afd08535f"
+    },
+    {
+      "path": "route/v2/internal_web_test.go",
+      "bytes": 2228,
+      "sha256": "642c98b4bcbf182b8b89b93ceed82f735470fbe4dff194da31f2d10a8a07149e"
+    },
+    {
+      "path": "route/v2/route.go",
+      "bytes": 629,
+      "sha256": "b7da40313354a27a4087c8b9165b48af4283a743cdf070fbcd74a463d137ad1a"
+    },
+    {
+      "path": "service/app.go",
+      "bytes": 795,
+      "sha256": "4db20b008d6b2fd1b0fe763d0a86ba133d21e14a48ccd58377440790e00bf289"
+    },
+    {
+      "path": "service/appstore.go",
+      "bytes": 10059,
+      "sha256": "539c78e6749f9e35728692ed27b6ec4bcf831ef63f3f0a99c334db06e791d210"
+    },
+    {
+      "path": "service/appstore_management.go",
+      "bytes": 15892,
+      "sha256": "f0e435955f32c9395f04d77ca8c5c8b086ffc125376dbc9a614a2cb418d7e47d"
+    },
+    {
+      "path": "service/appstore_management_test.go",
+      "bytes": 4351,
+      "sha256": "90d71a741967271fd213586f8150df80a0326e2066faf51c3629f51591402bb6"
+    },
+    {
+      "path": "service/appstore_test.go",
+      "bytes": 9042,
+      "sha256": "5298f67b982a6fa806e6d5e292aef565399bbc6c41162f08fe3493197e5e83da"
+    },
+    {
+      "path": "service/compose_app.go",
+      "bytes": 30822,
+      "sha256": "7554188bad5daf6a527491c8f1d10ab742cc1fb51ca97ac5805c6beac0893205"
+    },
+    {
+      "path": "service/compose_app_test.go",
+      "bytes": 3125,
+      "sha256": "835f7ed62845272ba85a7487a4ba5a583257a38e1042f4b2fc428b80c4cce71b"
+    },
+    {
+      "path": "service/compose_service.go",
+      "bytes": 6689,
+      "sha256": "fc11f662a5f0b3242ca1ba28d940891fa498977ee22f11fe7596ca621a5aaf01"
+    },
+    {
+      "path": "service/container.go",
+      "bytes": 26360,
+      "sha256": "a4e72739b7c46401e2d9028a7b4d53a44e7b885f3a215ebf64f45009eae165ee"
+    },
+    {
+      "path": "service/errs.go",
+      "bytes": 937,
+      "sha256": "72d31b360e3c13b24eb4f2f929eadb37830d868590b916a63f6bd4b2555bdc89"
+    },
+    {
+      "path": "service/image.go",
+      "bytes": 6809,
+      "sha256": "37c9be2ed48e76f211d50421cef49d8eb172eacedaaa9d09c7802ddad4b7b81b"
+    },
+    {
+      "path": "service/service.go",
+      "bytes": 3740,
+      "sha256": "2122f7e8af25200a35040f43dc816083e03b8e662a28a944151c40120316a9de"
+    },
+    {
+      "path": "service/service_test.go",
+      "bytes": 186,
+      "sha256": "3bd929836df43b1ac74bf36276186b0967377d6dd2b22e1319c9ef10da38f019"
+    },
+    {
+      "path": "service/utils.go",
+      "bytes": 1057,
+      "sha256": "fc2e9e2112c46188c0565932f216949eb51a41a8468b93af04902faba23a79e7"
+    },
+    {
+      "path": "service/v1/app.go",
+      "bytes": 3877,
+      "sha256": "f0c3f5258da1c61e26086a3d4f4f7077256f28b05f4375a85f2bee9ab3ffad03"
+    },
+    {
+      "path": "tsconfig.json",
+      "bytes": 533,
+      "sha256": "25bc04c397abd082e07a225ae430ba08a552dfcfb2e523cdae2fd6bde978393d"
+    }
+  ],
+  "provenance": {
+    "original_implementer": "code-monkey-cupmemo",
+    "original_implementation_run_id": 2817,
+    "previous_coder_revision_run_id": 3361,
+    "prior_technical_review_run_id": 3362,
+    "owner_scope_run_id": 3363,
+    "coder_revision_run_id": 3364
+  },
+  "go": {
+    "url": "https://go.dev/dl/go1.26.9.linux-arm64.tar.gz",
+    "bytes": 63830030,
+    "sha256": "4a97373d49fcacdcf3694fea368a500b00ee3e963974f3e7514132717632f052"
+  },
+  "message_bus": {
+    "url": "https://raw.githubusercontent.com/IceWhaleTech/CasaOS-MessageBus/67bcaffb3678a0720f52b9fd702de67da47fad74/api/message_bus/openapi.yaml",
+    "bytes": 23492,
+    "sha256": "1fad6851af193a1b8681b1e6c288e26078125f6f9d5dccb067be1569a24e0b20"
+  },
+  "generator": "github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.12.4",
+  "node_image": "node:24.15.0-bookworm@sha256:f22d6a1f082c02f292e86929b5b0442ac2e5eaf438a5dea9b1566601c3e05940",
+  "node_arm64_manifest": "sha256:92c191629a40c9ca674e7d5c0c1edf25febb5e2f30f551f187ac71f61595b9f8",
+  "compiled_and_live_claim": "Hosted receipts bind actual build; source lock alone is not build or live readiness."
+}
