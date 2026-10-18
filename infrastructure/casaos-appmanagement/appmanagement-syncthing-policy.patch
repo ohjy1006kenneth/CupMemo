@@ -172,11 +172,12 @@
 +}
 --- /dev/null
 +++ b/pkg/docker/container_clone_plan_test.go
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,118 @@
 +package docker
 +
 +import (
 +	"context"
++	"encoding/json"
 +	"errors"
 +	"reflect"
 +	"strings"
@@ -198,11 +199,19 @@
 +func TestSyncthingRecreateClonePlan(t *testing.T) {
 +	c, old, target := cloneFixture()
 +	before := c.Config.Labels["inherited"]
++	snapshots, err := json.Marshal([]interface{}{c, old, target})
++	if err != nil {
++		t.Fatal(err)
++	}
 +	plan, err := PrepareContainerClone(c, old, target)
 +	if err != nil {
 +		t.Fatal(err)
 +	}
 +	want := map[string]string{"inherited": "target", "override": "runtime", "com.docker.compose.project": "local-syncthing"}
++	after, err := json.Marshal([]interface{}{c, old, target})
++	if err != nil || string(after) != string(snapshots) {
++		t.Fatal("planning mutated original snapshots")
++	}
 +	identity := plan.EffectiveContainer()
 +	if identity.ID != c.ID || identity.Name != c.Name || !reflect.DeepEqual(identity.Config.Labels, want) || identity.Config.Env != nil || identity.HostConfig != nil {
 +		t.Fatal("incorrect identity-only projection")
@@ -929,13 +938,15 @@
  
  	pullLatestImage := false
  	if params.Pull != nil {
-@@ -58,20 +71,19 @@
+@@ -58,20 +71,21 @@
  	eventProperties[common.PropertyTypeAppName.Name] = v1.AppName(container)
  	eventProperties[common.PropertyTypeAppIcon.Name] = v1.AppIcon(container)
  
 -	go func() {
 -		go service.PublishEventWrapper(backgroundCtx, common.EventTypeAppUpdateBegin, nil)
 +	deps.schedule(func() {
++		backgroundCtx, cancel := context.WithTimeout(backgroundCtx, 10*time.Minute)
++		defer cancel()
 +		deps.event(backgroundCtx, common.EventTypeAppUpdateBegin, nil)
  
 -		defer service.PublishEventWrapper(backgroundCtx, common.EventTypeAppUpdateEnd, nil)
@@ -960,7 +971,7 @@
  }
 --- /dev/null
 +++ b/route/v2/syncthing_recreate_test.go
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,208 @@
 +package v2
 +
 +import (
@@ -1026,6 +1037,10 @@
 +		},
 +		schedule: func(f func()) { add("schedule"); f() },
 +		event: func(ctx context.Context, event message_bus.EventType, props map[string]string) {
++			deadline, ok := ctx.Deadline()
++			if !ok || time.Until(deadline) > 10*time.Minute {
++				t.Fatal("unbounded asynchronous operation")
++			}
 +			add("event")
 +			for _, v := range props {
 +				if strings.Contains(v, "SECRET-SENTINEL") {
@@ -2313,7 +2328,7 @@
 +}
 --- /dev/null
 +++ b/service/syncthing_recreate.go
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,100 @@
 +package service
 +
 +import (
@@ -2369,6 +2384,9 @@
 +		return errSyncthingPolicy
 +	}
 +	updated := false
++	if ctx.Err() != nil {
++		return errSyncthingPolicy
++	}
 +	if pull {
 +		if current.Config == nil || current.Config.Image == "" {
 +			return errSyncthingPolicy
@@ -2413,7 +2431,7 @@
 +}
 --- /dev/null
 +++ b/service/syncthing_recreate_test.go
-@@ -0,0 +1,238 @@
+@@ -0,0 +1,243 @@
 +package service
 +
 +import (
@@ -2594,7 +2612,7 @@
 +
 +func TestSyncthingRecreateFailures(t *testing.T) {
 +	policyFixture(t)
-+	for _, stage := range []string{"inspect", "nil", "cancel-inspect", "current", "pull", "target", "old", "effective", "finish", "invalid-target", "missing-config", "invalid-current", "missing-host"} {
++	for _, stage := range []string{"inspect", "nil", "cancel-inspect", "cancel-current", "current", "pull", "target", "old", "effective", "finish", "invalid-target", "missing-config", "invalid-current", "missing-host"} {
 +		t.Run(stage, func(t *testing.T) {
 +			c, old, target := recreateFixture()
 +			calls := []string{}
@@ -2611,6 +2629,8 @@
 +				d.inspect = func(context.Context, string) (*types.ContainerJSON, error) { cancel(); return c, nil }
 +			case "current":
 +				d.current = func(context.Context, *types.ContainerJSON) error { return failure }
++			case "cancel-current":
++				d.current = func(context.Context, *types.ContainerJSON) error { cancel(); return nil }
 +			case "pull":
 +				d.pull = func(context.Context, string) (bool, error) { return false, failure }
 +			case "target", "old":
@@ -2638,6 +2658,9 @@
 +				t.Fatal("failure admitted")
 +			}
 +			for _, call := range calls {
++				if stage == "cancel-current" && call == "pull" {
++					t.Fatal("staging after cancellation")
++				}
 +				if call == "finish" {
 +					t.Fatal("effect after denial", calls)
 +				}

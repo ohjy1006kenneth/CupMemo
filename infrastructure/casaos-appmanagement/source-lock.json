@@ -16,8 +16,8 @@
   ],
   "patch": {
     "path": "appmanagement-syncthing-policy.patch",
-    "bytes": 106894,
-    "sha256": "f639fc99063f8f5fa565a5e2a31a1e6aab32fdf6c9e52d8eb1a363d0a487cae1"
+    "bytes": 107725,
+    "sha256": "e90e4dde94e313b3b217ff0e1823c3f0843b97cc53a2be04e5bc205f5387bb0f"
   },
   "upstream_files": [
     {
@@ -64,8 +64,8 @@
     },
     {
       "path": "pkg/docker/container_clone_plan_test.go",
-      "bytes": 5052,
-      "sha256": "c9b8e88ace69d09809139a5c2b5554f0db379b59605d1b017ae8a5b6909c9601"
+      "bytes": 5333,
+      "sha256": "a62d5350447de0727e7b620d15e06c4b42985a089c9235b3fac2fb852546b181"
     },
     {
       "path": "route/v1/docker.go",
@@ -89,13 +89,13 @@
     },
     {
       "path": "route/v2/docker.go",
-      "bytes": 3318,
-      "sha256": "1beafbe1221149a999c5c1594770fc8fb6c7e3006a5d4a685b6c64706db77ebe"
+      "bytes": 3413,
+      "sha256": "c0e43e7db90a186c6ab5e8b5445f23add818706cf97047493378abcaa49e05f1"
     },
     {
       "path": "route/v2/syncthing_recreate_test.go",
-      "bytes": 6911,
-      "sha256": "bb660d80483253b62190b7716838cb10a6640a93e9dd4efd3dd7cdb022bc887c"
+      "bytes": 7051,
+      "sha256": "e23715cdc106d507850962ccf08fd572c46ae38b6687499241e9d8d5d0c4d000"
     },
     {
       "path": "service/compose_app.go",
@@ -139,13 +139,13 @@
     },
     {
       "path": "service/syncthing_recreate.go",
-      "bytes": 3115,
-      "sha256": "0259e458d52e73edc549ed160e8f8290e04b7aa8a1a2c296e931c6a2832abd11"
+      "bytes": 3169,
+      "sha256": "180b878f1e5caaae73be92877608cf09172776f97d5d400b7ec227f664d7cc35"
     },
     {
       "path": "service/syncthing_recreate_test.go",
-      "bytes": 9663,
-      "sha256": "068a8f1ed2752ff8af6d7130f75d0f126155b24edfe53f615e44dd46e1f8002d"
+      "bytes": 9900,
+      "sha256": "1de86404d65943d41ad6f0a18b0a196aca1930a6404577cdd4368627934c7ba0"
     },
     {
       "path": "service/testdata/syncthing-manager-policy.mjs",
