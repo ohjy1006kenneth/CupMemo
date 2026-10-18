@@ -1,0 +1,61 @@
+name: PostgreSQL HDD gate
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: postgres-hdd-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  postgres-hdd:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Native hardening, minimal image and isolated ext4 behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/postgres-hdd-evidence"
+          mkdir -p "$evidence"
+          git rev-parse HEAD HEAD^{tree} > "$evidence/candidate.txt"
+          cc --version > "$evidence/compiler.txt"
+          cc -std=c17 -O2 -Wall -Wextra -Werror -Wformat=2 -Wconversion -Wshadow \
+            -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fPIE -pie -Wl,-z,relro,-z,now \
+            tests/postgres-hdd-entrypoint-unit.c -o "$RUNNER_TEMP/gate-unit"
+          "$RUNNER_TEMP/gate-unit" | tee "$evidence/unit.log"
+          docker pull --platform linux/arm64 \
+            postgres:17.11-bookworm@sha256:a85953d6f830fd55a12929df3b7a4fa94dc96d652de62d2d714e0867ccb3670d \
+            2>&1 | tee "$evidence/base-pull.log"
+          docker build --platform linux/arm64 --progress plain \
+            -f infrastructure/docker/postgres-hdd.Dockerfile \
+            -t cupmemo-hdd-ci infrastructure/casaos 2>&1 | tee "$evidence/build.log"
+          python3 tests/postgres-hdd-image.py cupmemo-hdd-ci | tee "$evidence/image.json"
+          python3 tests/postgres-hdd-container.py --image cupmemo-hdd-ci 2>&1 | tee "$evidence/behavior.log"
+          # Retain the exact tested image for later reviewed OWNER activation;
+          # no registry publication, production secrets or fixture data in image.
+          docker save cupmemo-hdd-ci | gzip -1 > "$RUNNER_TEMP/postgres-hdd-image.tar.gz"
+          (cd "$RUNNER_TEMP" && sha256sum postgres-hdd-image.tar.gz) > "$evidence/image-archive.sha256"
+      - name: Retain exact tested image without registry publication
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: postgres-hdd-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/postgres-hdd-image.tar.gz
+          retention-days: 14
+          if-no-files-found: error
+          include-hidden-files: false
+          overwrite: false
+      - name: Retain original fixture and image evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: postgres-hdd-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/postgres-hdd-evidence/
+          retention-days: 14
+          if-no-files-found: error
+          include-hidden-files: false
+          overwrite: false

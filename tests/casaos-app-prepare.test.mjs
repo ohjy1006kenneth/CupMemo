@@ -27,6 +27,8 @@ export function fixture(temp) {
     CUPMEMO_API_IMAGE: `sha256:${'2'.repeat(64)}`,
     CUPMEMO_POSTGRES_IMAGE: `postgres:17-bookworm@sha256:${'3'.repeat(64)}`,
     POSTGRES_DATA_UID: '12345',
+    POSTGRES_HDD_UUID: '11111111-2222-3333-4444-555555555555',
+    POSTGRES_HDD_MOUNT: temp,
     POSTGRES_DB: 'offline_candidate',
     POSTGRES_USER: 'offline_operator',
     POSTGRES_DATA_DIR: path.join(temp, 'absent-data'),
@@ -96,7 +98,15 @@ test.each([null, ...Object.keys(fixture('/synthetic'))])(
         for (const value of ['0', '-1', '001', '1.5', '4294967295'])
           invalid.push({ ...base, POSTGRES_DATA_UID: value });
       }
-      if (['POSTGRES_DATA_DIR', 'POSTGRES_PASSWORD_FILE'].includes(key)) {
+      if (key === 'POSTGRES_HDD_UUID') {
+        for (const value of ['not-a-uuid', '11111111-2222-3333-4444-AAAAAAAAAAAA'])
+          invalid.push({ ...base, [key]: value });
+      }
+      if (key === 'POSTGRES_HDD_MOUNT') {
+        for (const value of [base.POSTGRES_DATA_DIR, `${temp}-other`, `${temp}/absent-data/child`])
+          invalid.push({ ...base, [key]: value });
+      }
+      if (['POSTGRES_DATA_DIR', 'POSTGRES_PASSWORD_FILE', 'POSTGRES_HDD_MOUNT'].includes(key)) {
         for (const value of ['/', './relative', '/a/../b', '/a/', '/a//b', '/a\nb'])
           invalid.push({ ...base, [key]: value });
       }

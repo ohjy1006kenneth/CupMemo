@@ -19,6 +19,8 @@ const keys = [
   'CUPMEMO_API_IMAGE',
   'CUPMEMO_POSTGRES_IMAGE',
   'POSTGRES_DATA_UID',
+  'POSTGRES_HDD_UUID',
+  'POSTGRES_HDD_MOUNT',
   'POSTGRES_DB',
   'POSTGRES_USER',
   'POSTGRES_DATA_DIR',
@@ -89,11 +91,15 @@ export function prepareCasaosApp(config, output) {
       Number(settings.POSTGRES_DATA_UID) > 4294967294
     )
       throw new Error();
-    for (const key of ['POSTGRES_DATA_DIR', 'POSTGRES_PASSWORD_FILE']) {
+    if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(settings.POSTGRES_HDD_UUID))
+      throw new Error();
+    for (const key of ['POSTGRES_HDD_MOUNT', 'POSTGRES_DATA_DIR', 'POSTGRES_PASSWORD_FILE']) {
       const value = settings[key];
       absolute(value);
       if (value === repository || value.startsWith(`${repository}/`)) throw new Error();
     }
+    if (!settings.POSTGRES_DATA_DIR.startsWith(`${settings.POSTGRES_HDD_MOUNT}/`))
+      throw new Error();
     const source = readFileSync(new URL('../casaos/docker-compose.yml', import.meta.url), 'utf8');
     // Stock install interpolates, marshals that model to disk, then reloads it.
     // Keep one Compose escape in the retained file for every literal dollar,

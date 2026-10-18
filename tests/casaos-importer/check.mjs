@@ -31,6 +31,8 @@ try {
     CUPMEMO_API_IMAGE: `sha256:${'2'.repeat(64)}`,
     CUPMEMO_POSTGRES_IMAGE: `postgres:17-bookworm@sha256:${'3'.repeat(64)}`,
     POSTGRES_DATA_UID: '12345',
+    POSTGRES_HDD_UUID: '11111111-2222-3333-4444-555555555555',
+    POSTGRES_HDD_MOUNT: temp,
     POSTGRES_DB: 'offline_candidate',
     POSTGRES_USER: 'offline_operator',
     POSTGRES_DATA_DIR: path.join(temp, 'absent $DATA ${DIR:-x} " # 🫘'),
@@ -79,6 +81,13 @@ try {
   assert.notEqual(pg.volumes[0].bind?.create_host_path, true);
   assert.equal(pg.environment.POSTGRES_PASSWORD_FILE, '/run/secrets/postgres_password');
   assert.equal(pg.environment.PGDATA, '/var/lib/postgresql/data/pgdata');
+  for (const key of [
+    'POSTGRES_HDD_UUID',
+    'POSTGRES_HDD_MOUNT',
+    'POSTGRES_DATA_DIR',
+    'POSTGRES_DATA_UID',
+  ])
+    assert.equal(pg.environment[key], settings[key], key);
   assert.deepEqual(pg.healthcheck.test, [
     'CMD-SHELL',
     'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"',

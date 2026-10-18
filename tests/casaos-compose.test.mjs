@@ -56,6 +56,18 @@ test('stock app preserves production runtime fields with supported explicit API 
   expect(base.services['cupmemo-api'].env_file[0].format).toBe('raw');
   delete base.services['cupmemo-api'].env_file;
   expect(runtime.services['cupmemo-api'].env_file).toBeUndefined();
+  const pg = runtime.services['cupmemo-postgres'];
+  expect(pg.image).toContain('HDD-guarded PG17 image');
+  pg.image = base.services['cupmemo-postgres'].image;
+  for (const key of [
+    'POSTGRES_HDD_UUID',
+    'POSTGRES_HDD_MOUNT',
+    'POSTGRES_DATA_DIR',
+    'POSTGRES_DATA_UID',
+  ]) {
+    expect(pg.environment[key]).toContain(`\${${key}:?`);
+    delete pg.environment[key];
+  }
   for (const key of ['CUPMEMO_DATABASE_URL_PRODUCTION', 'BETTER_AUTH_SECRET', 'BETTER_AUTH_URL']) {
     expect(runtime.services['cupmemo-api'].environment[key]).toContain(`\${${key}:?`);
     delete runtime.services['cupmemo-api'].environment[key];

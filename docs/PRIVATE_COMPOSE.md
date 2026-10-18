@@ -48,7 +48,11 @@ not a published store listing. It deliberately omits `port_map`/a dashboard laun
 URL and publishes no port: private browser ingress has not been selected or tested.
 There is no claim that an Open button or a running app is delivered.
 
-**Offline stock-import packaging is executable; live installation is still held.**
+**Offline stock-import packaging is executable; no live installation is claimed.**
+Kenneth explicitly authorized private HDD-only PGDATA provisioning and the first
+private stock-CasaOS app/database installation/start, subject to independently
+reviewed storage safety and rollback. That human prerequisite is resolved; actual
+activation is an owner action after affected review. Public deployment stays held.
 Official AppManagement source at
 `debfa317f0f996b91b43210e8d57799461388704` pins `compose-go v1.20.2` in
 [`go.mod`][casaos-go-mod]. Read-only module metadata from the unchanged installed
@@ -59,12 +63,13 @@ for this app variant: exact credential values are. The stock
 [`NewComposeAppFromYAML` loader][casaos-loader] uses a temporary working directory,
 so dashboard interpolation environment and `.env` settings must not be assumed.
 
-Short normal flow (offline now, future install only after the holds below lift):
+Short normal flow (preparation now, owner activation after the gates below):
 
-1. Maintain one private JSON object outside Git, with the eight nonsecret inputs
+1. Maintain one private JSON object outside Git, with the ten nonsecret inputs
    `CUPMEMO_WEB_IMAGE`, `CUPMEMO_API_IMAGE`, `CUPMEMO_POSTGRES_IMAGE`,
    `POSTGRES_DATA_UID`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_DATA_DIR`,
-   `POSTGRES_PASSWORD_FILE`, plus `CUPMEMO_DATABASE_URL_PRODUCTION`,
+   `POSTGRES_PASSWORD_FILE`, `POSTGRES_HDD_UUID`, `POSTGRES_HDD_MOUNT`,
+   plus `CUPMEMO_DATABASE_URL_PRODUCTION`,
    `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`. All values are explicit strings. There
    is no `CUPMEMO_API_ENV_FILE` in this variant. Preserve the independently verified
    URL/password relationship and production HTTPS/auth configuration. Use a private
@@ -85,10 +90,12 @@ Short normal flow (offline now, future install only after the holds below lift):
    JSON; it does not read the PG password, stat/create PGDATA, source `.env`, call
    Docker/network/services or grant HDD/secret-readability approval. Its immutable
    image/positive UID/absolute external-path checks validate shape, not provenance.
+   HDD UUID must be canonical lowercase; the data path must be a strict descendant
+   of the normalized nonroot mount path. The helper never discovers/defaults them.
 
-3. Only after separate live clearance, use CasaOS Custom Install with that generated
+3. Only after exact-candidate owner clearance, use CasaOS Custom Install with that generated
    private file. It is **stock-import-specific**, not a direct Compose start file.
-   Do not import now even as a test: installation can start containers.
+   Coder/reviewer must not import even as a test: installation can start containers.
 
 Literal handling is tested against the actual pinned parser, not a guessed dotenv
 dialect. JSON-quoted YAML scalars retain quotes, hashes, backslashes, whitespace
@@ -109,9 +116,81 @@ not exercised; do not claim arbitrary later dashboard rewrites preserve secrets.
 Start, restart, Pi reboot, absent-HDD and positive DB/app behavior remain
 **UNVERIFIED**. `restart: 'no'` stays in both files. A no-auto-create bind prevents
 missing-directory creation, not use of an existing SSD directory at the same path.
-The host guard still needs fresh verified mount identity on every authorized
-launch; CasaOS currently has no demonstrated integration. No custom manager,
+The host guard must freshly verify identity before initial owner provisioning,
+import and activation; the app-local gate below checks each PG process start.
+Actual CasaOS dashboard behavior is not established by parser tests. No custom manager,
 CasaOS DB access/repair or additional sharing permission is needed for this package.
+
+### App-local per-start HDD admission
+
+Only the stock app variant selects the **guarded PG17 derivative**; the modern
+production reference/host guard/alternative launcher and web/API images are unchanged.
+`infrastructure/docker/postgres-hdd.Dockerfile` uses the official PG17.11 Debian
+bookworm ARM64 manifest
+`sha256:a85953d6f830fd55a12929df3b7a4fa94dc96d652de62d2d714e0867ccb3670d`
+in both stages. Registry metadata identifies docker-library/postgres revision
+`2603e26e245e558218728ee14e0a42dcb020dc7f:17/bookworm`; official-images lists
+17.11-bookworm at preparation. This is a patch/security update from the local17.6,
+not PG18, Alpine or a data-layout migration. Runtime adds only one executable and
+nonrecursively hardens the existing IMAGE `/var/lib/postgresql` parent from
+postgres-owned1777 to root:root0755 at build time. Its contents and all other image
+paths remain unchanged; no runtime/host parent chmod/chown is permitted. The strict
+gate rejects unsafe1777 ancestry rather than making an exception. gcc/libc headers
+are build-only. Build from the tiny `infrastructure/casaos` context:
+
+```sh
+docker build --platform linux/arm64 -f infrastructure/docker/postgres-hdd.Dockerfile -t cupmemo-hdd-candidate infrastructure/casaos
+```
+
+Use hosted native ARM64 CI for the build/positive fixture, not a heavy shared-Pi
+build. Owner must select the exact independently reviewed resulting immutable image
+and verify local availability, provenance, payload and secret custody; an arbitrary
+official PG image does not contain this gate. No image default/pull is added to Compose.
+
+`postgres-hdd-entrypoint.c` runs **before** the official entrypoint can create,
+chmod/chown/init or read passwords. It accepts only normal `postgres` CMD or
+`--check` (identical read-only admission, exits without DB activity). It requires
+nonroot eUID equal to explicit positive `POSTGRES_DATA_UID`, fixed
+`PGDATA=/var/lib/postgresql/data/pgdata`, strict UUID and host-path relation.
+Directory-relative `O_NOFOLLOW` opens reject symlink/unsafe ancestry. The fixed
+data bind must already exist, have the matching owner and exactly0700/0750.
+An existing pgdata child must be a same-device owned safe directory, not a symlink.
+No input can select an executable, probe, mount table or bypass mode.
+
+The gate requires ext4 via `fstatfs`, then calls `EXT4_IOC_GETFSUUID` on that actual
+open directory descriptor: full16 bytes, length16 and flags0 must match. No raw
+device/CAP_SYS_ADMIN/host-proc bind is needed. Unsupported kernel/ioctl, seccomp
+denial or malformed evidence fails closed. Container-own `/proc/self/mountinfo`
+must have exactly one ext4 mount at `/var/lib/postgresql/data`, matching descriptor
+major/minor and the filesystem root derived from host data minus mount path.
+Escaped spaces/backslashes are decoded; ambiguous, malformed or nested data mounts
+are refused. Path/child identities and kernel evidence are rechecked before exec.
+All refusals emit one fixed redacted diagnostic, never supplied paths/UUID/secrets.
+
+On success, it execs only `/usr/local/bin/docker-entrypoint.sh postgres`, retaining
+official initialization and foreground PID/signal semantics. It has no success
+cache or writes of its own. Each ordinary dashboard/container start/restart/recreate
+must retain this image/entrypoint and config, and therefore reruns the gate.
+Docker root deliberately replacing those inputs is outside the guarantee. This is
+not continuous mount locking or protection against hostile concurrent replacement
+after checks. `restart: 'no'` remains; physical Pi reboot/dashboard behavior and
+actual HDD/application acceptance are **UNVERIFIED** until owner tests them.
+
+Focused CI compiles the real hardened binary, audits identical base layers/packages,
+the sole added executable and exactly the permitted parent metadata delta, then
+uses one disposable loopback ext4 fixture on its
+disposable ARM64 runner. It checks correct admission, wrong UUID/root/UID/modes,
+ioctl denial, symlink child, missing bind/no auto-create, repeat checks, fixed exec,
+official initialization/query, foreground TERM and stop/start persistence with
+synthetic credentials, no DB port and exact owned cleanup. This is not live Pi or
+CasaOS acceptance. Local SSD-negative checks may use a host-compiled production
+binary bound into an existing PG image; they do not establish final-image ABI or
+positive DB behavior. On the current Pi, Docker reports memory0/swap-1 despite
+requested bounds: local negative refusals are not resource-enforcement acceptance.
+
+Run `corepack pnpm exec vitest run tests/postgres-hdd-entrypoint.test.mjs
+--maxWorkers=1 --no-file-parallelism` for native parser/CLI checks; actual container
+evidence comes from `.github/workflows/postgres-hdd.yml`, not source-string tests.
 
 [casaos-metadata]: https://github.com/IceWhaleTech/CasaOS-AppStore/blob/main/docs/specs/compose-and-x-casaos.md
 [casaos-go-mod]: https://github.com/IceWhaleTech/CasaOS-AppManagement/blob/debfa317f0f996b91b43210e8d57799461388704/go.mod
@@ -409,20 +488,24 @@ There is intentionally no production launch recipe in this document.
 
 ## Still held / UNVERIFIED before any activation
 
-Passing tests authorize no services, PGDATA provisioning, database startup,
-migrations, NAS changes or public exposure. In particular, resolve together:
+Passing tests are not activation approval. Kenneth's bounded private provisioning
+and first-start authority is granted; owner activation still needs the following
+technical/rollback gates. Coder/reviewer perform no live action, and public exposure
+remains held. In particular, resolve together:
 
 1. Exact accepted app and trusted PG17 ARM64 identities/availability, all private
    secret locations/ownership/readability and valid production app configuration.
-2. Fresh HDD-only device/UUID/ancestry/UID/permission evidence and Issue11 guard
-   runtime integration. Missing-HDD refusal must prevent SSD fallback and bind creation.
-   Check daemon restart, reboot and operator bypasses under separately reviewed
-   Issue42 wiring; `restart: 'no'` alone does not prevent a manual start.
+2. Fresh host HDD-only device/UUID/ancestry/UID/permission evidence before owner
+   provisioning/import/activation, and app-local gate on actual retained config.
+   Verify normal dashboard/container starts retain the gate. Isolated missing-HDD
+   refusal must prevent SSD fallback/bind creation; no live disk detach/reboot test
+   is authorized. `restart: 'no'` alone does not establish this behavior.
 3. Database-integrity-safe backup/recovery, no raw live-PGDATA sync or concurrent
    writers. Owner-only NAS sharing is accepted; custom CasaOS regeneration/share
    exclusion is no longer required. Existing approved NAS isolation is preserved.
-4. Explicit owner/user authority for exact HDD provisioning and private activation,
-   including separately authorized migrations and a reversible resource window.
+4. Owner's exact-candidate activation decision within already granted PRIVATE
+   HDD provisioning/first-start authority, including safe schema setup and a
+   reversible app-only resource window; no repeated generic permission prompt.
 5. Real DB-backed API readiness/auth/sessions/schema behavior, durable brew
    save/read/restart verification, memory/swap/OOM/CPU/log measurements and Pi
    coexistence alongside Hermes and unrelated services. Health config is not any
@@ -435,8 +518,13 @@ not repeated setup questions. Technical review of this exact source-only delta
 precedes owner integration; no UI behavior changed, so no new rendered visual
 review is claimed. Keep Issue32 open after partial integration.
 
-Rollback of this continuation is a reviewed source revert of only its startup
-wrapper, dormant service template, focused startup test and this document; accepted
-Compose/image checkpoints remain unchanged. It has no live resources to stop or data to
-remove. A future authorized runtime plan needs its own exact-resource rollback,
-private data preservation and no shared Docker prune/unrelated service changes.
+Before live activation, rollback is a reviewed revert of this app-local source
+delta only; no host manager rollback/restart is needed. During owner preparation,
+retain the original private config/credentials and every data directory; never
+overwrite existing data to retry. If initial import partially succeeds, reconcile
+exact newly owned app registrations/containers/config first. Stop/remove only those
+exact newly owned app resources phase-appropriately; preserve all DB data,
+credentials and historical receipts, even after failed initialization/schema work.
+Never use volume deletion, shared Docker prune/restart or modify unrelated apps,
+stock CasaOS services, shares or Tailscale. Downgrading/replacing the guarded image
+is not an authorized shortcut to start a refused DB.

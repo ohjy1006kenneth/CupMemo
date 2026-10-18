@@ -471,7 +471,10 @@ Those dated observations resolved repository/Docker root and `/mnt/nas-hdd` to S
 and the HDD to `/DATA/nas`. Their unapproved-target/root0777 statements describe
 the historical audit, not current authority or a fresh host-state assertion.
 The Pi target and narrow NAS restrictions are now approved as described below;
-PGDATA path/UID provisioning, database startup and public deployment remain held.
+Kenneth has since explicitly authorized private HDD-only PGDATA provisioning and
+stock-CasaOS app/DB first startup, subject to independently reviewed safety and
+owner activation/rollback. Public deployment remains held; this is not evidence
+that private installation has occurred.
 
 Before assigning ports or writing production paths:
 
@@ -496,9 +499,21 @@ enforcement, manager replacements and internet-isolation proof are not delivery
 prerequisites. No new sharing permission prompt, network/firewall change or undoing
 approved NAS changes follows. Acceptance does not permit raw live-PGDATA syncing,
 concurrent writers or deletion. HDD/no-SSD-fallback, DB ownership/integrity, private
-secrets and ordinary application authentication remain required. PGDATA/UID
-provisioning, database startup, public deployment and startup/restart clearance
-remain held.
+secrets and ordinary application authentication remain required. Private HDD-only
+PGDATA/UID provisioning and first private stock app/DB startup are human-authorized,
+not yet technically accepted or performed by this source pass. Owner activation
+follows affected review, fresh host preflight and app-only rollback preparation.
+Public deployment remains held.
+
+The stock app now requires the reviewed immutable guarded PG17 Debian derivative:
+an app-local C entrypoint checks UUID directly on the actual ext4 directory FD,
+exact filesystem-relative mount root/device, eUID/owner/modes and nonsymlink paths
+on every process start, then execs only the official PG entrypoint with `postgres`.
+See [app-local admission](PRIVATE_COMPOSE.md#app-local-per-start-hdd-admission)
+for provenance, inputs, focused disposable ARM64 ext4 CI, limitations and rollback.
+No stock manager, unrelated service, Tailscale or host supervisor change is needed.
+Fresh host guard remains mandatory before initial owner provisioning/import/start;
+actual retained CasaOS/dashboard behavior and physical reboot remain unverified.
 
 See [NAS_ISOLATION.md](NAS_ISOLATION.md) for the read-only component preflight,
 exclusive private SSD candidate preparation, actual source provenance, independently
@@ -531,7 +546,7 @@ The guard does not mkdir, chmod, chown, inspect directory contents or connect to
 PostgreSQL. An operator must separately approve/provision safe storage; refusal is
 not authorization to modify a shared NAS.
 
-After approval and explicit environment setup, the interface is:
+Within owner clearance and explicit environment setup, the host interface is:
 
 ```sh
 node infrastructure/scripts/postgres-hdd-guard.mjs --check
