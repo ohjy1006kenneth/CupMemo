@@ -22,8 +22,6 @@ jobs:
   appmanagement-guard:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
-    env:
-      EVIDENCE: ${{ runner.temp }}/appmanagement-evidence
     steps:
       - name: Check out exact publication head without credentials
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -32,10 +30,14 @@ jobs:
           persist-credentials: false
       - name: Verify effective hard fences, generate, compile and test offline
         timeout-minutes: 40
+        env:
+          EVIDENCE: ${{ runner.temp }}/appmanagement-evidence
         run: python3 -B -u infrastructure/casaos-appmanagement/hosted-build.py
       - name: Prove exact task containers gone even after interruption
         if: always()
         shell: bash
+        env:
+          EVIDENCE: ${{ runner.temp }}/appmanagement-evidence
         run: |
           python3 - <<'PY'
           import json, os, subprocess
