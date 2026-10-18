@@ -27,8 +27,10 @@ assert image['Config']['Entrypoint'] == ['/usr/local/bin/cupmemo-postgres-hdd']
 assert image['Config']['Cmd'] == ['postgres']
 assert image['Config']['Volumes'] == original['Config']['Volumes'] == {'/var/lib/postgresql/data': {}}
 assert image['Config']['Env'] == original['Config']['Env']
-assert {k: v for k, v in image['Config'].items() if k not in ('Entrypoint', 'Cmd')} == {
-    k: v for k, v in original['Config'].items() if k not in ('Entrypoint', 'Cmd')}
+config_delta = {k: [original['Config'].get(k), image['Config'].get(k)]
+                for k in set(original['Config']) | set(image['Config'])
+                if original['Config'].get(k) != image['Config'].get(k)}
+assert set(config_delta) <= {'Entrypoint'}, config_delta
 packages = []
 for ref in (base, image['Id']):
     # No entrypoint/DB/data mount; packages only, bounded and network-isolated.
