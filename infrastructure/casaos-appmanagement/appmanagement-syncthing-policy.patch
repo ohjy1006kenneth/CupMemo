@@ -347,7 +347,7 @@
 +	check func(context.Context, string, *syncthingIdentity, *syncthingIdentity) error
 +	parse func([]byte, bool, bool) (*ComposeApp, error)
 +	lstat func(string) (os.FileInfo, error)
-+	load func(string, string) (*ComposeApp, error)
++	load  func(string, string) (*ComposeApp, error)
 +}
 +
 +func productionSyncthingDependencies() syncthingDependencies {
@@ -423,168 +423,398 @@
 +var _ io.Writer = (*syncthingCappedOutput)(nil)
 --- /dev/null
 +++ b/service/syncthing_policy_test.go
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,392 @@
 +package service
 +
 +import (
-+ "bytes"
-+ "context"
-+ "errors"
-+ "io"
-+ "os"
-+ "os/exec"
-+ "path/filepath"
-+ "reflect"
-+ "strings"
-+ "testing"
-+ "time"
++	"bytes"
++	"context"
++	"errors"
++	"io"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"reflect"
++	"strings"
++	"testing"
++	"time"
 +
-+
-+ "github.com/compose-spec/compose-go/types"
-+ "github.com/docker/compose/v2/pkg/api"
++	"github.com/compose-spec/compose-go/types"
++	"github.com/docker/compose/v2/pkg/api"
 +)
 +
 +func policyFixture(t *testing.T) {
-+ t.Helper()
-+ // Fixed-path custody fixtures are permitted ONLY inside the disposable root container.
-+ if os.Geteuid()!=0 { t.Fatal("requires disposable root container") }
-+ if _,err:=os.Stat("/.dockerenv"); err!=nil { t.Fatal("requires disposable container") }
-+ b,err:=os.ReadFile("testdata/syncthing-manager-policy.mjs"); if err!=nil { t.Fatal(err) }
-+ if err=os.MkdirAll(filepath.Dir(syncthingPolicyPath),0755); err!=nil { t.Fatal(err) }
-+ if err=os.WriteFile(syncthingPolicyPath,b,0644); err!=nil { t.Fatal(err) }
-+ t.Cleanup(func(){os.Remove(syncthingPolicyPath)})
++	t.Helper()
++	// Fixed-path custody fixtures are permitted ONLY inside the disposable root container.
++	if os.Geteuid() != 0 {
++		t.Fatal("requires disposable root container")
++	}
++	if _, err := os.Stat("/.dockerenv"); err != nil {
++		t.Fatal("requires disposable container")
++	}
++	b, err := os.ReadFile("testdata/syncthing-manager-policy.mjs")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = os.MkdirAll(filepath.Dir(syncthingPolicyPath), 0755); err != nil {
++		t.Fatal(err)
++	}
++	if err = os.WriteFile(syncthingPolicyPath, b, 0644); err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { os.Remove(syncthingPolicyPath) })
 +}
 +func ordinaryPolicyApp() *ComposeApp {
-+ return &ComposeApp{Name:"ordinary",WorkingDir:"/synthetic/ordinary",ComposeFiles:[]string{"/synthetic/ordinary/docker-compose.yml"},Services:[]types.ServiceConfig{{Name:"ordinary"}}}
++	return &ComposeApp{Name: "ordinary", WorkingDir: "/synthetic/ordinary", ComposeFiles: []string{"/synthetic/ordinary/docker-compose.yml"}, Services: []types.ServiceConfig{{Name: "ordinary"}}}
 +}
-+func requirePolicyRefusal(t *testing.T,err error) { t.Helper(); if err!=errSyncthingPolicy {t.Fatalf("expected sanitized refusal, got %v",err)} }
++func requirePolicyRefusal(t *testing.T, err error) {
++	t.Helper()
++	if err != errSyncthingPolicy {
++		t.Fatalf("expected sanitized refusal, got %v", err)
++	}
++}
 +
 +func TestSyncthingPolicyProjection(t *testing.T) {
-+ a:=ordinaryPolicyApp(); i:=projectSyncthingIdentity(a)
-+ if i.Name!=a.Name || i.WorkingDir!=a.WorkingDir || !reflect.DeepEqual(i.ServiceNames,[]string{"ordinary"}) {t.Fatal(i)}
-+ i.ComposeFiles[0]="changed"; if a.ComposeFiles[0]=="changed" {t.Fatal("aliased compose paths")}
-+ if projectSyncthingIdentity(nil)!=nil {t.Fatal("nil projection")}
++	a := ordinaryPolicyApp()
++	i := projectSyncthingIdentity(a)
++	if i.Name != a.Name || i.WorkingDir != a.WorkingDir || !reflect.DeepEqual(i.ServiceNames, []string{"ordinary"}) {
++		t.Fatal(i)
++	}
++	i.ComposeFiles[0] = "changed"
++	if a.ComposeFiles[0] == "changed" {
++		t.Fatal("aliased compose paths")
++	}
++	if projectSyncthingIdentity(nil) != nil {
++		t.Fatal("nil projection")
++	}
 +}
 +
 +func TestSyncthingPolicyRealNodeAndGuardedMethods(t *testing.T) {
-+ policyFixture(t)
-+ ctx:=context.Background(); a:=ordinaryPolicyApp()
-+ // Poisoning the inherited Node environment must not enter the real fixed command.
-+ t.Setenv("NODE_OPTIONS","--import=/SECRET-SENTINEL-NOT-LOADED")
-+ if err:=a.CheckMutation(ctx,"create",nil); err!=nil {t.Fatal(err)}
-+ candidate:=ordinaryPolicyApp(); candidate.Services[0].Name="big-bear-syncthing"
-+ requirePolicyRefusal(t,a.CheckMutation(ctx,"apply",candidate))
-+ protected:=ordinaryPolicyApp(); protected.Name="local-syncthing"; protected.ComposeFiles=nil
-+ s:=NewComposeService()
-+ methods:=map[string]func()error{
-+ "update":func()error{return protected.Update(ctx)},
-+ "apply":func()error{return protected.Apply(ctx,[]byte("SECRET-SENTINEL invalid YAML"))},
-+ "pull-and-apply-empty":func()error{return protected.PullAndApply(ctx,nil)},
-+ "pull":func()error{return protected.Pull(ctx)},
-+ "up":func()error{return protected.Up(ctx,nil)},
-+ "up-with-requirements":func()error{return protected.UpWithCheckRequire(ctx,nil)},
-+ "create":func()error{return protected.Create(ctx,api.CreateOptions{},nil)},
-+ "pull-install":func()error{return protected.PullAndInstall(ctx)},
-+ "uninstall":func()error{return protected.Uninstall(ctx,true)},
-+ "service-install":func()error{return s.Install(ctx,protected)},
-+ "service-uninstall-before-scheduling":func()error{return s.Uninstall(ctx,protected,true)},
-+ "prepare-before-mkdir":func()error{_,err:=s.PrepareWorkingDirectory("local-syncthing");return err},
-+ }
-+ // Nil Docker dependencies and invalid YAML/empty ComposeFiles make any pre-admission
-+ // parser/index/client/scheduling regression fail, rather than touching real services.
-+ for name,f:=range methods {t.Run(name,func(t *testing.T){requirePolicyRefusal(t,f())})}
-+ prefix:=ordinaryPolicyApp(); prefix.Name="local-syncthing-extra"; prefix.WorkingDir="/var/lib/casaos/apps/local-syncthing-extra"
-+ if err:=prefix.CheckMutation(ctx,"create",nil);err!=nil {t.Fatal(err)}
++	policyFixture(t)
++	ctx := context.Background()
++	a := ordinaryPolicyApp()
++	// Poisoning the inherited Node environment must not enter the real fixed command.
++	t.Setenv("NODE_OPTIONS", "--import=/SECRET-SENTINEL-NOT-LOADED")
++	if err := a.CheckMutation(ctx, "create", nil); err != nil {
++		t.Fatal(err)
++	}
++	candidate := ordinaryPolicyApp()
++	candidate.Services[0].Name = "big-bear-syncthing"
++	requirePolicyRefusal(t, a.CheckMutation(ctx, "apply", candidate))
++	protected := ordinaryPolicyApp()
++	protected.Name = "local-syncthing"
++	protected.ComposeFiles = nil
++	s := NewComposeService()
++	methods := map[string]func() error{
++		"update":                              func() error { return protected.Update(ctx) },
++		"apply":                               func() error { return protected.Apply(ctx, []byte("SECRET-SENTINEL invalid YAML")) },
++		"pull-and-apply-empty":                func() error { return protected.PullAndApply(ctx, nil) },
++		"pull":                                func() error { return protected.Pull(ctx) },
++		"up":                                  func() error { return protected.Up(ctx, nil) },
++		"up-with-requirements":                func() error { return protected.UpWithCheckRequire(ctx, nil) },
++		"create":                              func() error { return protected.Create(ctx, api.CreateOptions{}, nil) },
++		"pull-install":                        func() error { return protected.PullAndInstall(ctx) },
++		"uninstall":                           func() error { return protected.Uninstall(ctx, true) },
++		"service-install":                     func() error { return s.Install(ctx, protected) },
++		"service-uninstall-before-scheduling": func() error { return s.Uninstall(ctx, protected, true) },
++		"prepare-before-mkdir":                func() error { _, err := s.PrepareWorkingDirectory("local-syncthing"); return err },
++	}
++	// Nil Docker dependencies and invalid YAML/empty ComposeFiles make any pre-admission
++	// parser/index/client/scheduling regression fail, rather than touching real services.
++	for name, f := range methods {
++		t.Run(name, func(t *testing.T) { requirePolicyRefusal(t, f()) })
++	}
++	prefix := ordinaryPolicyApp()
++	prefix.Name = "local-syncthing-extra"
++	prefix.WorkingDir = "/var/lib/casaos/apps/local-syncthing-extra"
++	if err := prefix.CheckMutation(ctx, "create", nil); err != nil {
++		t.Fatal(err)
++	}
 +}
 +
-+type policyComposeService struct { api.Service; calls *[]string; fail error }
-+func (s policyComposeService) Create(context.Context,*types.Project,api.CreateOptions) error {*s.calls=append(*s.calls,"create");return s.fail}
-+func (s policyComposeService) Up(context.Context,*types.Project,api.UpOptions) error {*s.calls=append(*s.calls,"up");return s.fail}
++type policyComposeService struct {
++	api.Service
++	calls *[]string
++	fail  error
++}
++
++func (s policyComposeService) Create(context.Context, *types.Project, api.CreateOptions) error {
++	*s.calls = append(*s.calls, "create")
++	return s.fail
++}
++func (s policyComposeService) Up(context.Context, *types.Project, api.UpOptions) error {
++	*s.calls = append(*s.calls, "up")
++	return s.fail
++}
 +func TestSyncthingPolicyOrdinaryWriterOrdering(t *testing.T) {
-+ policyFixture(t); ctx:=context.Background(); calls:=[]string{}; failure:=errors.New("injected writer failure")
-+ s:=policyComposeService{calls:&calls}
-+ a:=ordinaryPolicyApp()
-+ if err:=a.Create(ctx,api.CreateOptions{},s);err!=nil {t.Fatal(err)}
-+ if err:=a.UpWithCheckRequire(ctx,s);err!=nil {t.Fatal(err)}
-+ s.fail=failure
-+ if err:=a.Create(ctx,api.CreateOptions{},s);err!=failure {t.Fatal(err)}
-+ protected:=ordinaryPolicyApp(); protected.Name="local-syncthing"
-+ requirePolicyRefusal(t,protected.Create(ctx,api.CreateOptions{},s))
-+ if !reflect.DeepEqual(calls,[]string{"create","up","create"}) {t.Fatal(calls)}
++	policyFixture(t)
++	ctx := context.Background()
++	calls := []string{}
++	failure := errors.New("injected writer failure")
++	s := policyComposeService{calls: &calls}
++	a := ordinaryPolicyApp()
++	if err := a.Create(ctx, api.CreateOptions{}, s); err != nil {
++		t.Fatal(err)
++	}
++	if err := a.UpWithCheckRequire(ctx, s); err != nil {
++		t.Fatal(err)
++	}
++	s.fail = failure
++	if err := a.Create(ctx, api.CreateOptions{}, s); err != failure {
++		t.Fatal(err)
++	}
++	protected := ordinaryPolicyApp()
++	protected.Name = "local-syncthing"
++	requirePolicyRefusal(t, protected.Create(ctx, api.CreateOptions{}, s))
++	if !reflect.DeepEqual(calls, []string{"create", "up", "create"}) {
++		t.Fatal(calls)
++	}
 +}
 +
 +func TestSyncthingPolicyReplacementOrdering(t *testing.T) {
-+ ctx:=context.Background(); a:=ordinaryPolicyApp()
-+ for _,mode:=range []string{"ordinary","current-denied","candidate-denied","parser-failure"} {t.Run(mode,func(t *testing.T){
-+ calls:=[]string{}; n:=0
-+ d:=syncthingDependencies{}
-+ d.check=func(_ context.Context,op string,current,candidate *syncthingIdentity)error {
-+  n++;calls=append(calls,"check")
-+  if op!="apply" || current.Name!="ordinary" {t.Fatal("projection")}
-+  if candidate!=nil && (candidate.WorkingDir!=a.WorkingDir || !reflect.DeepEqual(candidate.ComposeFiles,a.ComposeFiles)) {t.Fatal("effective destination")}
-+  if mode=="current-denied" || mode=="candidate-denied"&&n==2 {return errSyncthingPolicy};return nil
-+ }
-+ d.parse=func(_ []byte,skipI,skipV bool)(*ComposeApp,error){calls=append(calls,"parse");if !skipI||!skipV {t.Fatal("parser flags")};if mode=="parser-failure" {return nil,errors.New("SECRET")};return ordinaryPolicyApp(),nil}
-+ err:=checkSyncthingReplacement(ctx,"apply",a,nil,d)
-+ expected:=[]string{"check","parse","check"}
-+ if mode=="ordinary" {if err!=nil {t.Fatal(err)}} else {requirePolicyRefusal(t,err)}
-+ if mode=="current-denied" {expected=[]string{"check"}};if mode=="parser-failure" {expected=[]string{"check","parse"}}
-+ if !reflect.DeepEqual(calls,expected){t.Fatal(calls)}
-+ })}
++	ctx := context.Background()
++	a := ordinaryPolicyApp()
++	for _, mode := range []string{"ordinary", "current-denied", "candidate-denied", "parser-failure"} {
++		t.Run(mode, func(t *testing.T) {
++			calls := []string{}
++			n := 0
++			d := syncthingDependencies{}
++			d.check = func(_ context.Context, op string, current, candidate *syncthingIdentity) error {
++				n++
++				calls = append(calls, "check")
++				if op != "apply" || current.Name != "ordinary" {
++					t.Fatal("projection")
++				}
++				if candidate != nil && (candidate.WorkingDir != a.WorkingDir || !reflect.DeepEqual(candidate.ComposeFiles, a.ComposeFiles)) {
++					t.Fatal("effective destination")
++				}
++				if mode == "current-denied" || mode == "candidate-denied" && n == 2 {
++					return errSyncthingPolicy
++				}
++				return nil
++			}
++			d.parse = func(_ []byte, skipI, skipV bool) (*ComposeApp, error) {
++				calls = append(calls, "parse")
++				if !skipI || !skipV {
++					t.Fatal("parser flags")
++				}
++				if mode == "parser-failure" {
++					return nil, errors.New("SECRET")
++				}
++				return ordinaryPolicyApp(), nil
++			}
++			err := checkSyncthingReplacement(ctx, "apply", a, nil, d)
++			expected := []string{"check", "parse", "check"}
++			if mode == "ordinary" {
++				if err != nil {
++					t.Fatal(err)
++				}
++			} else {
++				requirePolicyRefusal(t, err)
++			}
++			if mode == "current-denied" {
++				expected = []string{"check"}
++			}
++			if mode == "parser-failure" {
++				expected = []string{"check", "parse"}
++			}
++			if !reflect.DeepEqual(calls, expected) {
++				t.Fatal(calls)
++			}
++		})
++	}
 +}
 +
 +func TestSyncthingPolicyDestinationOrdering(t *testing.T) {
-+ ctx:=context.Background(); p:=filepath.Join(t.TempDir(),"compose.yml");if err:=os.WriteFile(p,[]byte("synthetic fixture"),0600);err!=nil {t.Fatal(err)}
-+ info,_:=os.Lstat(p)
-+ for _,mode:=range []string{"ordinary","initial-denied","existing-protected","missing","stat-failure","load-failure","nonregular"} {t.Run(mode,func(t *testing.T){
-+ calls:=[]string{}; d:=syncthingDependencies{}
-+ d.check=func(_ context.Context,_ string,current,candidate *syncthingIdentity)error{calls=append(calls,"check");if mode=="initial-denied"||current.Name=="local-syncthing" {return errSyncthingPolicy};return nil}
-+ d.lstat=func(string)(os.FileInfo,error){calls=append(calls,"stat");switch mode {case "missing":return nil,os.ErrNotExist;case "stat-failure":return nil,os.ErrPermission;case "nonregular":return os.Stat(filepath.Dir(p))};return info,nil}
-+ d.load=func(string,string)(*ComposeApp,error){calls=append(calls,"load");if mode=="load-failure" {return nil,errors.New("SECRET")};a:=ordinaryPolicyApp();if mode=="existing-protected" {a.Name="local-syncthing"};return a,nil}
-+ err:=checkSyncthingInstall(ctx,ordinaryPolicyApp(),"/synthetic",d)
-+ expected:=[]string{"check","check","stat","load","check"}
-+ switch mode {case "ordinary":if err!=nil {t.Fatal(err)};case "missing":if err!=nil {t.Fatal(err)};expected=[]string{"check","check","stat"};case "initial-denied":requirePolicyRefusal(t,err);expected=[]string{"check"};case "stat-failure","nonregular":requirePolicyRefusal(t,err);expected=[]string{"check","check","stat"};case "load-failure":requirePolicyRefusal(t,err);expected=[]string{"check","check","stat","load"};default:requirePolicyRefusal(t,err)}
-+ if !reflect.DeepEqual(calls,expected){t.Fatal(calls)}
-+ })}
-+ requirePolicyRefusal(t,checkSyncthingInstall(ctx,nil,"/synthetic",syncthingDependencies{}))
++	ctx := context.Background()
++	p := filepath.Join(t.TempDir(), "compose.yml")
++	if err := os.WriteFile(p, []byte("synthetic fixture"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	info, _ := os.Lstat(p)
++	for _, mode := range []string{"ordinary", "initial-denied", "existing-protected", "missing", "stat-failure", "load-failure", "nonregular"} {
++		t.Run(mode, func(t *testing.T) {
++			calls := []string{}
++			d := syncthingDependencies{}
++			d.check = func(_ context.Context, _ string, current, candidate *syncthingIdentity) error {
++				calls = append(calls, "check")
++				if mode == "initial-denied" || current.Name == "local-syncthing" {
++					return errSyncthingPolicy
++				}
++				return nil
++			}
++			d.lstat = func(string) (os.FileInfo, error) {
++				calls = append(calls, "stat")
++				switch mode {
++				case "missing":
++					return nil, os.ErrNotExist
++				case "stat-failure":
++					return nil, os.ErrPermission
++				case "nonregular":
++					return os.Stat(filepath.Dir(p))
++				}
++				return info, nil
++			}
++			d.load = func(string, string) (*ComposeApp, error) {
++				calls = append(calls, "load")
++				if mode == "load-failure" {
++					return nil, errors.New("SECRET")
++				}
++				a := ordinaryPolicyApp()
++				if mode == "existing-protected" {
++					a.Name = "local-syncthing"
++				}
++				return a, nil
++			}
++			err := checkSyncthingInstall(ctx, ordinaryPolicyApp(), "/synthetic", d)
++			expected := []string{"check", "check", "stat", "load", "check"}
++			switch mode {
++			case "ordinary":
++				if err != nil {
++					t.Fatal(err)
++				}
++			case "missing":
++				if err != nil {
++					t.Fatal(err)
++				}
++				expected = []string{"check", "check", "stat"}
++			case "initial-denied":
++				requirePolicyRefusal(t, err)
++				expected = []string{"check"}
++			case "stat-failure", "nonregular":
++				requirePolicyRefusal(t, err)
++				expected = []string{"check", "check", "stat"}
++			case "load-failure":
++				requirePolicyRefusal(t, err)
++				expected = []string{"check", "check", "stat", "load"}
++			default:
++				requirePolicyRefusal(t, err)
++			}
++			if !reflect.DeepEqual(calls, expected) {
++				t.Fatal(calls)
++			}
++		})
++	}
++	requirePolicyRefusal(t, checkSyncthingInstall(ctx, nil, "/synthetic", syncthingDependencies{}))
 +}
 +
 +func TestSyncthingPolicyTransport(t *testing.T) {
-+ ctx:=context.Background(); a:=projectSyncthingIdentity(ordinaryPolicyApp())
-+ for _,mode:=range []string{"allow","malformed","trailing","nonzero","stdout-overflow","stderr-overflow","canceled","open-failure"} {t.Run(mode,func(t *testing.T){
-+ c,cancel:=context.WithCancel(ctx);defer cancel()
-+ open:=func(path string)(*os.File,error){if path!=syncthingPolicyPath {t.Fatal(path)};if mode=="open-failure" {return nil,os.ErrPermission};return os.Open("testdata/syncthing-manager-policy.mjs")}
-+ run:=func(cmd *exec.Cmd)error {
-+ if cmd.Path!="/usr/bin/node"||!reflect.DeepEqual(cmd.Args,[]string{"/usr/bin/node",syncthingPolicyPath,"--check"})||!reflect.DeepEqual(cmd.Env,[]string{"PATH=/usr/bin:/bin","LANG=C.UTF-8"})||cmd.WaitDelay!=250*time.Millisecond {t.Fatal("unsafe command")}
-+ input,err:=io.ReadAll(cmd.Stdin);if err!=nil||!bytes.Contains(input,[]byte(`"operation":"apply"`)){t.Fatal("request")}
-+ if mode=="canceled" {cancel()}
-+ if mode=="nonzero" {return errors.New("SECRET")}
-+ if mode=="stdout-overflow"||mode=="stderr-overflow" {var w io.Writer=cmd.Stdout;if mode=="stderr-overflow" {w=cmd.Stderr};_,err:=io.Copy(w,strings.NewReader(strings.Repeat("x",syncthingPolicyLimit+1)));if err==nil {t.Fatal("uncapped io.Copy")};return err}
-+ output:="{\"version\":1,\"allowed\":true}\n";if mode=="malformed" {output="{}"};if mode=="trailing" {output+="SECRET"};_,err=io.WriteString(cmd.Stdout,output);return err
-+ }
-+ err:=runSyncthingPolicy(c,"apply",a,nil,open,run)
-+ if mode=="allow" {if err!=nil {t.Fatal(err)}} else {requirePolicyRefusal(t,err)}
-+ })}
-+ // Actual canceled CommandContext, not merely a fake runner's error.
-+ policyFixture(t);c,cancel:=context.WithCancel(ctx);cancel();requirePolicyRefusal(t,checkSyncthingPolicy(c,"apply",a,nil))
-+ expired,stop:=context.WithTimeout(ctx,time.Nanosecond);defer stop();<-expired.Done();requirePolicyRefusal(t,checkSyncthingPolicy(expired,"apply",a,nil))
++	ctx := context.Background()
++	a := projectSyncthingIdentity(ordinaryPolicyApp())
++	for _, mode := range []string{"allow", "malformed", "trailing", "nonzero", "stdout-overflow", "stderr-overflow", "canceled", "open-failure"} {
++		t.Run(mode, func(t *testing.T) {
++			c, cancel := context.WithCancel(ctx)
++			defer cancel()
++			open := func(path string) (*os.File, error) {
++				if path != syncthingPolicyPath {
++					t.Fatal(path)
++				}
++				if mode == "open-failure" {
++					return nil, os.ErrPermission
++				}
++				return os.Open("testdata/syncthing-manager-policy.mjs")
++			}
++			run := func(cmd *exec.Cmd) error {
++				if cmd.Path != "/usr/bin/node" || !reflect.DeepEqual(cmd.Args, []string{"/usr/bin/node", syncthingPolicyPath, "--check"}) || !reflect.DeepEqual(cmd.Env, []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8"}) || cmd.WaitDelay != 250*time.Millisecond {
++					t.Fatal("unsafe command")
++				}
++				input, err := io.ReadAll(cmd.Stdin)
++				if err != nil || !bytes.Contains(input, []byte(`"operation":"apply"`)) {
++					t.Fatal("request")
++				}
++				if mode == "canceled" {
++					cancel()
++				}
++				if mode == "nonzero" {
++					return errors.New("SECRET")
++				}
++				if mode == "stdout-overflow" || mode == "stderr-overflow" {
++					var w io.Writer = cmd.Stdout
++					if mode == "stderr-overflow" {
++						w = cmd.Stderr
++					}
++					_, err := io.Copy(w, strings.NewReader(strings.Repeat("x", syncthingPolicyLimit+1)))
++					if err == nil {
++						t.Fatal("uncapped io.Copy")
++					}
++					return err
++				}
++				output := "{\"version\":1,\"allowed\":true}\n"
++				if mode == "malformed" {
++					output = "{}"
++				}
++				if mode == "trailing" {
++					output += "SECRET"
++				}
++				_, err = io.WriteString(cmd.Stdout, output)
++				return err
++			}
++			err := runSyncthingPolicy(c, "apply", a, nil, open, run)
++			if mode == "allow" {
++				if err != nil {
++					t.Fatal(err)
++				}
++			} else {
++				requirePolicyRefusal(t, err)
++			}
++		})
++	}
++	// Actual canceled CommandContext, not merely a fake runner's error.
++	policyFixture(t)
++	c, cancel := context.WithCancel(ctx)
++	cancel()
++	requirePolicyRefusal(t, checkSyncthingPolicy(c, "apply", a, nil))
++	expired, stop := context.WithTimeout(ctx, time.Nanosecond)
++	defer stop()
++	<-expired.Done()
++	requirePolicyRefusal(t, checkSyncthingPolicy(expired, "apply", a, nil))
 +}
 +
 +func TestSyncthingPolicyCustody(t *testing.T) {
-+ policyFixture(t); original,err:=os.ReadFile(syncthingPolicyPath);if err!=nil {t.Fatal(err)}
-+ restore:=func(){os.Remove(syncthingPolicyPath);if err:=os.WriteFile(syncthingPolicyPath,original,0644);err!=nil {t.Fatal(err)}}
-+ for _,mode:=range []string{"missing","writable","symlink","multilink","empty","directory"} {t.Run(mode,func(t *testing.T){
-+ restore();defer restore()
-+ switch mode {
-+ case "missing":os.Remove(syncthingPolicyPath)
-+ case "writable":os.Chmod(syncthingPolicyPath,0666);defer os.Chmod(syncthingPolicyPath,0644)
-+ case "symlink":os.Remove(syncthingPolicyPath);os.Symlink("/SECRET-SENTINEL",syncthingPolicyPath)
-+ case "multilink":link:=filepath.Join(t.TempDir(),"link");if err:=os.Link(syncthingPolicyPath,link);err!=nil {t.Fatal(err)};defer os.Remove(link)
-+ case "empty":os.WriteFile(syncthingPolicyPath,nil,0644)
-+ case "directory":os.Remove(syncthingPolicyPath);os.Mkdir(syncthingPolicyPath,0755)
-+ }
-+ f,err:=openTrustedSyncthingPolicy(syncthingPolicyPath);if f!=nil {f.Close();t.Fatal("unsafe helper accepted")};requirePolicyRefusal(t,err)
-+ })}
++	policyFixture(t)
++	original, err := os.ReadFile(syncthingPolicyPath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	restore := func() {
++		os.Remove(syncthingPolicyPath)
++		if err := os.WriteFile(syncthingPolicyPath, original, 0644); err != nil {
++			t.Fatal(err)
++		}
++	}
++	for _, mode := range []string{"missing", "writable", "symlink", "multilink", "empty", "directory"} {
++		t.Run(mode, func(t *testing.T) {
++			restore()
++			defer restore()
++			switch mode {
++			case "missing":
++				os.Remove(syncthingPolicyPath)
++			case "writable":
++				os.Chmod(syncthingPolicyPath, 0666)
++				defer os.Chmod(syncthingPolicyPath, 0644)
++			case "symlink":
++				os.Remove(syncthingPolicyPath)
++				os.Symlink("/SECRET-SENTINEL", syncthingPolicyPath)
++			case "multilink":
++				link := filepath.Join(t.TempDir(), "link")
++				if err := os.Link(syncthingPolicyPath, link); err != nil {
++					t.Fatal(err)
++				}
++				defer os.Remove(link)
++			case "empty":
++				os.WriteFile(syncthingPolicyPath, nil, 0644)
++			case "directory":
++				os.Remove(syncthingPolicyPath)
++				os.Mkdir(syncthingPolicyPath, 0755)
++			}
++			f, err := openTrustedSyncthingPolicy(syncthingPolicyPath)
++			if f != nil {
++				f.Close()
++				t.Fatal("unsafe helper accepted")
++			}
++			requirePolicyRefusal(t, err)
++		})
++	}
 +}
 --- /dev/null
 +++ b/service/testdata/syncthing-manager-policy.mjs
