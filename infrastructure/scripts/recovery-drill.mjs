@@ -11,7 +11,7 @@ import { createAuth } from '../../apps/api/dist/auth.js';
 import { createApp } from '../../apps/api/dist/app.js';
 import { runBackup } from './postgres-backup.mjs';
 import { runRestore } from './postgres-restore.mjs';
-import { preflight } from './postgres-restore-database.mjs';
+import { preflight, connectTarget } from './postgres-restore-database.mjs';
 import { canonicalCatalog, sha256, tableNames } from './postgres-restore-oracle.mjs';
 
 const root = '/drill';
@@ -349,6 +349,36 @@ async function restore(fixture) {
   const receipt = await runRestore(config, {
     report: (value) => {
       phase = 'restore_' + value;
+    },
+    // Observe the genuine production connection, never an injected/fake DB.
+    connect: async (targetConfig) => {
+      const actual = await connectTarget(targetConfig);
+      return {
+        ...actual,
+        query: async (sql) => {
+          const marker =
+            /restore:(identity|inventory|catalog:(?:tables|columns|constraints|indexes)|count:[a-z_.]+|orphan:[0-7])/.exec(
+              sql,
+            )?.[1];
+          if (marker) phase = 'restore_query_' + marker;
+          const result = await actual.query(sql);
+          if (marker === 'inventory') {
+            const r = result.rows[0];
+            mark('restore_inventory', {
+              relations: r.relations,
+              unsupported: r.unsupported,
+              supportedSchemas: ['["public"]', '["cupmemo","drizzle","public"]'].includes(
+                JSON.stringify(r.schemas),
+              ),
+              onlyPlpgsql: JSON.stringify(r.extensions) === '["plpgsql"]',
+              sequenceCount: r.sequences.length,
+              knownSerialSequence:
+                JSON.stringify(r.sequences) === '[["drizzle","__drizzle_migrations_id_seq",true]]',
+            });
+          }
+          return result;
+        },
+      };
     },
   });
   assert.equal(receipt.status, 'structural_checks_passed');
