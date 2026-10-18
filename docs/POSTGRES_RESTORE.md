@@ -17,6 +17,11 @@ exact-resource owner authorization and independent exact-head review. Preserve
 [storage/privacy gates](PRIVATE_COMPOSE.md) and [backup custody](POSTGRES_BACKUPS.md).
 There is no scheduler, automatic retry, database creation or target reset.
 
+The separately authorized [disposable hosted synthetic drill](RECOVERY_DRILL.md)
+exercises actual PG17 backup/restore and restored application behavior using only
+throwaway generated data. Its exact-head artifacts and independent owner acceptance
+are distinct from the source/fixture tests above; production holds are unchanged.
+
 ## Future explicit interface
 
 Use Node24 and the frozen pnpm workspace. Offline build and source checks are
