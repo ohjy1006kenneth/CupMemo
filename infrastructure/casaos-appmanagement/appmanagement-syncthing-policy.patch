@@ -2571,7 +2571,7 @@
 +
 +import (
 +	"context"
-+	"encoding/json"
++	stdjson "encoding/json"
 +	"io"
 +
 +	"github.com/docker/docker/pkg/jsonmessage"
@@ -2631,7 +2631,7 @@
 +			}
 +			if depth == 0 {
 +				var message jsonmessage.JSONMessage
-+				if json.Unmarshal(frame, &message) != nil || message.Error != nil || message.ErrorMessage != "" || ctx.Err() != nil {
++				if stdjson.Unmarshal(frame, &message) != nil || message.Error != nil || message.ErrorMessage != "" || ctx.Err() != nil {
 +					return errSyncthingPolicy
 +				}
 +				messages++

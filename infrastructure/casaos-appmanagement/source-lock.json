@@ -16,8 +16,8 @@
   ],
   "patch": {
     "path": "appmanagement-syncthing-policy.patch",
-    "bytes": 151605,
-    "sha256": "3e3e2c2e7f77ed968a1fca3ee6444ead504ff184774b7c06d2fad7b37c533da9"
+    "bytes": 151616,
+    "sha256": "f221048d272d2d30ab8e24e7ef8eaad9ddbf9f5e5e4297d251ab0f1a50ec9d20"
   },
   "upstream_files": [
     {
@@ -179,8 +179,8 @@
     },
     {
       "path": "service/recreation_pull.go",
-      "bytes": 2001,
-      "sha256": "dc35b84c5a363ee0aa1657cb90f9452acfd798c910d0c1f1cf008b0a4a777006"
+      "bytes": 2012,
+      "sha256": "54be2e97f833a1e07c38f2ec456ec50e02824e58d0a636652c92eaae60c9af43"
     },
     {
       "path": "service/recreation_pull_test.go",
