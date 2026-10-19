@@ -1,10 +1,13 @@
 # Application image preparation (Refs #32)
 
 This is application-only preparation, **not deployment** and not completion of
-Issue32 (primary `hq/t_7077042b`, original implementer run3040; CI revision parent
-run3048). No Compose, database, migration runner, storage provisioning, service
-restart, registry publication, tunnel or public HTTPS is delivered. Existing
-Issue11 HDD/PGDATA and startup/reboot/restart gates remain unchanged.
+Issue32 (original image preparation `hq/t_7077042b`, run3040/parent3048).
+Issue11's image-transfer continuation is `hq/t_9cbb487a`, original coder2817.
+No database, automatic migration, storage provisioning, service restart, registry
+publication or public HTTPS is delivered here. Private stock-CasaOS first startup
+and HDD provisioning are owner-authorized after safety/review/rollback gates;
+this image artifact is not activation or whole-outcome acceptance. Public deployment
+remains held. The later sections retain historical preparation/failure evidence.
 
 ## Identity and inputs
 
@@ -221,7 +224,7 @@ The inline workflow is the executable acceptance procedure. It:
    deletion, parallel matrix or automatic capacity retry.
 3. Builds exact Dockerfiles with repository-root context and unique task tags
    `cupmemo-issue32-<run_id>-<attempt>-web/api`; all subsequent runs use immutable
-   image IDs. No image transfer to the Pi or push occurs.
+   image config IDs. No automatic Pi transfer/load/start or registry push occurs.
 4. Inventories runtime package names/versions, logical directory sizes, forbidden
    context/build/source/test inputs and retained compiler/test tooling. Symlinks
    are not followed for logical byte totals; actual image-layer measurements are
@@ -279,10 +282,11 @@ bytes). CI records actual Docker image `Size`, target bytes and target compariso
 It also streams `docker image save` through an in-memory tar reader to measure
 uncompressed layer tar lengths, records each content-addressed diffID/size, and
 computes shared layers and the combined union **without double-counting** common
-layers. The streamed archive is not retained or uploaded; no second on-disk image
-copy is created. Layer archive totals exclude image metadata and tar padding
+layers. These per-image measurement streams are discarded. After every audit,
+smoke and size check succeeds, a separate bounded combined export is retained as
+described below. Layer archive totals exclude image metadata and tar padding
 outside the individual layers; they are not a claim of exact storage-driver disk
-allocation. Compressed registry/transfer size is explicitly unknown, not guessed.
+allocation. The new receipt measures compressed transfer bytes; registry size is unknown.
 Image size, logical directory bytes, layer bytes and runtime RAM are distinct.
 
 A size-target or runtime-exclusion miss is recorded and fails the job after
@@ -304,6 +308,111 @@ existing services. Future same-card Compose must encode evidence-backed limits
 and validate actual Pi coexistence before launch. No image/efficiency PASS is
 claimed by this document or static checks.
 
+## Audited application-image transfer (Refs #11)
+
+The existing serial native ARM64 job now exports both successfully audited images
+by their exact config IDs, without a second build. Only after all audits, smokes,
+size checks, archive validation and exact-owned container cleanup succeed does it
+upload `cupmemo-application-images-arm64-<run_id>-<attempt>`. The artifact contains
+exactly `application-images.tar.gz` and `receipt.json`, separate from failure
+evidence. It uses the same pinned upload action, compression-level0 (already
+gzip level1), and14-day retention. No registry, new secret/permission, runner,
+runtime dependency or local Pi build is required.
+
+`scripts/application-image-transfer.py` uses only Python's standard library.
+The export requires3GiB free disk, limits each native/final compressed file to1GiB
+(at most2GiB during serialization, only the final file is retained),
+bounds the save producer to180seconds and the whole export/validation to240seconds.
+Validation streams without extraction, limits expanded archive/layer bytes to2GiB,
+members to256 and individual JSON to4MiB; it refuses duplicate/nonregular/unsafe
+paths, undeclared members and mismatched config bytes/platform/runtime Config or
+ordered uncompressed RootFS diff_ids. Shared layers may be referenced by both
+images and are stored once. Docker OCI metadata is admitted only
+as a hashed/size-checked graph describing those same two images; no
+unrelated images/blobs are allowed. Moby28 classic save by two untagged config IDs
+indexes only its first image, but emits both OCI manifest roots. The validator
+binds both roots to the authoritative two-image Docker-save declaration
+and exact config/layer hashes. Because containerd prefers the OCI index over
+Docker's manifest.json, export completes **only index.json** with the missing
+already-validated root descriptor. Otherwise Docker29 could silently load only one
+image. Every other member's exact bytes/hash/size must remain unchanged; both
+the native archive hash and correction result are recorded in original evidence.
+Final validation requires the OCI index to include both images; incomplete indexes
+are never accepted for owner retrieval. Moby28 also emits legacy V1 per-layer JSON blobs. Their exact hashes/sizes
+must match declarations captured from the preceding single-image saves of the
+same audited immutable IDs (`SaveMetadata`); legacy-shaped JSON alone is not
+admission. Image config/layer bytes are never rewritten. Docker inspect can expand omitted legacy Config zero fields; only the
+explicit known absent zero defaults compare equivalently, never missing nonzero
+runtime settings. Config byte identity remains exact. The version1 receipt binds checked-out commit,
+tree, run/attempt, linux/arm64, each tested config ID/runtime Config/RootFS,
+ordered config/layer members with hashes/sizes, all archive members and exact
+compressed archive SHA256/bytes. The receipt is an integrity record, **not a
+signature or independent approval**.
+
+Owner retrieval after exact-candidate independent review:
+
+1. Use `gh run view RUN_ID --repo ohjy1006kenneth/CupMemo` and the Actions artifact
+   API to verify repository/workflow, successful job, run/attempt, artifact ID,
+   server digest and unexpired identity. PR CI normally builds a test merge
+   commit: reconcile its full tree with the reviewed branch, never relabel its SHA.
+   Download the named image artifact into a fresh task-owned directory with
+   `gh run download RUN_ID --repo ohjy1006kenneth/CupMemo --name ARTIFACT_NAME --dir DEST`.
+   Confirm the downloaded set is exactly the archive and receipt. Authenticate
+   the artifact ZIP digest if downloading raw via the API, and compare the receipt
+   to `application-transfer.json` in the independently retrieved evidence artifact.
+2. From the exact reviewed checkout, run:
+
+   ```sh
+   timeout 240 python3 scripts/application-image-transfer.py DEST/application-images.tar.gz DEST/receipt.json
+   ```
+
+   This rechecks the entire archive and receipt, but grants no activation authority.
+   Match receipt source/run/tree and per-service config/layer identities to the
+   accepted CI evidence before loading anything. A checksum embedded alongside
+   untrusted bytes alone is not provenance. Reject rather than repair corruption.
+
+3. Only owner may then load the verified archive with
+   `docker image load --input DEST/application-images.tar.gz`. Resolve each exact
+   receipt config ID using filtered image inspection and compare linux/arm64,
+   Config and ordered RootFS. Docker29 may return a **manifest ID** in `Id`, not
+   the receipt's config ID; reconcile its config descriptor through a bounded
+   save/manifest inspection (config bytes hash must equal receipt config ID).
+   Never assume config and manifest IDs are interchangeable or select a mutable
+   tag. Use the reconciled immutable local manifest identity in stock-app inputs.
+   No specialist load/start or production configuration is part of this pass.
+
+This artifact proves packaging/transfer integrity, not private installation,
+database/auth/persistence, actual Pi coexistence, rendered app or phone acceptance.
+Rollback before activation is simply to decline loading; any later removal must
+target exact owned unused IDs, never prune shared Docker state or touch PGDATA.
+
+### Existing compiled migration and status commands
+
+The API image already contains `@cupmemo/database/dist/migrate.js`, `dist/status.js`
+and committed `drizzle` SQL/journal resources. CI resolves their real package path,
+reads the actual Drizzle migration files, exercises status with an inert query and
+executes both real CLI entrypoints with missing configuration (sanitized exit1).
+It never connects to a DB, runs a production migration or changes image behavior.
+
+For an **owner-only**, separately gated operation inside the accepted API runtime,
+the package symlink is `/app/node_modules/@cupmemo/database`. The exact ordinary
+commands are:
+
+```sh
+cd /app/node_modules/@cupmemo/database
+node dist/migrate.js
+node dist/status.js
+```
+
+Use that package working directory: `migrate.js` resolves `./drizzle` relative to
+cwd; running it from `/app` is incorrect. Status resolves resources relative to
+its own module. Supply approved runtime-only `CUPMEMO_DB_ENV=production` and
+`CUPMEMO_DATABASE_URL_PRODUCTION` through existing private owner custody, never
+command arguments, logs, build layers or these examples. Do not use the source
+pnpm/tsx scripts in the runtime image. No automatic migration/startup hook, new
+schema, runtime tool or DB lifecycle owner is introduced. Actual schema execution
+remains after HDD/identity/credential/rollback checks, not artifact acceptance.
+
 ## Evidence, acceptance and rollback
 
 The workflow always attempts upload of original sanitized evidence as
@@ -313,7 +422,9 @@ original command/output logs with argv/exit/timing, orchestrator output, source
 and base/image identities, effective container inspections, inventories, image
 and layer measurements, readiness/load/termination records and dispositions when
 reached. It uploads only its task evidence directory outside the checkout: no
-raw filesystem/image archives, environment dumps, credentials or private configs.
+raw host filesystem archives, environment dumps, credentials or private configs.
+Runtime image archives are now a separate success-only artifact, never mixed into
+failure evidence.
 No auth/DB values are passed to the builds or smokes. Partial artifacts on failure
 are expected and must not be described as complete acceptance.
 
