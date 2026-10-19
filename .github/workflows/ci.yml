@@ -61,6 +61,7 @@ jobs:
         shell: bash
         env:
           EVIDENCE: ${{ runner.temp }}/issue32-evidence
+          APPLICATION_IMAGES: ${{ runner.temp }}/cupmemo-application-images
         run: |
           set -euo pipefail
           mkdir -p "$EVIDENCE"
@@ -68,6 +69,7 @@ jobs:
           import gzip
           import hashlib
           import io
+
           import json
           import os
           import platform
@@ -170,7 +172,8 @@ jobs:
               record(kind + '-admission', {'available_memory_bytes': available, 'free_disk_bytes': disks})
               assert available >= 4 * 1024**3 and min(disks.values()) >= 5 * 1024**3, 'capacity refusal; no cleanup/prune authorized'
 
-          # No source contents, environment dumps, credentials or filesystem archives are uploaded.
+          # Evidence excludes source contents, environment dumps and credentials.
+          # A separate success-only artifact retains only the audited runtime images.
           audit = r'''
           import assert from 'node:assert/strict';
           import {readdirSync,lstatSync,readFileSync,existsSync} from 'node:fs';
@@ -310,6 +313,24 @@ jobs:
           }
           const databaseRequire=createRequire(realpathSync('node_modules/@cupmemo/database/package.json'));
           await import(pathToFileURL(databaseRequire.resolve('pg')).href);
+          const databaseRoot=dirname(realpathSync('node_modules/@cupmemo/database/package.json'));
+          const migrationResources=['dist/migrate.js','dist/status.js','drizzle/meta/_journal.json'];
+          for(const file of migrationResources) assert.ok(existsSync(join(databaseRoot,file)),file);
+          const journal=JSON.parse(readFileSync(join(databaseRoot,'drizzle/meta/_journal.json'),'utf8'));
+          assert.ok(journal.entries.length>0);
+          const {readMigrationFiles}=await import(pathToFileURL(databaseRequire.resolve('drizzle-orm/migrator')).href);
+          const migrations=readMigrationFiles({migrationsFolder:join(databaseRoot,'drizzle')});
+          assert.equal(migrations.length,journal.entries.length);
+          const {inspectMigrationStatus}=await import(pathToFileURL(join(databaseRoot,'dist/status.js')).href);
+          const inertStatus=await inspectMigrationStatus(async()=>({rows:[{table_name:null}]}));
+          assert.deepEqual(inertStatus,{status:'pending',applied:0,total:migrations.length});
+          // Real CLI config-refusal from the correct package cwd: no DB/network/config supplied.
+          const {spawnSync}=await import('node:child_process');
+          for(const [file,message] of [['migrate','Database configuration or migration failed. Check non-secret configuration and database availability.'],['status','Database status failed. Check non-secret configuration and database availability.']]) {
+            const refused=spawnSync(process.execPath,['dist/'+file+'.js'],{cwd:databaseRoot,encoding:'utf8',timeout:5000});
+            assert.equal(refused.status,1); assert.equal(refused.stdout,''); assert.equal(refused.stderr.trim(),message);
+          }
+
           await import('./dist/app.js'); await import('./dist/auth.js');
           await import('@cupmemo/database');
           // BEGIN retained API behavior
@@ -348,7 +369,7 @@ jobs:
             join(dirname(pinoRequire.resolve('thread-stream')),'lib/worker.js'),pinoRequire.resolve('sonic-boom')];
           for(const file of resources) assert.ok(existsSync(file),'retained driver/worker resource missing: '+file);
           // END retained API behavior
-          console.log(JSON.stringify({loaded,compiled:['app','auth','database'],database_connected:false,behavior,resources,pg_driver:databaseRequire.resolve('pg')}));
+          console.log(JSON.stringify({loaded,compiled:['app','auth','database'],database_connected:false,behavior,resources,pg_driver:databaseRequire.resolve('pg'),migration_packaging:{resources:migrationResources,count:migrations.length,cwd:databaseRoot,config_refusal:true,inert_status:inertStatus}}));
           await new Promise(resolve=>setTimeout(resolve,3000));
           '''
 
@@ -430,6 +451,7 @@ jobs:
                   with (evidence / (kind + '-save-stderr.log')).open('w') as err:
                       process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=err)
                       exported_layers = {}
+                      exported_members = {}
                       manifest = None
                       with tarfile.open(fileobj=process.stdout, mode='r|') as archive:
                           for member in archive:
@@ -447,9 +469,13 @@ jobs:
                                       digest.update(chunk)
                                       size += len(chunk)
                                   exported_layers['sha256:' + digest.hexdigest()] = size
+                                  exported_members[member.name] = digest.hexdigest()
                       code = process.wait(timeout=10)
                   record(kind + '-save', {'argv': command, 'exit': code})
                   assert code == 0 and manifest and len(manifest) == 1
+                  # Docker29 may inspect as a manifest ID; config identity comes
+                  # from the exact saved config bytes, not an assumption about Id.
+                  info['ConfigId'] = 'sha256:' + exported_members[manifest[0]['Config']]
                   assert len(manifest[0]['Layers']) == len(info['RootFS']['Layers'])
                   measured = {digest: exported_layers[digest] for digest in info['RootFS']['Layers']}
                   for digest, size in measured.items():
@@ -534,6 +560,24 @@ jobs:
                      'note': 'unique layer archive bytes exclude image metadata; not registry transfer bytes or RAM'})
               record('disposition', {'violations': violations, 'positive_API_DB_and_full_Pi_coexistence': 'UNVERIFIED'})
               assert not violations, '; '.join(violations)
+              # Reuse the exact tested config IDs. No tags, rebuild, registry or host data.
+              destination = Path(os.environ['APPLICATION_IMAGES'])
+              assert not destination.exists(), 'refuse pre-existing transfer output'
+              assert shutil.disk_usage(destination.parent).free >= 3 * 1024**3, 'transfer disk admission'
+              destination.mkdir()
+              transfer_input = evidence / 'application-transfer-input.json'
+              transfer_input.write_text(json.dumps({'images': {k: {field: info[field] for field in
+                  ('Id', 'ConfigId', 'Os', 'Architecture', 'Config', 'RootFS')} for k, info in images.items()},
+                  'identity': {'commit': run(['git', 'rev-parse', 'HEAD']),
+                               'tree': run(['git', 'rev-parse', 'HEAD^{tree}']),
+                               'run_id': os.environ['GITHUB_RUN_ID'], 'attempt': os.environ['GITHUB_RUN_ATTEMPT']}}))
+              # The helper exports under an outer deadline and file-size bound, validates
+              # the real compressed archive, and writes a receipt only after success.
+              run(['timeout', '240', 'python3', 'scripts/application-image-transfer.py',
+                   str(destination / 'application-images.tar.gz'), str(destination / 'receipt.json'),
+                   '--export-input', str(transfer_input)], timeout=250)
+              receipt = json.loads((destination / 'receipt.json').read_text())
+              record('application-transfer', receipt)
           finally:
               # Reconcile exact owned containers even on assertion failure; never prune caches/images/volumes.
               cleanup_errors = []
@@ -551,6 +595,17 @@ jobs:
               record('cleanup', {'errors': cleanup_errors, 'exact_owned_containers': owned})
               assert not cleanup_errors, 'owned container cleanup incomplete'
           PY
+      - name: Upload validated application images only after all audits and cleanup pass
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: cupmemo-application-images-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cupmemo-application-images/
+          retention-days: 14
+          if-no-files-found: error
+          include-hidden-files: false
+          overwrite: false
+          compression-level: 0
+          archive: true
       - name: Upload original sanitized image evidence even on failure
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

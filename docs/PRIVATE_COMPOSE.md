@@ -10,6 +10,15 @@ development configuration remain unchanged. Issues11/32/42 remain open.
 
 ## Stock CasaOS app: selected ownership, not a live installation
 
+Owner activation first needs real audited web/API image bytes, not only the
+historical evidence artifact. The existing native ARM64 CI now provides a
+success-only two-image Docker-save archive and versioned integrity receipt; see
+[application-image transfer and compiled migration commands](CONTAINER_IMAGES.md#audited-application-image-transfer-refs-11).
+Retrieve/authenticate the exact accepted run/tree, validate before owner-only
+load and reconcile config IDs versus local Docker29 manifest IDs. Accepted image
+preparation is not a live stock app or database. No specialist load/start, new
+automatic migrations, topology/security change or public deployment is authorized.
+
 See [ADR0001](DECISIONS/0001-stock-casaos-app.md) for the user-directed reversal,
 alternatives and migration impact. Primary `hq/t_9cbb487a`, original coder2817.
 
