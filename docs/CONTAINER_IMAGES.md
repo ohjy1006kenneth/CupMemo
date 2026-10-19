@@ -320,7 +320,8 @@ gzip level1), and14-day retention. No registry, new secret/permission, runner,
 runtime dependency or local Pi build is required.
 
 `scripts/application-image-transfer.py` uses only Python's standard library.
-The export requires3GiB free disk, limits the compressed output file to1GiB,
+The export requires3GiB free disk, limits each native/final compressed file to1GiB
+(at most2GiB during serialization, only the final file is retained),
 bounds the save producer to180seconds and the whole export/validation to240seconds.
 Validation streams without extraction, limits expanded archive/layer bytes to2GiB,
 members to256 and individual JSON to4MiB; it refuses duplicate/nonregular/unsafe
@@ -330,12 +331,17 @@ images and are stored once. Docker OCI metadata is admitted only
 as a hashed/size-checked graph describing those same two images; no
 unrelated images/blobs are allowed. Moby28 classic save by two untagged config IDs
 indexes only its first image, but emits both OCI manifest roots. The validator
-also binds the other root to the authoritative two-image Docker-save declaration
-and exact config/layer hashes; it neither repairs bytes nor accepts arbitrary
-orphans. Moby28 also emits legacy V1 per-layer JSON blobs. Their exact hashes/sizes
+binds both roots to the authoritative two-image Docker-save declaration
+and exact config/layer hashes. Because containerd prefers the OCI index over
+Docker's manifest.json, export completes **only index.json** with the missing
+already-validated root descriptor. Otherwise Docker29 could silently load only one
+image. Every other member's exact bytes/hash/size must remain unchanged; both
+the native archive hash and correction result are recorded in original evidence.
+Final validation requires the OCI index to include both images; incomplete indexes
+are never accepted for owner retrieval. Moby28 also emits legacy V1 per-layer JSON blobs. Their exact hashes/sizes
 must match declarations captured from the preceding single-image saves of the
 same audited immutable IDs (`SaveMetadata`); legacy-shaped JSON alone is not
-admission. No archive/image bytes are rewritten. Docker inspect can expand omitted legacy Config zero fields; only the
+admission. Image config/layer bytes are never rewritten. Docker inspect can expand omitted legacy Config zero fields; only the
 explicit known absent zero defaults compare equivalently, never missing nonzero
 runtime settings. Config byte identity remains exact. The version1 receipt binds checked-out commit,
 tree, run/attempt, linux/arm64, each tested config ID/runtime Config/RootFS,

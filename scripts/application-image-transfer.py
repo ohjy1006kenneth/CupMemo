@@ -5,6 +5,7 @@ artifact/run/source identity independently before using the offline verify CLI.
 Only Python's standard library is required. Invoke under timeout (CI: 240s).
 """
 import argparse
+import copy
 import gzip
 import hashlib
 import io
@@ -120,7 +121,7 @@ def scan(path, max_compressed):
     return members, small
 
 
-def build_receipt(path, images, identity, max_compressed=MAX_COMPRESSED):
+def build_receipt(path, images, identity, max_compressed=MAX_COMPRESSED, allow_incomplete_index=False):
     path = Path(path)
     require(set(images) == {'web', 'api'}, 'exactly web/api required')
     require(set(identity) == {'commit', 'tree', 'run_id', 'attempt'}, 'source identity fields')
@@ -216,6 +217,7 @@ def build_receipt(path, images, identity, max_compressed=MAX_COMPRESSED):
         require(index['schemaVersion'] == 2 and index['manifests'], 'OCI index schema')
         for descriptor in index['manifests']:
             visit(descriptor)
+        indexed_images = set(oci_images)
         # Moby28 classic save by two config IDs emits both OCI manifest blobs but
         # indexes only the first untagged image (save.go's global len check).
         # The Docker-save manifest still declares BOTH. Admit the other root only
@@ -236,6 +238,8 @@ def build_receipt(path, images, identity, max_compressed=MAX_COMPRESSED):
                         'undeclared OCI blob')
                 visit({'digest': 'sha256:' + member['sha256'], 'size': member['bytes'], 'mediaType': value['mediaType']})
         require(oci_images == set(known), 'OCI image set mismatch')
+        require(allow_incomplete_index or indexed_images == set(known),
+                'OCI index must include both images for containerd import')
         require(all(name in allowed for info in images.values() for name in info['SaveMetadata']),
                 'missing declared legacy save metadata')
     for image in results.values():
@@ -265,6 +269,54 @@ def verify_receipt(path, receipt):
     require(build_receipt(path, images, receipt['source']) == receipt, 'receipt identity mismatch')
 
 
+def complete_native_index(native, path, images):
+    """Complete Moby28's incomplete untagged OCI index, never image payload bytes.
+
+    containerd prefers OCI over manifest.json, so accepting an incomplete index
+    would silently load only one image on Docker29. All roots/metadata were already
+    validated against the exact audited saves before this serialization step.
+    """
+    members, small = scan(native, MAX_COMPRESSED)
+    if 'index.json' not in small:
+        native.rename(path)
+        return False
+    index = json.loads(small['index.json'])
+    known = {i['ConfigId'] for i in images.values()}
+    roots = {}
+    for name, data in small.items():
+        if not name.startswith('blobs/sha256/'):
+            continue
+        try:
+            value = json.loads(data)
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if isinstance(value, dict) and isinstance(value.get('config'), dict) and value['config'].get('digest') in known:
+            roots[value['config']['digest']] = {'mediaType': value['mediaType'],
+                'digest': 'sha256:' + members[name]['sha256'], 'size': members[name]['bytes']}
+    # Modern complete/nested indexes are already validated; only the exact
+    # Moby28 direct-root incomplete shape requires serialization correction.
+    root_digests = {d['digest'] for d in roots.values()}
+    existing = {d['digest'] for d in index['manifests']}
+    if root_digests <= existing or not existing <= root_digests:
+        native.rename(path)
+        return False
+    require(set(roots) == known, 'cannot complete index without both validated roots')
+    index['manifests'].extend(roots[k] for k in sorted(known) if roots[k]['digest'] not in existing)
+    replacement = json.dumps(index, separators=(',', ':')).encode()
+    with tarfile.open(native, 'r|gz') as source, path.open('xb') as output:
+        with gzip.GzipFile(fileobj=output, mode='wb', compresslevel=1, mtime=0) as zipped:
+            with tarfile.open(fileobj=zipped, mode='w|') as target:
+                for member in source:
+                    if member.name == 'index.json':
+                        member = copy.copy(member)
+                        member.size = len(replacement)
+                        target.addfile(member, io.BytesIO(replacement))
+                    else:
+                        target.addfile(member, source.extractfile(member) if member.isfile() else None)
+    native.unlink()
+    return True
+
+
 def export_images(path, receipt_path, transfer_input):
     require(not path.exists() and not receipt_path.exists(), 'refuse existing output')
     images, identity = transfer_input['images'], transfer_input['identity']
@@ -277,12 +329,21 @@ def export_images(path, receipt_path, transfer_input):
     producer = subprocess.Popen(['timeout', '180', 'docker', 'image', 'save',
                                  images['web']['Id'], images['api']['Id']], stdout=subprocess.PIPE)
     assert producer.stdout is not None
+    native = path.with_suffix(path.suffix + '.native')
     try:
-        with path.open('xb') as output:
+        with native.open('xb') as output:
             with gzip.GzipFile(fileobj=output, mode='wb', compresslevel=1, mtime=0) as compressed:
                 shutil.copyfileobj(producer.stdout, compressed, length=1024 * 1024)
         require(producer.wait(timeout=10) == 0, 'docker save failed')
+        original = build_receipt(native, images, identity, allow_incomplete_index=True)
+        corrected = complete_native_index(native, path, images)
         receipt = build_receipt(path, images, identity)
+        require({k: v for k, v in original['members'].items() if k != 'index.json'} ==
+                {k: v for k, v in receipt['members'].items() if k != 'index.json'},
+                'serialization changed non-index member bytes')
+        print(json.dumps({'native_archive': original['archive'], 'completed_oci_index': corrected,
+                          'image_config_layer_bytes_unchanged': original['images'] == receipt['images']}))
+        require(original['images'] == receipt['images'], 'serialization changed image payload identity')
         with receipt_path.open('x') as output:
             json.dump(receipt, output, indent=2)
             output.write('\n')

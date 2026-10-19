@@ -106,7 +106,7 @@ class TransferTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         transfer.export_images(output, receipt_path, {'images': self.images, 'identity': self.identity})
                     self.assertFalse(receipt_path.exists())
-                    output.unlink()
+                    output.with_suffix(output.suffix + '.native').unlink()
                 else:
                     transfer.export_images(output, receipt_path, {'images': self.images, 'identity': self.identity})
                     transfer.verify_receipt(output, json.loads(receipt_path.read_text()))
@@ -228,7 +228,14 @@ class TransferTests(unittest.TestCase):
         # while both hashed OCI roots and Docker-save images are present.
         metadata['index.json'] = encoded({'schemaVersion': 2, 'manifests': descriptors[:1]})
         self.write(metadata)
-        self.receipt()
+        with self.assertRaisesRegex(ValueError, 'OCI index must include both'):
+            self.receipt()
+        transfer.build_receipt(self.path, self.images, self.identity, allow_incomplete_index=True)
+        portable = self.path.parent / 'portable.tar.gz'
+        self.assertTrue(transfer.complete_native_index(self.path, portable, self.images))
+        receipt = transfer.build_receipt(portable, self.images, self.identity)
+        transfer.verify_receipt(portable, receipt)
+        self.assertEqual(receipt['images']['web']['ConfigId'], self.images['web']['ConfigId'])
         metadata['index.json'] = encoded({'schemaVersion': 2, 'manifests': descriptors})
         self.write(metadata)
         self.images['web']['Id'], self.images['api']['Id'] = self.images['api']['Id'], self.images['web']['Id']
