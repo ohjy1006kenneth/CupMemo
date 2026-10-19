@@ -332,7 +332,10 @@ unrelated images/blobs are allowed. Moby28 classic save by two untagged config I
 indexes only its first image, but emits both OCI manifest roots. The validator
 also binds the other root to the authoritative two-image Docker-save declaration
 and exact config/layer hashes; it neither repairs bytes nor accepts arbitrary
-orphans. Docker inspect can expand omitted legacy Config zero fields; only the
+orphans. Moby28 also emits legacy V1 per-layer JSON blobs. Their exact hashes/sizes
+must match declarations captured from the preceding single-image saves of the
+same audited immutable IDs (`SaveMetadata`); legacy-shaped JSON alone is not
+admission. No archive/image bytes are rewritten. Docker inspect can expand omitted legacy Config zero fields; only the
 explicit known absent zero defaults compare equivalently, never missing nonzero
 runtime settings. Config byte identity remains exact. The version1 receipt binds checked-out commit,
 tree, run/attempt, linux/arm64, each tested config ID/runtime Config/RootFS,

@@ -452,6 +452,7 @@ jobs:
                       process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=err)
                       exported_layers = {}
                       exported_members = {}
+                      save_metadata = {}
                       manifest = None
                       with tarfile.open(fileobj=process.stdout, mode='r|') as archive:
                           for member in archive:
@@ -464,18 +465,34 @@ jobs:
                                   # Docker stores may export plain or gzip layer blobs. Verify each uncompressed diffID.
                                   buffered = io.BufferedReader(stream)
                                   payload = gzip.GzipFile(fileobj=buffered) if buffered.peek(2)[:2] == b'\x1f\x8b' else buffered
-                                  digest, size = hashlib.sha256(), 0
+                                  digest, size, small = hashlib.sha256(), 0, bytearray()
                                   while chunk := payload.read(1024 * 1024):
                                       digest.update(chunk)
                                       size += len(chunk)
+                                      if small is not None and member.size <= 4 * 1024**2 and size <= 4 * 1024**2:
+                                          small.extend(chunk)
+                                      else:
+                                          small = None
                                   exported_layers['sha256:' + digest.hexdigest()] = size
                                   exported_members[member.name] = digest.hexdigest()
+                                  # Moby28's canonical save emits legacy V1 per-layer
+                                  # JSON blobs as well as modern config/layers/OCI roots.
+                                  # Declare their exact bytes from this single-image
+                                  # immutable export, never arbitrary filesystem files.
+                                  if small and member.name.startswith('blobs/sha256/'):
+                                      try:
+                                          value = json.loads(small)
+                                      except (ValueError, UnicodeDecodeError):
+                                          value = None
+                                      if isinstance(value, dict) and re.fullmatch(r'[0-9a-f]{64}', value.get('id', '')) and value.get('os') == 'linux':
+                                          save_metadata[member.name] = {'sha256': digest.hexdigest(), 'bytes': size}
                       code = process.wait(timeout=10)
                   record(kind + '-save', {'argv': command, 'exit': code})
                   assert code == 0 and manifest and len(manifest) == 1
                   # Docker29 may inspect as a manifest ID; config identity comes
                   # from the exact saved config bytes, not an assumption about Id.
                   info['ConfigId'] = 'sha256:' + exported_members[manifest[0]['Config']]
+                  info['SaveMetadata'] = save_metadata
                   assert len(manifest[0]['Layers']) == len(info['RootFS']['Layers'])
                   measured = {digest: exported_layers[digest] for digest in info['RootFS']['Layers']}
                   for digest, size in measured.items():
@@ -567,7 +584,7 @@ jobs:
               destination.mkdir()
               transfer_input = evidence / 'application-transfer-input.json'
               transfer_input.write_text(json.dumps({'images': {k: {field: info[field] for field in
-                  ('Id', 'ConfigId', 'Os', 'Architecture', 'Config', 'RootFS')} for k, info in images.items()},
+                  ('Id', 'ConfigId', 'Os', 'Architecture', 'Config', 'RootFS', 'SaveMetadata')} for k, info in images.items()},
                   'identity': {'commit': run(['git', 'rev-parse', 'HEAD']),
                                'tree': run(['git', 'rev-parse', 'HEAD^{tree}']),
                                'run_id': os.environ['GITHUB_RUN_ID'], 'attempt': os.environ['GITHUB_RUN_ATTEMPT']}}))

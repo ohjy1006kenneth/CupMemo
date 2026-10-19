@@ -46,7 +46,7 @@ class TransferTests(unittest.TestCase):
             raw = encoded(config)
             config_name = 'blobs/sha256/' + digest(raw)[7:]
             self.members[config_name] = raw
-            self.images[kind] = {'Id': digest(raw), 'ConfigId': digest(raw), 'Os': 'linux', 'Architecture': 'arm64',
+            self.images[kind] = {'Id': digest(raw), 'ConfigId': digest(raw), 'Os': 'linux', 'Architecture': 'arm64', 'SaveMetadata': {},
                                  'Config': config['config'], 'RootFS': {'Type': 'layers', 'Layers': diffs}}
             self.manifest.append({'Config': config_name, 'RepoTags': None,
                                   'Layers': ['blobs/sha256/' + digest(shared)[7:], layer_name]})
@@ -212,6 +212,18 @@ class TransferTests(unittest.TestCase):
                     'index.json': encoded({'schemaVersion': 2, 'manifests': descriptors})}
         self.write(metadata)
         self.receipt()
+        legacy = encoded({'id': 'c' * 64, 'created': '1970-01-01T00:00:00Z', 'os': 'linux'})
+        legacy_name = 'blobs/sha256/' + digest(legacy)[7:]
+        self.members[legacy_name] = legacy
+        self.write(metadata)
+        with self.assertRaises(ValueError):
+            self.receipt()  # Not an arbitrary allowlist of legacy-shaped JSON.
+        self.images['web']['SaveMetadata'][legacy_name] = {'sha256': digest(legacy)[7:], 'bytes': len(legacy)}
+        self.receipt()
+        self.images['web']['SaveMetadata'][legacy_name]['bytes'] += 1
+        with self.assertRaises(ValueError):
+            self.receipt()
+        self.images['web']['SaveMetadata'][legacy_name]['bytes'] -= 1
         # Moby28.0.4 indexes only the first of two untagged selected IDs,
         # while both hashed OCI roots and Docker-save images are present.
         metadata['index.json'] = encoded({'schemaVersion': 2, 'manifests': descriptors[:1]})

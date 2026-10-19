@@ -169,6 +169,7 @@ def build_receipt(path, images, identity, max_compressed=MAX_COMPRESSED):
         allowed.add(config_name)
         results[kind] = {'Id': info['Id'], 'ConfigId': config_id, 'Os': 'linux', 'Architecture': 'arm64',
                          'Config': info['Config'], 'RootFS': info['RootFS'],
+                         'SaveMetadata': info['SaveMetadata'],
                          'config_member': {'member': config_name, **members[config_name]},
                          'layers': layer_records}
     require(set(results) == {'web', 'api'}, 'missing image')
@@ -222,11 +223,21 @@ def build_receipt(path, images, identity, max_compressed=MAX_COMPRESSED):
         for name, member in members.items():
             if not member.get('directory') and name.startswith('blobs/sha256/') and name not in allowed:
                 value = document(name)
+                declarations = [i['SaveMetadata'][name] for i in images.values() if name in i['SaveMetadata']]
+                if declarations:
+                    require(isinstance(value, dict) and re.fullmatch(HEX, value.get('id', ''))
+                            and value.get('os') == 'linux', 'invalid legacy save metadata')
+                    require(all(d == {'sha256': member['sha256'], 'bytes': member['bytes']} for d in declarations),
+                            'legacy save metadata differs from audited single-image export')
+                    allowed.add(name)
+                    continue
                 require(isinstance(value, dict) and value.get('mediaType') in
                         ('application/vnd.oci.image.manifest.v1+json', 'application/vnd.docker.distribution.manifest.v2+json'),
                         'undeclared OCI blob')
                 visit({'digest': 'sha256:' + member['sha256'], 'size': member['bytes'], 'mediaType': value['mediaType']})
         require(oci_images == set(known), 'OCI image set mismatch')
+        require(all(name in allowed for info in images.values() for name in info['SaveMetadata']),
+                'missing declared legacy save metadata')
     for image in results.values():
         if image['Id'] != image['ConfigId']:
             require('index.json' in members and seen.get('blobs/sha256/' + image['Id'][7:]) == {image['ConfigId']},
@@ -249,7 +260,7 @@ def verify_receipt(path, receipt):
     require(0 < path.stat().st_size <= MAX_COMPRESSED, 'compressed archive limit')
     require(path.stat().st_size == receipt['archive']['bytes']
             and sha_file(path) == receipt['archive']['sha256'], 'archive checksum/size mismatch')
-    images = {kind: {key: image[key] for key in ('Id', 'ConfigId', 'Os', 'Architecture', 'Config', 'RootFS')}
+    images = {kind: {key: image[key] for key in ('Id', 'ConfigId', 'Os', 'Architecture', 'Config', 'RootFS', 'SaveMetadata')}
               for kind, image in receipt['images'].items()}
     require(build_receipt(path, images, receipt['source']) == receipt, 'receipt identity mismatch')
 
