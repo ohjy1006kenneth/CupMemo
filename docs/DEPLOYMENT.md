@@ -51,6 +51,15 @@ checks; the modern production reference retains raw env_file unchanged. Actual
 install/start/reboot/absent-HDD behavior is **UNVERIFIED**, and live launch stays
 disabled. Importable offline configuration is not an installed or usable app.
 
+The stock app candidate now adds a fourth app-local private TLS service, with
+tailnet-IP-only TCP8445 and supplied external certificates. Its minimal official-base
+Caddy derivative and edge-only private_ingress bridge preserve the existing internal
+web/API/PG networks. TLS has ordinary outbound routing, not zero egress. This is
+source/isolated-fixture evidence only, not live private ingress; public exposure stays
+held. See PRIVATE_COMPOSE.md for exact inputs, image audit, certificate renewal,
+least-privilege controls and owner activation gates. No shared Tailscale/Serve or
+firewall/daemon setting is changed.
+
 Target Docker Compose services:
 
 ```text

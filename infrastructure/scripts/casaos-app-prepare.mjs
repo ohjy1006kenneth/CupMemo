@@ -28,6 +28,13 @@ const keys = [
   'CUPMEMO_DATABASE_URL_PRODUCTION',
   'BETTER_AUTH_SECRET',
   'BETTER_AUTH_URL',
+  'CUPMEMO_TLS_IMAGE',
+  'CUPMEMO_TLS_BIND_IP',
+  'CUPMEMO_TLS_HOSTNAME',
+  'CUPMEMO_TLS_UID',
+  'CUPMEMO_TLS_CONFIG_FILE',
+  'CUPMEMO_TLS_CERT_FILE',
+  'CUPMEMO_TLS_KEY_FILE',
 ];
 const component = '[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*';
 const registry = '(?:[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]+)?/)';
@@ -85,15 +92,38 @@ export function prepareCasaosApp(config, output) {
       )
     )
       throw new Error();
-    if (keys.slice(0, 3).some((key) => !image.test(settings[key]))) throw new Error();
+    if ([...keys.slice(0, 3), 'CUPMEMO_TLS_IMAGE'].some((key) => !image.test(settings[key])))
+      throw new Error();
+    for (const key of ['POSTGRES_DATA_UID', 'CUPMEMO_TLS_UID']) {
+      if (!/^[1-9][0-9]*$/.test(settings[key]) || Number(settings[key]) > 4294967294)
+        throw new Error();
+    }
+    const ip = settings.CUPMEMO_TLS_BIND_IP.split('.');
     if (
-      !/^[1-9][0-9]*$/.test(settings.POSTGRES_DATA_UID) ||
-      Number(settings.POSTGRES_DATA_UID) > 4294967294
+      ip.length !== 4 ||
+      ip.some((part) => !/^(0|[1-9][0-9]{0,2})$/.test(part) || Number(part) > 255) ||
+      ip[0] !== '100' ||
+      Number(ip[1]) < 64 ||
+      Number(ip[1]) > 127
+    )
+      throw new Error();
+    const hostname = settings.CUPMEMO_TLS_HOSTNAME;
+    if (
+      hostname.length > 253 ||
+      !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+ts\.net$/.test(hostname) ||
+      settings.BETTER_AUTH_URL !== `https://${hostname}:8445`
     )
       throw new Error();
     if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(settings.POSTGRES_HDD_UUID))
       throw new Error();
-    for (const key of ['POSTGRES_HDD_MOUNT', 'POSTGRES_DATA_DIR', 'POSTGRES_PASSWORD_FILE']) {
+    for (const key of [
+      'POSTGRES_HDD_MOUNT',
+      'POSTGRES_DATA_DIR',
+      'POSTGRES_PASSWORD_FILE',
+      'CUPMEMO_TLS_CONFIG_FILE',
+      'CUPMEMO_TLS_CERT_FILE',
+      'CUPMEMO_TLS_KEY_FILE',
+    ]) {
       const value = settings[key];
       absolute(value);
       if (value === repository || value.startsWith(`${repository}/`)) throw new Error();

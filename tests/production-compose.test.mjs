@@ -80,6 +80,15 @@ beforeAll(() => {
     BETTER_AUTH_SECRET: 'NONSECRET_OFFLINE_PLACEHOLDER',
     BETTER_AUTH_URL: 'https://offline.invalid',
   };
+  Object.assign(settings, {
+    CUPMEMO_TLS_IMAGE: `caddy:2.11.7-alpine@sha256:${'4'.repeat(64)}`,
+    CUPMEMO_TLS_BIND_IP: '100.64.0.1',
+    CUPMEMO_TLS_HOSTNAME: 'fixture.tailnet.ts.net',
+    CUPMEMO_TLS_UID: '12346',
+    CUPMEMO_TLS_CONFIG_FILE: path.join(temp, 'Caddyfile'),
+    CUPMEMO_TLS_CERT_FILE: path.join(temp, 'cert'),
+    CUPMEMO_TLS_KEY_FILE: path.join(temp, 'key'),
+  });
 });
 afterAll(() => {
   if (temp) rmSync(temp, { recursive: true, force: true });
@@ -99,6 +108,13 @@ describe.each([
         'BETTER_AUTH_URL',
         'POSTGRES_HDD_UUID',
         'POSTGRES_HDD_MOUNT',
+        'CUPMEMO_TLS_IMAGE',
+        'CUPMEMO_TLS_BIND_IP',
+        'CUPMEMO_TLS_HOSTNAME',
+        'CUPMEMO_TLS_UID',
+        'CUPMEMO_TLS_CONFIG_FILE',
+        'CUPMEMO_TLS_CERT_FILE',
+        'CUPMEMO_TLS_KEY_FILE',
       ]
     : required;
   function config(overrides = {}, args = ['--format', 'json'], composePath = compose) {
@@ -114,6 +130,7 @@ describe.each([
     expect(Object.keys(model.services).sort()).toEqual([
       'cupmemo-api',
       'cupmemo-postgres',
+      ...(appVariant ? ['cupmemo-tls'] : []),
       'cupmemo-web',
     ]);
   });
@@ -135,13 +152,24 @@ describe.each([
     expect(existsSync(settings.POSTGRES_DATA_DIR)).toBe(false);
   });
 
-  it('has exactly two project-scoped internal networks with segregated membership', () => {
-    expect(Object.keys(model.networks).sort()).toEqual(['backend', 'frontend']);
+  it('preserves internal app networks and permits only the TLS private ingress bridge', () => {
+    expect(Object.keys(model.networks).sort()).toEqual([
+      'backend',
+      'frontend',
+      ...(appVariant ? ['private_ingress'] : []),
+    ]);
     for (const [key, network] of Object.entries(model.networks)) {
-      expect(network.internal).toBe(true);
+      expect(Boolean(network.internal)).toBe(key !== 'private_ingress');
       expect(network.external).not.toBe(true);
       expect(network.name).toBe(`cupmemo-offline-test_${key}`);
+      expect(network.ipam ?? {}).toEqual({});
+      if (key === 'private_ingress') expect(network.driver).toBe('bridge');
     }
+    if (appVariant)
+      expect(Object.keys(model.services['cupmemo-tls'].networks).sort()).toEqual([
+        'frontend',
+        'private_ingress',
+      ]);
     expect(Object.keys(model.services['cupmemo-web'].networks)).toEqual(['frontend']);
     expect(Object.keys(model.services['cupmemo-api'].networks).sort()).toEqual([
       'backend',
@@ -152,7 +180,8 @@ describe.each([
 
   it('is dormant, bounded, nonprivileged and has no image/build/network fallbacks', () => {
     const budgets = { 'cupmemo-web': 512, 'cupmemo-api': 256, 'cupmemo-postgres': 512 };
-    for (const [name, service] of Object.entries(model.services)) {
+    for (const name of Object.keys(budgets)) {
+      const service = model.services[name];
       const imageKey =
         name === 'cupmemo-postgres'
           ? 'CUPMEMO_POSTGRES_IMAGE'
@@ -275,7 +304,7 @@ describe.each([
     const unsafe = path.join(temp, 'unsafe.compose.yml');
     writeFileSync(
       unsafe,
-      readFileSync(compose, 'utf8').replace('create_host_path: false', 'create_host_path: true'),
+      readFileSync(compose, 'utf8').replaceAll('create_host_path: false', 'create_host_path: true'),
     );
     const result = config({}, ['--format', 'json'], unsafe);
     expect(result.status, result.stderr).toBe(0);

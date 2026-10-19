@@ -12,6 +12,17 @@ function offlineModel(relativePath) {
   const temp = mkdtempSync(path.join(tmpdir(), 'cupmemo-casaos-static-'));
   try {
     writeFileSync(path.join(temp, 'empty.env'), '');
+    // Modern Compose validates host_ip even under --no-interpolate. Supply ONLY
+    // that synthetic field for the unchanged-three-service structural comparison;
+    // actual interpolation and all TLS fields are tested by the pinned importer.
+    const source = path.join(temp, 'structural.yml');
+    writeFileSync(
+      source,
+      readFileSync(path.join(root, relativePath), 'utf8').replace(
+        /\$\{CUPMEMO_TLS_BIND_IP:\?[^}]+\}/g,
+        '100.64.0.1',
+      ),
+    );
     const result = spawnSync(
       'docker',
       [
@@ -21,7 +32,7 @@ function offlineModel(relativePath) {
         '-p',
         'cupmemo-metadata-test',
         '-f',
-        path.join(root, relativePath),
+        source,
         'config',
         '--no-interpolate',
         '--no-env-resolution',
@@ -53,6 +64,15 @@ test('stock app preserves production runtime fields with supported explicit API 
   const base = offlineModel('infrastructure/docker/production.compose.yml');
   const app = offlineModel('infrastructure/casaos/docker-compose.yml');
   const { 'x-casaos': metadata, ...runtime } = app;
+  expect(runtime.services['cupmemo-tls']).toBeDefined();
+  expect(runtime.networks.private_ingress.driver).toBe('bridge');
+  expect(runtime.networks.private_ingress.internal).not.toBe(true);
+  expect(runtime.services['cupmemo-tls'].networks).toEqual({
+    frontend: null,
+    private_ingress: null,
+  });
+  delete runtime.services['cupmemo-tls'];
+  delete runtime.networks.private_ingress;
   expect(base.services['cupmemo-api'].env_file[0].format).toBe('raw');
   delete base.services['cupmemo-api'].env_file;
   expect(runtime.services['cupmemo-api'].env_file).toBeUndefined();

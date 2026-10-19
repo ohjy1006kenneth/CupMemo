@@ -28,6 +28,57 @@ x-readiness: &readiness
   start_period: 30s
 
 services:
+  cupmemo-tls:
+    <<: *bounded-service
+    image: ${CUPMEMO_TLS_IMAGE:?CUPMEMO_TLS_IMAGE must select the reviewed immutable official-base ARM64 Caddy2 derivative}
+    user: ${CUPMEMO_TLS_UID:?CUPMEMO_TLS_UID must be an explicitly verified positive numeric UID}
+    command: [caddy, run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+    read_only: true
+    cpus: 0.25
+    pids_limit: 64
+    mem_limit: 64m
+    memswap_limit: 64m
+    environment:
+      GOMEMLIMIT: 48MiB
+      CUPMEMO_TLS_HOSTNAME: ${CUPMEMO_TLS_HOSTNAME:?CUPMEMO_TLS_HOSTNAME must identify this tailnet node}
+    tmpfs:
+      - /data:rw,noexec,nosuid,nodev,size=16m,mode=1777
+      - /config:rw,noexec,nosuid,nodev,size=16m,mode=1777
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    volumes:
+      - type: bind
+        source: ${CUPMEMO_TLS_CONFIG_FILE:?CUPMEMO_TLS_CONFIG_FILE must name the reviewed external Caddyfile}
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${CUPMEMO_TLS_CERT_FILE:?CUPMEMO_TLS_CERT_FILE must name the external certificate}
+        target: /run/secrets/cupmemo_tls_cert
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${CUPMEMO_TLS_KEY_FILE:?CUPMEMO_TLS_KEY_FILE must name the external private key}
+        target: /run/secrets/cupmemo_tls_key
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - target: 8445
+        published: '8445'
+        host_ip: ${CUPMEMO_TLS_BIND_IP:?CUPMEMO_TLS_BIND_IP must be this node tailnet IPv4}
+        protocol: tcp
+    networks: [frontend, private_ingress]
+    depends_on:
+      cupmemo-web:
+        condition: service_healthy
+    healthcheck:
+      <<: *readiness
+      test:
+        - CMD-SHELL
+        - 'curl --fail --silent --output /dev/null --max-time 3 --noproxy "*" --cacert /run/secrets/cupmemo_tls_cert --resolve "$$CUPMEMO_TLS_HOSTNAME:8445:127.0.0.1" "https://$$CUPMEMO_TLS_HOSTNAME:8445/sign-in"'
+
   cupmemo-web:
     <<: *node-service
     image: ${CUPMEMO_WEB_IMAGE:?CUPMEMO_WEB_IMAGE must select an immutable ARM64 image}
@@ -106,6 +157,9 @@ services:
       test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
 
 networks:
+  private_ingress:
+    driver: bridge
+    internal: false
   frontend:
     internal: true
   backend:

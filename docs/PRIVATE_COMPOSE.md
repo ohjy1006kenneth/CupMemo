@@ -16,7 +16,7 @@ alternatives and migration impact. Primary `hq/t_9cbb487a`, original coder2817.
 Kenneth selected **stock CasaOS** and stock CasaOS-AppManagement, not a replacement
 manager. `infrastructure/casaos/docker-compose.yml` is the standalone ordinary app
 candidate: the same three production services and runtime contracts below, plus
-`name: cupmemo` and supported `x-casaos` metadata. The app variant uses explicit
+one app-local private TLS edge, `name: cupmemo` and supported `x-casaos` metadata. The app variant uses explicit
 API environment entries instead of the modern reference's raw env-file. Tests
 compare effective runtime fields, not identical source serialization.
 There are no forks, hooks, manager shims, Docker-socket mounts or privileged mounts.
@@ -45,7 +45,8 @@ The official [Compose/x-casaos specification][casaos-metadata] defines `main`,
 localized title/description, architectures and install tips; ordinary runtime
 configuration uses standard Compose. This candidate is a custom-app preparation,
 not a published store listing. It deliberately omits `port_map`/a dashboard launch
-URL and publishes no port: private browser ingress has not been selected or tested.
+URL. The selected private TLS candidate publishes only tailnet-IP TCP8445; actual
+node identity/bind and installed browser ingress still need owner verification.
 There is no claim that an Open button or a running app is delivered.
 
 **Offline stock-import packaging is executable; no live installation is claimed.**
@@ -69,7 +70,7 @@ Short normal flow (preparation now, owner activation after the gates below):
    `CUPMEMO_WEB_IMAGE`, `CUPMEMO_API_IMAGE`, `CUPMEMO_POSTGRES_IMAGE`,
    `POSTGRES_DATA_UID`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_DATA_DIR`,
    `POSTGRES_PASSWORD_FILE`, `POSTGRES_HDD_UUID`, `POSTGRES_HDD_MOUNT`,
-   plus `CUPMEMO_DATABASE_URL_PRODUCTION`,
+   plus the seven TLS inputs described below, `CUPMEMO_DATABASE_URL_PRODUCTION`,
    `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`. All values are explicit strings. There
    is no `CUPMEMO_API_ENV_FILE` in this variant. Preserve the independently verified
    URL/password relationship and production HTTPS/auth configuration. Use a private
@@ -196,6 +197,79 @@ evidence comes from `.github/workflows/postgres-hdd.yml`, not source-string test
 [casaos-go-mod]: https://github.com/IceWhaleTech/CasaOS-AppManagement/blob/debfa317f0f996b91b43210e8d57799461388704/go.mod
 [casaos-schema]: https://github.com/compose-spec/compose-go/blob/v1.20.2/schema/compose-spec.json
 [casaos-loader]: https://github.com/IceWhaleTech/CasaOS-AppManagement/blob/debfa317f0f996b91b43210e8d57799461388704/service/compose_app.go#L951-L1016
+
+### Private HTTPS edge (stock app only)
+
+Production auth retains Secure cookies and one HTTPS origin. Only this stock app
+adds `cupmemo-tls` in front of Next; the modern three-service reference and optional
+public Cloudflare overlay are unchanged. The edge proxies every path to
+`http://cupmemo-web:3101`, preserving original HTTPS Host (including8445), path,
+body, cookies and no-store headers. There is no separate API origin or cache.
+
+Supply all seven nonsecret JSON strings explicitly:
+
+| Input                     | Selection                                                                                             |
+| ------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `CUPMEMO_TLS_IMAGE`       | Reviewed locally available immutable minimal derivative, not a mutable Caddy tag                      |
+| `CUPMEMO_TLS_BIND_IP`     | Canonical node-owned tailnet IPv4 in100.64.0.0/10                                                     |
+| `CUPMEMO_TLS_HOSTNAME`    | Canonical lowercase node hostname under `ts.net`                                                      |
+| `CUPMEMO_TLS_UID`         | Verified positive numeric nonroot UID with input-file read access                                     |
+| `CUPMEMO_TLS_CONFIG_FILE` | External normalized absolute path to an exact owner-copied reviewed `infrastructure/casaos/Caddyfile` |
+| `CUPMEMO_TLS_CERT_FILE`   | External normalized absolute path to the supplied valid certificate chain                             |
+| `CUPMEMO_TLS_KEY_FILE`    | External normalized absolute path to its private key                                                  |
+
+`BETTER_AUTH_URL` must be exactly `https://<CUPMEMO_TLS_HOSTNAME>:8445`, with no
+trailing slash, credentials, path, query or fragment. The helper validates shapes,
+not actual node ownership, file existence/permissions/provenance or certificate
+validity. It never reads TLS inputs or retrieves certificates. Input files are
+readonly no-auto-create binds, not Compose UID/mode-remapped secrets. Owner must
+keep real names/paths/bytes private and verify custody/readability under the chosen
+UID; do not put them in Git or evidence. Missing files refuse container creation;
+unreadable/invalid config/cert/key refuse Caddy startup.
+
+The official stable2.11.7 Alpine ARM64 parent is pinned in
+`infrastructure/docker/caddy-private.Dockerfile` to manifest
+`sha256:84058f1a0e5beb97664a9b79dcfd267b594c033d5bb88d8463cdfb59c0779197`
+(upstream caddyserver/caddy-docker revision
+`9234f5785658cae8129bfae366e196d0670468ac:2.11/alpine`). Its Caddy executable
+has `cap_net_bind_service=ep`, which fails exec under ALL-cap-drop/NNP. The sole
+build-time derivative operation removes that file capability with included setcap;
+executable/package bytes and effective runtime configuration remain unchanged.
+`tests/casaos-tls-image.py` verifies base layer identity, exact payload/metadata
+delta and parent/final capability probes. It is honestly a minimal official-base
+derivative, not an untouched official image. Owner selects the exact audited final
+identity, never the parent. Production uses pull_policy:never with no build/fallback.
+
+Caddy runs nonroot, ALL-cap-drop, no-new-privileges, readonly root, CPU0.25,
+pids64, requested64MiB/no-swap, soft GOMEMLIMIT48MiB and bounded16MiB each tmpfs
+over `/data`, `/config`, `/tmp`; no persistent/anonymous proxy volume. Image EXPOSE
+metadata is not a listener or publication. Config enables only TLS8445/h1/h2 with
+strict SNI/Host matching; admin, automatic HTTPS/issuance, OCSP stapling, persisted
+config and request logging are disabled. A local verified curl healthcheck uses
+the supplied trust chain/hostname, never `--insecure`. Manual certificates expire:
+owner controls renewal/custody and an app-local restart before expiry. No automatic
+renewal job, Tailscale socket, Serve/Funnel change or external CA integration exists.
+
+Existing frontend/backend remain internal and all web/API/PG memberships unchanged.
+Only TLS additionally joins the app-owned noninternal standard bridge
+`private_ingress`. It has ordinary outbound routing: **not network-enforced zero
+egress**. Internal-only Docker29 endpoints do not realize published host ports;
+the edge-only bridge supplies normal gateway/publication without exposing web,
+API or DB. No external/shared network, fixed IPAM, gateway-priority extension,
+host-network or shared firewall/daemon change is used. Only explicit node tailnet
+IPv4 TCP8445 is published, never wildcard/LAN/HTTP/UDP or a fallback. A conflict
+fails rather than relocating another app. Public exposure remains held.
+
+The dedicated native ARM64 `.github/workflows/private-tls.yml` builds/audits the
+tiny derivative, runs `tests/casaos-tls-runtime.py` with fresh synthetic CA/backend,
+and retains exact image/evidence without registry publication. The real host-socket
+fixture uses an ephemeral loopback bind ONLY in tests, verifies requested/effective
+publication and network membership, HTTPS host/path/body/cookie/no-store/health,
+TLS trust/hostname/plaintext and input negatives, TERM and exact-owned cleanup.
+It is not real app/auth/database/CasaOS/phone acceptance. Reuse already-audited
+local images for affected network-only fixture runs, no rebuild/pull necessary.
+Current Pi lacks effective memory/swap controllers: requested limits and soft
+GOMEMLIMIT are not proof of hard enforcement or sustained live capacity.
 
 ## What this candidate defines
 

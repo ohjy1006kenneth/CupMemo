@@ -1,0 +1,64 @@
+name: Private TLS edge
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: private-tls-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  private-tls:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.15.0
+      - name: Minimal immutable derivative and real published-host HTTPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/private-tls-evidence"
+          mkdir -p "$evidence"
+          git rev-parse HEAD HEAD^{tree} > "$evidence/candidate.txt"
+          docker version > "$evidence/engine.txt"
+          go version > "$evidence/go.txt"
+          (cd tests/casaos-importer && GOMAXPROCS=2 go build -p 1 -o "$RUNNER_TEMP/offline-importer" .)
+          node tests/casaos-importer/check.mjs "$RUNNER_TEMP/offline-importer" \
+            2>&1 | tee "$evidence/importer.log"
+          docker pull --platform linux/arm64 \
+            caddy:2.11.7-alpine@sha256:84058f1a0e5beb97664a9b79dcfd267b594c033d5bb88d8463cdfb59c0779197 \
+            2>&1 | tee "$evidence/base-pull.log"
+          docker build --platform linux/arm64 --progress plain \
+            -f infrastructure/docker/caddy-private.Dockerfile \
+            -t cupmemo-private-tls-ci infrastructure/casaos 2>&1 | tee "$evidence/build.log"
+          python3 tests/casaos-tls-image.py cupmemo-private-tls-ci | tee "$evidence/image.json"
+          python3 tests/casaos-tls-runtime.py "$evidence/runtime" cupmemo-private-tls-ci \
+            2>&1 | tee "$evidence/behavior.log"
+          # Exact synthetic-tested image; no production credentials/config or fixture data.
+          docker save cupmemo-private-tls-ci | gzip -1 > "$RUNNER_TEMP/private-tls-image.tar.gz"
+          (cd "$RUNNER_TEMP" && sha256sum private-tls-image.tar.gz) > "$evidence/image-archive.sha256"
+      - name: Retain exact tested image without registry publication
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: private-tls-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/private-tls-image.tar.gz
+          retention-days: 14
+          if-no-files-found: error
+          include-hidden-files: false
+          overwrite: false
+      - name: Retain original TLS fixture and image evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: private-tls-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/private-tls-evidence/
+          retention-days: 14
+          if-no-files-found: error
+          include-hidden-files: false
+          overwrite: false

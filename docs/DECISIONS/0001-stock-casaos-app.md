@@ -24,7 +24,7 @@ Keep stock CasaOS and stock AppManagement. Retire the custom source bundles,
 dedicated manager workflow/tests and active manager deployment prerequisites in a
 forward reviewed change, preserving history/evidence and approved NAS changes.
 Prepare `infrastructure/casaos/docker-compose.yml` using the existing three-service
-production model with ordinary `x-casaos` metadata. Preserve web/API images, explicit
+production model plus one app-local private TLS edge with ordinary `x-casaos` metadata. Preserve web/API images, explicit
 external secrets, nonpublished database, ARM64/resource/security bounds and the
 HDD bind with `create_host_path: false`. Keep `restart: 'no'`.
 
@@ -46,12 +46,30 @@ privilege, raw block device, host probe cache or new application dependency is
 needed. Unsupported ioctl/kernel/seccomp evidence fails closed; no test bypass is
 shipped. Initial owner provisioning/import still requires fresh host preflight.
 
+For unchanged Secure production auth, add a stock-app-owned Caddy2 TLS edge with
+supplied external certificate/key and fixed tailnet-IP-only TCP8445. Use a pinned
+official ARM64 parent with only its executable file capability removed at build
+time: the official low-port capability conflicts with nonroot/ALL-drop/NNP. Audit
+identical executable/packages/config and the exact capability-only delta. Preserve
+readonly, bounded scratch and least privilege; disable admin, automatic issuance,
+OCSP, persistence and request logging. No runtime privilege workaround is allowed.
+TLS joins existing internal frontend plus exactly one app-owned noninternal bridge
+private_ingress, alone. Existing web/API/PG memberships remain internal/unchanged.
+Internal-only Docker29 has no effective host publication; the ordinary edge gateway
+fixes real ingress. This explicitly accepts TLS outbound routing, not zero egress
+or public ingress. Do not change shared Docker/Tailscale/firewall or existing Serve
+handlers. No host daemon, second API origin, custom manager or renewal scheduler.
+
 ## Alternatives considered
 
 - Continue custom managers: rejected by explicit user direction; no deployment is
   present to undo on the host.
 - Run both CasaOS and the host unit: rejected because duplicated ownership can
   bypass/reorder startup checks and contend over resources.
+- Keep an internal-only edge: rejected by actual absent host-publication evidence;
+  direct-container HTTPS cannot establish private host ingress.
+- Add capabilities or run Caddy as root: rejected; the narrow immutable derivative
+  preserves executable bytes and selected least privilege instead.
 - Weaken credential values/bind/restart settings to satisfy an older importer:
   rejected. App-specific supported serialization is allowed; unsupported raw
   env-file syntax was a template detail, not a user requirement.
@@ -69,8 +87,10 @@ two-stage dollar escaping. No manager or application adapter is introduced; the
 modern reference stays unchanged. The app-local gate runs on every process start;
 live launch needs fresh HDD admission and remaining owner/runtime gates within
 the already granted private authority. Missing-directory refusal alone does not prove rejection
-of an existing SSD directory, hot-unmount safety or reboot behavior. No port or
-dashboard launch URL is selected by this private candidate.
+of an existing SSD directory, hot-unmount safety or reboot behavior. Only the TLS
+edge selects tailnet-IP TCP8445; dashboard URL and real installed ingress remain
+unverified. Owner-controlled certificate renewal and actual node/file-custody
+verification remain required; see the private TLS section of PRIVATE_COMPOSE.md.
 
 ## Migration impact
 
