@@ -135,6 +135,14 @@ class TransferTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.receipt()
 
+    def test_only_absent_inspect_zero_defaults_are_equivalent(self):
+        self.write()
+        self.images['api']['Config'].update({'Hostname': '', 'AttachStdin': False, 'OnBuild': None})
+        self.receipt()
+        self.images['api']['Config']['Hostname'] = 'changed'
+        with self.assertRaises(ValueError):
+            self.receipt()
+
     def test_audited_diff_id_order(self):
         self.images['api']['RootFS']['Layers'].reverse()
         self.write()
@@ -204,6 +212,13 @@ class TransferTests(unittest.TestCase):
                     'index.json': encoded({'schemaVersion': 2, 'manifests': descriptors})}
         self.write(metadata)
         self.receipt()
+        # Moby28.0.4 indexes only the first of two untagged selected IDs,
+        # while both hashed OCI roots and Docker-save images are present.
+        metadata['index.json'] = encoded({'schemaVersion': 2, 'manifests': descriptors[:1]})
+        self.write(metadata)
+        self.receipt()
+        metadata['index.json'] = encoded({'schemaVersion': 2, 'manifests': descriptors})
+        self.write(metadata)
         self.images['web']['Id'], self.images['api']['Id'] = self.images['api']['Id'], self.images['web']['Id']
         with self.assertRaises(ValueError):
             self.receipt()

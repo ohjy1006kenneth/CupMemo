@@ -326,9 +326,15 @@ Validation streams without extraction, limits expanded archive/layer bytes to2Gi
 members to256 and individual JSON to4MiB; it refuses duplicate/nonregular/unsafe
 paths, undeclared members and mismatched config bytes/platform/runtime Config or
 ordered uncompressed RootFS diff_ids. Shared layers may be referenced by both
-images and are stored once. Docker containerd-store OCI metadata is admitted only
-as a hashed/size-checked reachable graph describing those same two images; no
-unrelated images/blobs are allowed. The version1 receipt binds checked-out commit,
+images and are stored once. Docker OCI metadata is admitted only
+as a hashed/size-checked graph describing those same two images; no
+unrelated images/blobs are allowed. Moby28 classic save by two untagged config IDs
+indexes only its first image, but emits both OCI manifest roots. The validator
+also binds the other root to the authoritative two-image Docker-save declaration
+and exact config/layer hashes; it neither repairs bytes nor accepts arbitrary
+orphans. Docker inspect can expand omitted legacy Config zero fields; only the
+explicit known absent zero defaults compare equivalently, never missing nonzero
+runtime settings. Config byte identity remains exact. The version1 receipt binds checked-out commit,
 tree, run/attempt, linux/arm64, each tested config ID/runtime Config/RootFS,
 ordered config/layer members with hashes/sizes, all archive members and exact
 compressed archive SHA256/bytes. The receipt is an integrity record, **not a

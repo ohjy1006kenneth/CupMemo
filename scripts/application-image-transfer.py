@@ -21,6 +21,15 @@ MAX_COMPRESSED = GIB
 MAX_EXPANDED = 2 * GIB
 MAX_JSON = 4 * 1024 ** 2
 HEX = r'[0-9a-f]{64}'
+# Docker inspect expands omitted legacy container.Config zero fields; OCI image
+# configs can omit these. Only these exact absent zero values are equivalent.
+CONFIG_DEFAULTS = {'Hostname': '', 'Domainname': '', 'User': '', 'AttachStdin': False,
+                   'AttachStdout': False, 'AttachStderr': False, 'Tty': False,
+                   'OpenStdin': False, 'StdinOnce': False, 'Image': '',
+                   'Volumes': None, 'OnBuild': None, 'Labels': None,
+                   'ExposedPorts': None, 'Env': None, 'Cmd': None, 'Entrypoint': None,
+                   'WorkingDir': '', 'ArgsEscaped': False, 'StopSignal': '',
+                   'StopTimeout': None, 'Healthcheck': None, 'Shell': None}
 
 
 def require(condition, message):
@@ -143,7 +152,10 @@ def build_receipt(path, images, identity, max_compressed=MAX_COMPRESSED):
         config = document(config_name)
         require(config['os'] == info['Os'] == 'linux'
                 and config['architecture'] == info['Architecture'] == 'arm64', 'platform identity')
-        require(config['config'] == info['Config'], 'audited runtime Config mismatch')
+        saved_config, inspected_config = config['config'], info['Config']
+        require(all(saved_config.get(key, CONFIG_DEFAULTS.get(key, object())) ==
+                    inspected_config.get(key, CONFIG_DEFAULTS.get(key, object()))
+                    for key in saved_config.keys() | inspected_config.keys()), 'audited runtime Config mismatch')
         require(config['rootfs']['type'] == info['RootFS']['Type'] == 'layers', 'rootfs type')
         diffs = config['rootfs']['diff_ids']
         require(diffs == info['RootFS']['Layers'] and len(diffs) == len(entry['Layers']) and diffs,
@@ -200,9 +212,20 @@ def build_receipt(path, images, identity, max_compressed=MAX_COMPRESSED):
             seen[name] = descendants
             return descendants
         index = document('index.json')
-        require(index['schemaVersion'] == 2, 'OCI index schema')
+        require(index['schemaVersion'] == 2 and index['manifests'], 'OCI index schema')
         for descriptor in index['manifests']:
             visit(descriptor)
+        # Moby28 classic save by two config IDs emits both OCI manifest blobs but
+        # indexes only the first untagged image (save.go's global len check).
+        # The Docker-save manifest still declares BOTH. Admit the other root only
+        # when its hashed config/layer edges bind exactly to that declared image.
+        for name, member in members.items():
+            if not member.get('directory') and name.startswith('blobs/sha256/') and name not in allowed:
+                value = document(name)
+                require(isinstance(value, dict) and value.get('mediaType') in
+                        ('application/vnd.oci.image.manifest.v1+json', 'application/vnd.docker.distribution.manifest.v2+json'),
+                        'undeclared OCI blob')
+                visit({'digest': 'sha256:' + member['sha256'], 'size': member['bytes'], 'mediaType': value['mediaType']})
         require(oci_images == set(known), 'OCI image set mismatch')
     for image in results.values():
         if image['Id'] != image['ConfigId']:
@@ -273,5 +296,6 @@ if __name__ == '__main__':
             require(args.receipt.stat().st_size <= MAX_JSON, 'receipt size limit')
             verify_receipt(args.archive, json.loads(args.receipt.read_text()))
     except (ValueError, KeyError, TypeError, OSError, EOFError, tarfile.TarError) as error:
-        raise SystemExit('Application image transfer REFUSED: ' + type(error).__name__)
+        detail = str(error) if isinstance(error, ValueError) else type(error).__name__
+        raise SystemExit('Application image transfer REFUSED: ' + detail)
     print('Application image transfer integrity PASS (not activation authority).')
