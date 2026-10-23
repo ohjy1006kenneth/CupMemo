@@ -137,11 +137,12 @@ auth/database/HTTPS behavior. The dormant private stack has no ingress.
 
 ## Cloudflare Tunnel
 
-Cloudflare Tunnel is **not preinstalled or preconfigured**.
-
-Setting it up is part of the deployment work.
-
-Prefer running `cloudflared` in the production Compose stack unless a strong technical reason suggests otherwise.
+The historically owner-accepted connector is the CasaOS App Store package
+`wisdomsky/cloudflared-web:2026.5.0`. Its App Store lifecycle is separate from
+the HDD-guarded CupMemo app stack. It is neither the dormant optional app-Compose
+overlay below nor Cloudflare's upstream image. The accepted package used host
+networking; its `/config` bind and `.cloudflared` volume are external to this
+repository. These historical facts do not establish current runtime availability.
 
 Use current official Cloudflare documentation during implementation rather than relying on old commands.
 
@@ -167,22 +168,38 @@ If Cloudflare requires an interactive account/domain authorization step, automat
 
 ### Operations status and authority (Refs #46)
 
-The Issue #46 runbook below is **documentation preparation only**, primary `hq/t_8e64e3a6`, original
-implementer `code-monkey-cupmemo`, native run3325. No account, domain, hostname,
-tunnel UUID, connector, token, installed CLI or running service is selected or
-verified here. Issue #43 setup, #44 live connector/service acceptance and #45 real
-public HTTPS/web/API/auth acceptance remain outstanding. Issue #46 and its primary card
-must remain unfinished after partial documentation integration: recovery after a
-normal service restart is **UNPERFORMED**, not proven by fixtures or hosted CI.
+The Issue #46 runbook continues primary `hq/t_8e64e3a6`, original implementer
+`code-monkey-cupmemo`, native run3325. The earlier documentation-only owner
+checkpoint recorded normal-service restart recovery as **UNPERFORMED**; that was
+the status at that historical checkpoint, not the final status. Subsequently,
+owner3443 stopped and started the same CasaOS connector/container/image, observed
+fresh connection indices0..3, recovered public sign-in200, session200 and anonymous
+brews401, then read the saved authenticated brew. All20 unrelated containers were
+preserved at that boundary. Owner3445 matched all21 post-restart identities without
+replaying the restart and accepted the Issue #44 connector/config/normal-restart
+outcome. These are historical receipts, not a current availability check.
+
+Sources: [Issue #46 owner comment 6239846993](https://github.com/ohjy1006kenneth/CupMemo/issues/46#issuecomment-6239846993)
+and [Issue #44 owner comment 6261543574](https://github.com/ohjy1006kenneth/CupMemo/issues/44#issuecomment-6261543574).
+The latter references `issue44-final-owner3445.zip` (SHA256
+`121e78cb4325a0976d9f00acb709474170d50898a01e4791ff1f8a0136a17349`); this is
+an owner-published historical reference only and was not inspected or locally
+hash-verified for this documentation update.
+
+Issue #45 outage/unknown-origin uncertainty remains unresolved here; historical
+public success does not establish current availability. Issue #46 and its primary
+card remain unfinished, and no stable production launch, physical-phone test,
+automatic app start, physical reboot, scheduled backups, certificate renewal or
+live-origin rollback is accepted by these receipts.
 
 The current [private Compose](PRIVATE_COMPOSE.md) source defines only web, API and
 PostgreSQL, with no ingress, no published ports and `restart: 'no'`. Its two
 internal networks do not establish connector egress or origin reachability.
-Issue #44 adds a **separate optional dormant** [Cloudflare overlay](CLOUDFLARE_COMPOSE.md)
+Issue #44 also prepared a **separate optional dormant** [Cloudflare overlay](CLOUDFLARE_COMPOSE.md)
 with profile `tunnel`, connector-only project-local egress and native token-file
-mapping. The base remains unchanged. No image/account/tunnel/UID is selected;
-source/config/test preparation is not live setup, actual reachability or restart
-acceptance. No runnable connector start/restart interface is delivered.
+mapping. The base remains unchanged. This overlay was not the accepted App Store
+connector and is not evidence about its lifecycle or configuration. No runnable
+connector start/restart interface for this dormant overlay is delivered.
 The retained alternative `infrastructure/scripts/private-stack-start.mjs` accepts only `--start`; it has
 no stop/restart interface and does not include cloudflared. The uninstalled
 `infrastructure/systemd/cupmemo-private.service.in` template has `Restart=no`,
@@ -396,13 +413,14 @@ security decision authorizes rotation and its session impact. Never silently
 restore an exposed token as rollback; use a new approved credential and retain the
 incident until containment and application verification are actually complete.
 
-### Real restart drill and required receipts — UNPERFORMED
+### Historical accepted restart and future maintenance receipts
 
-No tunnel/service restart, DNS/account change, real public request, DB start or
-data mutation has been performed for this documentation. Hosted CI and any
-synthetic/local routing controls cannot satisfy this live acceptance criterion.
-After explicit authority and actual Issue #43/#44 setup plus #45 availability/auth
-tests, use this same Issue #46/card for the real normal-service-restart drill:
+The normal connector stop/start described above was genuinely performed and
+accepted historically; do not replay it to satisfy this documentation update.
+It does not establish current service status or satisfy separate Issue #45
+availability/origin acceptance. For any future maintenance, obtain explicit
+exact-resource authorization and establish applicable Issue #43/#44 setup plus
+#45 availability/auth baseline before using this conditional checklist:
 
 - **Before:** retain authorization, maintenance window/timezone, actual approved
   hostname/tunnel/connector/service identity, exact release commit/tree, immutable
